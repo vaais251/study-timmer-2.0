@@ -38,7 +38,9 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
             return {
                 totalFocus: 0, totalSessions: 0, completedCount: 0, totalTasks: 0, 
                 pomsDone: 0, pomsEst: 0, projectsCompleted: 0, targetsCompleted: 0,
-                lineChartData: [], taskBreakdownData: [], projectBreakdownData: []
+                lineChartData: [], 
+                taskBreakdownData: [{ name: 'Completed', value: 0 }, { name: 'Pending', value: 0 }],
+                projectBreakdownData: [{ name: 'Completed', value: 0 }, { name: 'Pending', value: 0 }]
             };
         }
 

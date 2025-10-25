@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
 import * as dbService from './services/dbService';
-import { Task, Settings, Mode, Page, DbDailyLog, Project, Goal, Target } from './types';
+import { Task, Settings, Mode, Page, DbDailyLog, Project, Goal, Target, AppState } from './types';
 import { getTodayDateString } from './utils/date';
 import { playFocusStartSound, playFocusEndSound, playBreakStartSound, playBreakEndSound, playAlertLoop, resumeAudioContext } from './utils/audio';
 
@@ -21,6 +21,7 @@ import GoalsPage from './pages/GoalsPage';
 const App: React.FC = () => {
     const [session, setSession] = useState<Session | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [isStateRestored, setIsStateRestored] = useState(false);
 
     const [settings, setSettings] = useState<Settings>({
         focusDuration: 25,
@@ -39,11 +40,12 @@ const App: React.FC = () => {
         total_focus_minutes: 0,
     });
 
-    const [appState, setAppState] = useState({
-        mode: 'focus' as Mode,
+    const [appState, setAppState] = useState<AppState>({
+        mode: 'focus',
         currentSession: 1,
         timeRemaining: settings.focusDuration * 60,
         sessionTotalTime: settings.focusDuration * 60,
+        isRunning: false,
     });
 
     const [page, setPage] = useState<Page>('timer');
@@ -244,6 +246,62 @@ const App: React.FC = () => {
         document.body.style.fontFamily = `'Segoe UI', Tahoma, Geneva, Verdana, sans-serif`;
     }, [appState.mode]);
     
+    // --- STATE PERSISTENCE LOGIC ---
+    useEffect(() => {
+        const handleBeforeUnload = () => {
+            const isPristine = !appState.isRunning && appState.timeRemaining === appState.sessionTotalTime;
+            if (!isPristine) {
+                const stateToSave = {
+                    savedAppState: appState,
+                    timestamp: Date.now(),
+                };
+                localStorage.setItem('pomodoroAppState', JSON.stringify(stateToSave));
+            } else {
+                localStorage.removeItem('pomodoroAppState');
+            }
+        };
+
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+    }, [appState]);
+
+    useEffect(() => {
+        if (!isLoading && session && !isStateRestored) {
+            const savedStateJSON = localStorage.getItem('pomodoroAppState');
+            if (savedStateJSON) {
+                try {
+                    const { savedAppState, timestamp } = JSON.parse(savedStateJSON);
+
+                    if (savedAppState.isRunning) {
+                        const elapsedSeconds = Math.floor((Date.now() - timestamp) / 1000);
+                        const newTimeRemaining = savedAppState.timeRemaining - elapsedSeconds;
+
+                        if (newTimeRemaining > 0) {
+                            const restoredState = { ...savedAppState, timeRemaining: newTimeRemaining };
+                            setAppState(restoredState);
+                            timerInterval.current = window.setInterval(() => {
+                                setAppState(prev => ({ ...prev, timeRemaining: prev.timeRemaining - 1 }));
+                            }, 1000);
+                            if ('wakeLock' in navigator) {
+                                navigator.wakeLock.request('screen').then(lock => {
+                                    wakeLock.current = lock;
+                                }).catch(() => {});
+                            }
+                        } else {
+                            setAppState({ ...savedAppState, timeRemaining: 0 });
+                        }
+                    } else {
+                        setAppState(savedAppState);
+                    }
+                } catch (e) {
+                    localStorage.removeItem('pomodoroAppState');
+                }
+            }
+            setIsStateRestored(true);
+        }
+    }, [isLoading, session, isStateRestored]);
+    // --- END STATE PERSISTENCE LOGIC ---
+
     // Modal Continue Handler
     const handleModalContinue = async (comment: string) => {
         if (notificationInterval.current) clearInterval(notificationInterval.current);
