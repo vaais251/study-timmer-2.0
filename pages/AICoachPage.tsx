@@ -1,7 +1,7 @@
 
 
 import React, { useState, useMemo } from 'react';
-import { Task } from '../types';
+import { Task, Goal, Target, Project } from '../types';
 import { getTodayDateString } from '../utils/date';
 import { generateContent } from '../services/geminiService';
 import AIPanel from '../components/AIPanel';
@@ -21,9 +21,12 @@ function formatAIResponse(text: string): string {
 interface AICoachPageProps {
     completedTasks: Task[];
     incompleteTasks: Task[];
+    goals: Goal[];
+    targets: Target[];
+    projects: Project[];
 }
 
-const AICoachPage: React.FC<AICoachPageProps> = ({ completedTasks, incompleteTasks }) => {
+const AICoachPage: React.FC<AICoachPageProps> = ({ completedTasks, incompleteTasks, goals, targets, projects }) => {
     const [insightsState, setInsightsState] = useState({ content: "Get AI-powered insights on your study habits based on today's performance.", isLoading: false });
     const [mentorState, setMentorState] = useState({ content: "Get personalized advice, content suggestions, and consistency tips.", isLoading: false });
 
@@ -46,11 +49,20 @@ const AICoachPage: React.FC<AICoachPageProps> = ({ completedTasks, incompleteTas
             return;
         }
 
-        let completedData = completedToday.map(t => `- Task: "${t.text}" (Est: ${t.total_poms}, Done: ${t.completed_poms})`).join('\n');
-        let incompleteData = incompleteToday.map(t => `- Task: "${t.text}" (Est: ${t.total_poms}, Done: ${t.completed_poms})`).join('\n');
+        const completedData = completedToday.map(t => `- Task: "${t.text}" (Est: ${t.total_poms}, Done: ${t.completed_poms})`).join('\n');
+        const incompleteData = incompleteToday.map(t => `- Task: "${t.text}" (Est: ${t.total_poms}, Done: ${t.completed_poms})`).join('\n');
 
         const prompt = `
-            Act as a helpful and encouraging productivity coach. Analyze my data for today (${todayStr}).
+            Act as a helpful and encouraging productivity coach. Analyze my data for today (${todayStr}) in the context of my long-term goals.
+
+            My Core Goals (for long-term motivation):
+            ${goals.map(g => `- ${g.text}`).join('\n') || "None"}
+
+            My Current Projects (with deadlines):
+            ${projects.filter(p => !p.completed_at && p.deadline).map(p => `- "${p.name}" (Deadline: ${p.deadline})`).join('\n') || "None"}
+
+            My Current Targets (with deadlines):
+            ${targets.filter(t => !t.completed_at).map(t => `- "${t.text}" (Deadline: ${t.deadline})`).join('\n') || "None"}
 
             My Completed Tasks Today:
             ${completedData || "None"}
@@ -58,12 +70,12 @@ const AICoachPage: React.FC<AICoachPageProps> = ({ completedTasks, incompleteTas
             My Incomplete Tasks Today:
             ${incompleteData || "None"}
 
-            Based on this data, provide:
-            1. **A brief, positive summary** of my productivity.
-            2. **Actionable Insights:** Any noticeable patterns?
-            3. **One specific suggestion** for me to improve.
+            Based on ALL of this data, provide:
+            1. **A brief, positive summary** of my productivity, connecting it to my larger goals.
+            2. **Actionable Insights:** How did today's work contribute to my projects or targets? Are there any misalignments?
+            3. **One specific suggestion** for me to improve alignment with my goals tomorrow.
 
-            Format the response in simple Markdown. Keep it concise.
+            Format the response in simple Markdown. Keep it concise and strategic.
         `;
 
         const result = await generateContent(prompt);
@@ -75,30 +87,34 @@ const AICoachPage: React.FC<AICoachPageProps> = ({ completedTasks, incompleteTas
         const { completedToday, incompleteToday } = todaysTasks;
         const todayStr = getTodayDateString();
 
-        if (completedToday.length === 0 && incompleteToday.length === 0) {
-            setMentorState({ content: "Not enough data today for mentorship. Complete some tasks first!", isLoading: false });
-            return;
-        }
-
         const prompt = `
             You are an insightful and supportive study mentor reviewing my Pomodoro timer data for today, ${todayStr}.
-            Analyze my study patterns.
+            You have access to my long-term goals and specific targets to provide better context for your advice.
 
-            My Completed Tasks:
+            My Core Goals (for long-term motivation):
+            ${goals.map(g => `- ${g.text}`).join('\n') || "None"}
+
+            My Current Projects (with deadlines):
+            ${projects.filter(p => !p.completed_at && p.deadline).map(p => `- "${p.name}" (Deadline: ${p.deadline})`).join('\n') || "None"}
+
+            My Current Targets (with deadlines):
+            ${targets.filter(t => !t.completed_at).map(t => `- "${t.text}" (Deadline: ${t.deadline})`).join('\n') || "None"}
+
+            My Completed Tasks Today:
             ${completedToday.map(t => `- "${t.text}"`).join('\n') || "None"}
 
-            My Incomplete Tasks:
+            My Incomplete Tasks Today:
             ${incompleteToday.map(t => `- "${t.text}"`).join('\n') || "None"}
 
             ${userPrompt ? `My specific question is: "${userPrompt}"\n` : ''}
 
-            Based on this:
-            1. **Identify recurring themes** in my tasks.
-            2. **Assess my consistency** for the day.
-            3. **Provide specific, actionable advice** like a mentor. If themes emerge, suggest related content (videos, articles) using your search knowledge.
-            4. ${userPrompt ? 'Address my specific question.' : 'Focus on general patterns.'}
+            Based on all of this information:
+            1. **Connect today's work to my bigger goals.** Am I making progress on what matters most?
+            2. **Assess my consistency and focus** for the day in light of my targets and project deadlines.
+            3. **Provide specific, actionable advice** like a mentor. If themes emerge (e.g., procrastination on a specific project), address them. Suggest related content (videos, articles) using your search knowledge if relevant.
+            4. ${userPrompt ? 'Address my specific question directly, using the context provided.' : 'Focus on general patterns and alignment with my goals.'}
             
-            Keep the tone supportive. Format using simple Markdown.
+            Keep the tone supportive and strategic. Format using simple Markdown.
         `;
 
         const result = await generateContent(prompt);
@@ -118,7 +134,7 @@ const AICoachPage: React.FC<AICoachPageProps> = ({ completedTasks, incompleteTas
             />
              <AIPanel 
                 title="🎓 AI Study Mentor"
-                description="Your AI mentor analyzes your progress to offer personalized advice and content suggestions."
+                description="Your AI mentor analyzes your progress, goals, and targets to offer personalized advice."
                 buttonText="Get Mentorship Advice"
                 onGetAdvice={handleGetMentorAdvice}
                 aiState={mentorState}

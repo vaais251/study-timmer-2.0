@@ -4,21 +4,20 @@ import React, { useState, useEffect, useCallback } from 'react';
 import HistoryPanel from '../components/HistoryPanel';
 import Spinner from '../components/common/Spinner';
 import * as dbService from '../services/dbService';
-import { DbDailyLog, Task } from '../types';
-import { getTodayDateString } from '../utils/date';
+import { DbDailyLog, Task, Project, Target } from '../types';
+import { getTodayDateString, getMonthStartDateString } from '../utils/date';
 
 const StatsPage: React.FC = () => {
-    const [historyRange, setHistoryRange] = useState(() => {
-        const endDate = getTodayDateString();
-        const startDate = new Date();
-        startDate.setDate(startDate.getDate() - 6);
-        return {
-            start: startDate.toISOString().split('T')[0],
-            end: endDate,
-        };
-    });
+    const [historyRange, setHistoryRange] = useState(() => ({
+        start: getMonthStartDateString(),
+        end: getTodayDateString(),
+    }));
     const [logs, setLogs] = useState<DbDailyLog[]>([]);
     const [tasks, setTasks] = useState<Task[]>([]);
+    const [projects, setProjects] = useState<Project[]>([]);
+    const [allProjects, setAllProjects] = useState<Project[]>([]);
+    const [targets, setTargets] = useState<Target[]>([]);
+    const [allTasks, setAllTasks] = useState<Task[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
@@ -26,12 +25,20 @@ const StatsPage: React.FC = () => {
         setIsLoading(true);
         setError(null);
         try {
-            const [fetchedLogs, fetchedTasks] = await Promise.all([
+            const [fetchedLogs, fetchedTasks, fetchedProjects, fetchedTargets, fetchedAllProjects, fetchedAllTasks] = await Promise.all([
                 dbService.getHistoricalLogs(start, end),
-                dbService.getHistoricalTasks(start, end)
+                dbService.getHistoricalTasks(start, end),
+                dbService.getHistoricalProjects(start, end),
+                dbService.getHistoricalTargets(start, end),
+                dbService.getProjects(),
+                dbService.getAllTasksForStats()
             ]);
             setLogs(fetchedLogs || []);
             setTasks(fetchedTasks || []);
+            setProjects(fetchedProjects || []);
+            setAllProjects(fetchedAllProjects || []);
+            setTargets(fetchedTargets || []);
+            setAllTasks(fetchedAllTasks || []);
         } catch (err) {
             setError("Failed to load historical data. Please try again later.");
         } finally {
@@ -55,6 +62,10 @@ const StatsPage: React.FC = () => {
         <HistoryPanel
             logs={logs}
             tasks={tasks}
+            projects={projects}
+            allProjects={allProjects}
+            targets={targets}
+            allTasks={allTasks}
             historyRange={historyRange}
             setHistoryRange={setHistoryRange}
         />

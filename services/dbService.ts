@@ -1,7 +1,5 @@
-
-
 import { supabase } from './supabaseClient';
-import { Settings, Task, DbDailyLog } from '../types';
+import { Settings, Task, DbDailyLog, Project, Goal, Target } from '../types';
 import { getTodayDateString } from '../utils/date';
 
 // --- Settings ---
@@ -50,12 +48,11 @@ export const getTasks = async (): Promise<Task[] | null> => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return null;
 
-    // Fetch tasks due today or in the future
     const today = getTodayDateString();
 
     const { data, error } = await supabase
         .from('tasks')
-        .select('*')
+        .select('*, projects(name)')
         .eq('user_id', user.id)
         .gte('due_date', today)
         .order('created_at', { ascending: true });
@@ -68,11 +65,10 @@ export const getTasks = async (): Promise<Task[] | null> => {
 };
 
 const fetchAllTasks = async (): Promise<Task[] | null> => {
-    // This is a helper to refetch all tasks after a mutation
     return getTasks();
 };
 
-export const addTask = async (text: string, poms: number, isTomorrow: boolean): Promise<Task[] | null> => {
+export const addTask = async (text: string, poms: number, isTomorrow: boolean, projectId: string | null, tags: string[]): Promise<Task[] | null> => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
         return null;
@@ -89,9 +85,11 @@ export const addTask = async (text: string, poms: number, isTomorrow: boolean): 
         due_date: dueDate,
         completed_poms: 0,
         comments: [],
+        project_id: projectId,
+        tags: tags,
     };
     
-    const { data: insertedData, error } = await supabase
+    const { error } = await supabase
         .from('tasks')
         .insert(taskToInsert)
         .select();
@@ -99,16 +97,12 @@ export const addTask = async (text: string, poms: number, isTomorrow: boolean): 
     if (error) {
         return null;
     }
-
-    if (!insertedData || insertedData.length === 0) {
-        return null;
-    }
     
     return fetchAllTasks();
 };
 
 export const updateTask = async (task: Task): Promise<Task[] | null> => {
-    const { data: updatedData, error } = await supabase
+    const { error } = await supabase
         .from('tasks')
         .update({
             completed_poms: task.completed_poms,
@@ -119,10 +113,6 @@ export const updateTask = async (task: Task): Promise<Task[] | null> => {
         .select();
 
     if (error) {
-        return null;
-    }
-
-    if (!updatedData || updatedData.length === 0) {
         return null;
     }
 
@@ -141,30 +131,109 @@ export const moveTask = async (id: string, action: 'postpone' | 'duplicate'): Pr
     const tomorrow = getTodayDateString(new Date(Date.now() + 24 * 60 * 60 * 1000));
     
     if (action === 'postpone') {
-        const { error } = await supabase
+        await supabase
             .from('tasks')
             .update({ due_date: tomorrow })
             .eq('id', id);
-        if (error) {}
     } else { // duplicate
         const { data: original, error: fetchError } = await supabase.from('tasks').select('*').eq('id', id).single();
         if (fetchError || !original) {
             return null;
         }
         
-        const { error: insertError } = await supabase.from('tasks').insert({
+        await supabase.from('tasks').insert({
             user_id: original.user_id,
             text: original.text,
             total_poms: original.total_poms,
             due_date: tomorrow,
             completed_poms: 0,
             comments: [],
+            project_id: original.project_id,
+            tags: original.tags,
         });
-        if (insertError) {}
     }
     
     return fetchAllTasks();
 };
+
+// --- Projects ---
+
+export const getProjects = async (): Promise<Project[] | null> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+    const { data, error } = await supabase
+        .from('projects')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('name', { ascending: true });
+    return error ? null : data;
+}
+
+export const addProject = async (name: string, deadline: string | null): Promise<Project | null> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+    const { data: newProject, error } = await supabase
+        .from('projects')
+        .insert({ name, user_id: user.id, deadline })
+        .select()
+        .single();
+    return error ? null : newProject;
+}
+
+export const updateProjectStatus = async (id: string, completed: boolean): Promise<Project[] | null> => {
+    const { error } = await supabase
+        .from('projects')
+        .update({ completed_at: completed ? new Date().toISOString() : null })
+        .eq('id', id);
+    
+    return error ? null : await getProjects();
+}
+
+// --- Goals & Targets ---
+
+export const getGoals = async (): Promise<Goal[] | null> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+    const { data, error } = await supabase.from('goals').select('id, text').eq('user_id', user.id);
+    return error ? null : data;
+}
+
+export const addGoal = async (text: string): Promise<Goal[] | null> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+    const { error } = await supabase.from('goals').insert({ text, user_id: user.id });
+    return error ? null : await getGoals();
+}
+
+export const deleteGoal = async (id: string): Promise<Goal[] | null> => {
+    const { error } = await supabase.from('goals').delete().eq('id', id);
+    return error ? null : await getGoals();
+}
+
+export const getTargets = async (): Promise<Target[] | null> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+    const { data, error } = await supabase.from('targets').select('*').eq('user_id', user.id).order('deadline');
+    return error ? null : data;
+}
+
+export const addTarget = async (text: string, deadline: string): Promise<Target[] | null> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+    const { error } = await supabase.from('targets').insert({ text, deadline, user_id: user.id });
+    return error ? null : await getTargets();
+}
+
+export const updateTarget = async (id: string, completed: boolean): Promise<Target[] | null> => {
+    const { error } = await supabase.from('targets').update({ completed_at: completed ? new Date().toISOString() : null }).eq('id', id);
+    return error ? null : await getTargets();
+}
+
+export const deleteTarget = async (id: string): Promise<Target[] | null> => {
+    const { error } = await supabase.from('targets').delete().eq('id', id);
+    return error ? null : await getTargets();
+}
+
 
 // --- Daily Logs ---
 
@@ -225,11 +294,60 @@ export const getHistoricalTasks = async (startDate: string, endDate: string): Pr
 
     const { data, error } = await supabase
         .from('tasks')
-        .select('*')
+        .select('*, projects(name)')
         .eq('user_id', user.id)
         .gte('due_date', startDate)
         .lte('due_date', endDate);
     
+    if (error) {
+        return [];
+    }
+    return data;
+};
+
+export const getAllTasksForStats = async (): Promise<Task[]> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
+
+    const { data, error } = await supabase
+        .from('tasks')
+        .select('*')
+        .eq('user_id', user.id);
+    
+    if (error) {
+        return [];
+    }
+    return data;
+};
+
+export const getHistoricalProjects = async (startDate: string, endDate: string): Promise<Project[]> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
+
+    const { data, error } = await supabase
+        .from('projects')
+        .select('*')
+        .eq('user_id', user.id)
+        .gte('completed_at', startDate)
+        .lte('completed_at', `${endDate}T23:59:59Z`);
+    
+    if (error) {
+        return [];
+    }
+    return data;
+};
+
+export const getHistoricalTargets = async (startDate: string, endDate:string): Promise<Target[]> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
+
+    const { data, error } = await supabase
+        .from('targets')
+        .select('*')
+        .eq('user_id', user.id)
+        .gte('completed_at', startDate)
+        .lte('completed_at', `${endDate}T23:59:59Z`);
+
     if (error) {
         return [];
     }

@@ -1,4 +1,3 @@
-
 import React, { useMemo } from 'react';
 import Panel from './common/Panel';
 import { Task } from '../types';
@@ -14,7 +13,7 @@ interface StatsPanelProps {
 const StatItem: React.FC<{ label: string, value: string | number }> = ({ label, value }) => (
     <div className="bg-white/10 p-3 rounded-lg text-center">
         <div className="text-xs text-white/80 mb-1">{label}</div>
-        <div className="text-xl font-semibold text-white">{value}</div>
+        <div className="text-2xl font-semibold text-white">{value}</div>
     </div>
 );
 

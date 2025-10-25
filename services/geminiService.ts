@@ -1,29 +1,16 @@
 
-
 import { GoogleGenAI } from "@google/genai";
 
-let ai: GoogleGenAI | null = null;
+// The API key is expected to be set in the environment variables.
+if (!process.env.API_KEY) {
+    throw new Error("Gemini API key is not configured in environment variables.");
+}
 
-const getAIClient = (): GoogleGenAI => {
-    if (ai) {
-        return ai;
-    }
-    
-    // Set the Gemini API key directly as requested.
-    const API_KEY = "AIzaSyBT9IN5PiyqaWBdM9NekDg5d-5fWDuhZnE";
-
-    if (!API_KEY) {
-      throw new Error("Gemini API key is not configured.");
-    }
-    
-    ai = new GoogleGenAI({ apiKey: API_KEY });
-    return ai;
-};
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 export async function generateContent(prompt: string): Promise<string> {
     try {
-        const client = getAIClient();
-        const response = await client.models.generateContent({
+        const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: [{ parts: [{ text: prompt }] }],
             // The user's code used google search, so we add it here.

@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { PlayIcon, PauseIcon, ResetIcon, SettingsIcon } from './common/Icons';
 
@@ -12,7 +11,7 @@ interface ControlButtonProps {
 const ControlButton: React.FC<ControlButtonProps> = ({ onClick, label, children, className }) => (
     <button
         onClick={onClick}
-        className={`w-20 h-20 rounded-full text-white font-semibold flex flex-col items-center justify-center transition-all duration-300 hover:-translate-y-1 focus:outline-none focus:ring-4 focus:ring-white/30 shadow-lg ${className}`}
+        className={`w-16 h-16 sm:w-20 sm:h-20 rounded-full text-white font-semibold flex flex-col items-center justify-center transition-all duration-300 hover:-translate-y-1 focus:outline-none focus:ring-4 focus:ring-white/30 shadow-lg ${className}`}
         aria-label={label}
     >
         {children}

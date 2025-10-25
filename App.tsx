@@ -1,10 +1,9 @@
 
-
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
 import * as dbService from './services/dbService';
-import { Task, Settings, Mode, Page, DbDailyLog } from './types';
+import { Task, Settings, Mode, Page, DbDailyLog, Project, Goal, Target } from './types';
 import { getTodayDateString } from './utils/date';
 import { playFocusStartSound, playFocusEndSound, playBreakStartSound, playBreakEndSound, playAlertLoop, resumeAudioContext } from './utils/audio';
 
@@ -17,6 +16,7 @@ import SettingsPage from './pages/SettingsPage';
 import CompletionModal from './components/CompletionModal';
 import AuthPage from './pages/AuthPage';
 import Spinner from './components/common/Spinner';
+import GoalsPage from './pages/GoalsPage';
 
 const App: React.FC = () => {
     const [session, setSession] = useState<Session | null>(null);
@@ -29,6 +29,9 @@ const App: React.FC = () => {
     });
 
     const [tasks, setTasks] = useState<Task[]>([]);
+    const [projects, setProjects] = useState<Project[]>([]);
+    const [goals, setGoals] = useState<Goal[]>([]);
+    const [targets, setTargets] = useState<Target[]>([]);
     
     const [dailyLog, setDailyLog] = useState<DbDailyLog>({
         date: getTodayDateString(),
@@ -76,15 +79,21 @@ const App: React.FC = () => {
         if (!session) return;
         setIsLoading(true);
         try {
-            const [userSettings, userTasks, userDailyLog] = await Promise.all([
+            const [userSettings, userTasks, userDailyLog, userProjects, userGoals, userTargets] = await Promise.all([
                 dbService.getSettings(),
                 dbService.getTasks(),
-                dbService.getDailyLogForToday()
+                dbService.getDailyLogForToday(),
+                dbService.getProjects(),
+                dbService.getGoals(),
+                dbService.getTargets()
             ]);
 
             if (userSettings) setSettings(userSettings);
             if (userTasks) setTasks(userTasks);
             if (userDailyLog) setDailyLog(userDailyLog);
+            if (userProjects) setProjects(userProjects);
+            if (userGoals) setGoals(userGoals);
+            if (userTargets) setTargets(userTargets);
             
             setAppState(prev => ({
                 ...prev,
@@ -245,11 +254,20 @@ const App: React.FC = () => {
         if (newTasks) setTasks(newTasks);
     };
 
-    const handleAddTask = async (text: string, poms: number, isTomorrow: boolean) => {
-        const newTasks = await dbService.addTask(text, poms, isTomorrow);
+    const handleAddTask = async (text: string, poms: number, isTomorrow: boolean, projectId: string | null, tags: string[]) => {
+        const newTasks = await dbService.addTask(text, poms, isTomorrow, projectId, tags);
         if (newTasks) {
             setTasks(newTasks);
         }
+    };
+
+    const handleAddProject = async (name: string, deadline: string | null): Promise<string | null> => {
+        const newProject = await dbService.addProject(name, deadline);
+        if (newProject) {
+            setProjects(prev => [...prev, newProject].sort((a, b) => a.name.localeCompare(b.name)));
+            return newProject.id;
+        }
+        return null;
     };
     
     const handleDeleteTask = async (id: string) => {
@@ -263,11 +281,34 @@ const App: React.FC = () => {
     };
     
     const handleReorderTasks = async (reorderedTasks: Task[]) => {
-        // Note: Supabase doesn't have a built-in way to save order easily without an order column.
-        // For this app, we'll just update the local state for drag-and-drop reordering.
-        // The order will reset on the next page load.
         const otherTasks = tasks.filter(t => t.due_date !== todayString || t.completed_at !== null);
         setTasks([...reorderedTasks, ...otherTasks]);
+    };
+
+    // Goal, Target, & Project Handlers
+    const handleAddGoal = async (text: string) => {
+        const newGoals = await dbService.addGoal(text);
+        if (newGoals) setGoals(newGoals);
+    };
+    const handleDeleteGoal = async (id: string) => {
+        const newGoals = await dbService.deleteGoal(id);
+        if (newGoals) setGoals(newGoals);
+    };
+    const handleAddTarget = async (text: string, deadline: string) => {
+        const newTargets = await dbService.addTarget(text, deadline);
+        if (newTargets) setTargets(newTargets);
+    };
+    const handleUpdateTarget = async (id: string, completed: boolean) => {
+        const newTargets = await dbService.updateTarget(id, completed);
+        if (newTargets) setTargets(newTargets);
+    };
+    const handleDeleteTarget = async (id: string) => {
+        const newTargets = await dbService.deleteTarget(id);
+        if (newTargets) setTargets(newTargets);
+    };
+    const handleUpdateProjectStatus = async (id: string, completed: boolean) => {
+        const newProjects = await dbService.updateProjectStatus(id, completed);
+        if (newProjects) setProjects(newProjects);
     };
 
     const handleSaveSettings = async (newSettings: Settings) => {
@@ -280,6 +321,9 @@ const App: React.FC = () => {
     const handleLogout = async () => {
         await supabase.auth.signOut();
         setTasks([]);
+        setProjects([]);
+        setGoals([]);
+        setTargets([]);
         setDailyLog({ date: getTodayDateString(), completed_sessions: 0, total_focus_minutes: 0 });
         setPage('timer');
     };
@@ -304,17 +348,35 @@ const App: React.FC = () => {
                     tasksToday={tasksToday}
                     tasksForTomorrow={tasksForTomorrow}
                     completedToday={completedToday}
+                    projects={projects}
                     onAddTask={handleAddTask}
+                    onAddProject={handleAddProject}
                     onDeleteTask={handleDeleteTask}
                     onMoveTask={handleMoveTask}
                     onReorderTasks={handleReorderTasks}
                  />;
+            case 'goals':
+                return <GoalsPage 
+                    goals={goals}
+                    targets={targets}
+                    projects={projects}
+                    onAddGoal={handleAddGoal}
+                    onDeleteGoal={handleDeleteGoal}
+                    onAddTarget={handleAddTarget}
+                    onUpdateTarget={handleUpdateTarget}
+                    onDeleteTarget={handleDeleteTarget}
+                    onAddProject={handleAddProject}
+                    onUpdateProject={handleUpdateProjectStatus}
+                />;
             case 'stats':
                 return <StatsPage />;
             case 'ai':
                 return <AICoachPage 
                             completedTasks={allCompletedTasks} 
-                            incompleteTasks={allIncompleteTasks} 
+                            incompleteTasks={allIncompleteTasks}
+                            goals={goals}
+                            targets={targets}
+                            projects={projects}
                        />;
             case 'settings':
                 return <SettingsPage 

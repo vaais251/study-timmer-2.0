@@ -1,7 +1,6 @@
-
 import React from 'react';
 import { Page } from '../../types';
-import { TimerIcon, PlanIcon, StatsIcon, AIIcon, SettingsIcon, LogoutIcon } from '../common/Icons';
+import { TimerIcon, PlanIcon, StatsIcon, AIIcon, SettingsIcon, LogoutIcon, TargetIcon } from '../common/Icons';
 
 interface NavItemProps {
     label: string;
@@ -20,7 +19,7 @@ const NavItem: React.FC<NavItemProps> = ({ label, icon, isActive, onClick }) => 
             aria-label={label}
         >
             {icon}
-            <span className="text-xs capitalize mt-1">{label.split(' ')[1] || label}</span>
+            <span className="text-xs capitalize mt-1 hidden sm:inline">{label}</span>
         </button>
     );
 };
@@ -33,13 +32,14 @@ interface NavbarProps {
 
 const Navbar: React.FC<NavbarProps> = ({ currentPage, setPage, onLogout }) => {
     return (
-        <nav className="flex justify-around items-center bg-black/20 rounded-full p-1.5 gap-1.5">
+        <nav className="flex justify-around items-center bg-black/20 rounded-full p-1.5 gap-1">
             <NavItem label="timer" icon={<TimerIcon />} isActive={currentPage === 'timer'} onClick={() => setPage('timer')} />
             <NavItem label="plan" icon={<PlanIcon />} isActive={currentPage === 'plan'} onClick={() => setPage('plan')} />
+            <NavItem label="goals" icon={<TargetIcon />} isActive={currentPage === 'goals'} onClick={() => setPage('goals')} />
             <NavItem label="stats" icon={<StatsIcon />} isActive={currentPage === 'stats'} onClick={() => setPage('stats')} />
             <NavItem label="ai" icon={<AIIcon />} isActive={currentPage === 'ai'} onClick={() => setPage('ai')} />
             <NavItem label="settings" icon={<SettingsIcon />} isActive={currentPage === 'settings'} onClick={() => setPage('settings')} />
-            <NavItem label="Logout" icon={<LogoutIcon />} isActive={false} onClick={onLogout} />
+            <NavItem label="logout" icon={<LogoutIcon />} isActive={false} onClick={onLogout} />
         </nav>
     );
 };

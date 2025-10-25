@@ -1,5 +1,4 @@
 
-
 import React from 'react';
 import { AppState, Settings, Task, DbDailyLog } from '../types';
 import Header from '../components/Header';
@@ -8,6 +7,7 @@ import ModeIndicator from '../components/ModeIndicator';
 import TimerDisplay from '../components/TimerDisplay';
 import Controls from '../components/Controls';
 import StatsPanel from '../components/StatsPanel';
+import AmbientSounds from '../components/AmbientSounds';
 
 interface TimerPageProps {
     appState: AppState;
@@ -46,6 +46,7 @@ const TimerPage: React.FC<TimerPageProps> = (props) => {
                 resetTimer={resetTimer}
                 navigateToSettings={navigateToSettings}
             />
+            <AmbientSounds />
             <StatsPanel
                 completedToday={completedToday}
                 tasksToday={tasksToday}
