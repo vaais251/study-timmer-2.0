@@ -1,40 +1,51 @@
 
+import { Session, User } from '@supabase/supabase-js';
+
 export type Mode = 'focus' | 'break';
 
 export type Page = 'timer' | 'plan' | 'stats' | 'ai' | 'settings';
 
+// Corresponds to the `tasks` table
 export interface Task {
     id: string;
+    user_id: string;
+    created_at: string;
     text: string;
-    totalPoms: number;
-    completedPoms: number;
+    total_poms: number;
+    completed_poms: number;
     comments: string[];
+    due_date: string; // YYYY-MM-DD
+    completed_at: string | null;
 }
 
+// Corresponds to the `settings` table (without user_id)
 export interface Settings {
     focusDuration: number;
     breakDuration: number;
     sessionsPerCycle: number;
 }
-
-export interface DailyLog {
-    completed: Task[];
-    incomplete: Task[];
-    stats: {
-        completedSessions: number;
-        totalFocusMinutes: number;
-    };
+export interface DbSettings extends Settings {
+    user_id: string;
+    updated_at: string;
 }
 
+// Corresponds to the `daily_logs` table
+export interface DbDailyLog {
+    id?: string;
+    user_id?: string;
+    date: string; // YYYY-MM-DD
+    completed_sessions: number;
+    total_focus_minutes: number;
+}
+
+
+// Legacy types for compatibility during refactor
 export interface AppState {
     mode: Mode;
     currentSession: number;
     timeRemaining: number;
-    totalTime: number;
     isRunning: boolean;
-    completedSessions: number;
-    totalFocusMinutes: number;
-    tasks: Task[];
-    completedToday: Task[];
-    tasksForTomorrow: Task[];
 }
+
+// Supabase session and user for auth
+export type { Session, User };

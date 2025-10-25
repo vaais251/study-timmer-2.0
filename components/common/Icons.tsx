@@ -27,3 +27,4 @@ export const TimerIcon: React.FC = () => <svg {...iconWithStrokeProps}><circle c
 export const PlanIcon: React.FC = () => <svg {...iconWithStrokeProps}><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>;
 export const StatsIcon: React.FC = () => <svg {...iconWithStrokeProps}><path d="M18 20V10M12 20V4M6 20V14"/></svg>;
 export const AIIcon: React.FC = () => <svg {...iconWithStrokeProps}><path d="M12 8V4H8" /><rect x="4" y="12" width="8" height="8" rx="2" /><path d="M20 12h-4" /><path d="M16 6h4" /><path d="M12 12v-2" /><path d="m16 16-1.5-1.5" /><path d="m8 16 1.5-1.5" /></svg>;
+export const LogoutIcon: React.FC = () => <svg {...iconWithStrokeProps}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>;

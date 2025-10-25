@@ -1,6 +1,10 @@
 
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Task, DailyLog, Settings, AppState, Mode, Page } from './types';
+import { Session } from '@supabase/supabase-js';
+import { supabase } from './services/supabaseClient';
+import * as dbService from './services/dbService';
+import { Task, Settings, Mode, Page, DbDailyLog } from './types';
 import { getTodayDateString } from './utils/date';
 import { playFocusStartSound, playFocusEndSound, playBreakStartSound, playBreakEndSound, playAlertLoop, resumeAudioContext } from './utils/audio';
 
@@ -11,40 +15,98 @@ import StatsPage from './pages/StatsPage';
 import AICoachPage from './pages/AICoachPage';
 import SettingsPage from './pages/SettingsPage';
 import CompletionModal from './components/CompletionModal';
+import AuthPage from './pages/AuthPage';
+import Spinner from './components/common/Spinner';
 
 const App: React.FC = () => {
+    const [session, setSession] = useState<Session | null>(null);
+    const [isLoading, setIsLoading] = useState(true);
+
     const [settings, setSettings] = useState<Settings>({
         focusDuration: 25,
         breakDuration: 5,
         sessionsPerCycle: 2,
     });
 
-    const [appState, setAppState] = useState<AppState>({
-        mode: 'focus',
-        currentSession: 1,
-        timeRemaining: settings.focusDuration * 60,
-        totalTime: settings.focusDuration * 60,
-        isRunning: false,
-        completedSessions: 0,
-        totalFocusMinutes: 0,
-        tasks: [],
-        completedToday: [],
-        tasksForTomorrow: [],
+    const [tasks, setTasks] = useState<Task[]>([]);
+    
+    const [dailyLog, setDailyLog] = useState<DbDailyLog>({
+        date: getTodayDateString(),
+        completed_sessions: 0,
+        total_focus_minutes: 0,
     });
 
-    const [historyRange, setHistoryRange] = useState({
-        start: getTodayDateString(new Date(Date.now() - 6 * 24 * 60 * 60 * 1000)),
-        end: getTodayDateString(),
+    const [appState, setAppState] = useState({
+        mode: 'focus' as Mode,
+        currentSession: 1,
+        timeRemaining: settings.focusDuration * 60,
+        isRunning: false,
     });
-    
+
     const [page, setPage] = useState<Page>('timer');
     const [isModalVisible, setIsModalVisible] = useState(false);
     const [modalContent, setModalContent] = useState({ title: '', message: '', nextMode: 'focus' as Mode, showCommentBox: false });
 
     const timerInterval = useRef<number | null>(null);
     const notificationInterval = useRef<number | null>(null);
-    const wakeLock = useRef<any | null>(null); // Use 'any' for WakeLockSentinel for broader compatibility
+    const wakeLock = useRef<any | null>(null);
 
+    // Derived state for tasks
+    const todayString = getTodayDateString();
+    const tasksToday = tasks.filter(t => t.due_date === todayString && !t.completed_at);
+    const tasksForTomorrow = tasks.filter(t => t.due_date > todayString && !t.completed_at);
+    const completedToday = tasks.filter(t => !!t.completed_at && t.due_date === todayString);
+    const allIncompleteTasks = tasks.filter(t => !t.completed_at);
+    const allCompletedTasks = tasks.filter(t => !!t.completed_at);
+
+
+    useEffect(() => {
+        supabase.auth.getSession().then(({ data: { session } }) => {
+            setSession(session);
+        });
+
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+            setSession(session);
+        });
+
+        return () => subscription.unsubscribe();
+    }, []);
+
+    const fetchData = useCallback(async () => {
+        if (!session) return;
+        setIsLoading(true);
+        try {
+            const [userSettings, userTasks, userDailyLog] = await Promise.all([
+                dbService.getSettings(),
+                dbService.getTasks(),
+                dbService.getDailyLogForToday()
+            ]);
+
+            if (userSettings) setSettings(userSettings);
+            if (userTasks) setTasks(userTasks);
+            if (userDailyLog) setDailyLog(userDailyLog);
+            
+            setAppState(prev => ({
+                ...prev,
+                timeRemaining: (userSettings?.focusDuration || 25) * 60,
+            }));
+
+        } catch (error) {
+            console.error("Error fetching user data:", error);
+        } finally {
+            setIsLoading(false);
+        }
+    }, [session]);
+
+    useEffect(() => {
+        if (session) {
+            fetchData();
+        } else {
+            setIsLoading(false); // Not logged in, stop loading
+        }
+    }, [session, fetchData]);
+    
+    // Stop Timer Logic
     const stopTimer = useCallback(() => {
         if (!appState.isRunning) return;
         setAppState(prev => ({ ...prev, isRunning: false }));
@@ -52,6 +114,7 @@ const App: React.FC = () => {
         if (wakeLock.current) wakeLock.current.release().then(() => wakeLock.current = null);
     }, [appState.isRunning]);
 
+    // Reset Timer Logic
     const resetTimer = useCallback(() => {
         stopTimer();
         setAppState(prev => ({
@@ -59,10 +122,70 @@ const App: React.FC = () => {
             mode: 'focus',
             currentSession: 1,
             timeRemaining: settings.focusDuration * 60,
-            totalTime: settings.focusDuration * 60,
         }));
     }, [stopTimer, settings.focusDuration]);
 
+    // Start Timer Logic
+    const startTimer = async () => {
+        if (appState.isRunning) return;
+        resumeAudioContext();
+        setAppState(prev => ({ ...prev, isRunning: true }));
+        
+        timerInterval.current = window.setInterval(() => {
+            setAppState(prev => ({ ...prev, timeRemaining: prev.timeRemaining - 1 }));
+        }, 1000);
+
+        if ('wakeLock' in navigator) {
+            try {
+                wakeLock.current = await navigator.wakeLock.request('screen');
+            } catch (err: any) {
+                console.error(`Wake Lock error: ${err.name}, ${err.message}`);
+            }
+        }
+
+        if (appState.mode === 'focus') playFocusStartSound(); else playBreakStartSound();
+    };
+
+    // Phase Completion Logic
+    const completePhase = useCallback(async () => {
+        stopTimer();
+        notificationInterval.current = window.setInterval(playAlertLoop, 3000);
+        playAlertLoop();
+
+        let newLog = { ...dailyLog };
+
+        if (appState.mode === 'focus') {
+            playFocusEndSound();
+            newLog.completed_sessions++;
+            newLog.total_focus_minutes += settings.focusDuration;
+            
+            setDailyLog(newLog);
+            await dbService.upsertDailyLog(newLog);
+
+            if (appState.currentSession >= settings.sessionsPerCycle) {
+                setModalContent({ title: '🎉 Full Cycle Complete!', message: 'Congratulations! You completed a full study cycle.<br/>Take a well-deserved break!', nextMode: 'break', showCommentBox: true });
+            } else {
+                setModalContent({ title: '⏰ Focus Complete!', message: 'Great work! Time for a break.', nextMode: 'break', showCommentBox: true });
+            }
+        } else {
+            playBreakEndSound();
+            const activeTask = tasksToday.find(t => t.completed_at === null);
+            const nextTaskMessage = activeTask
+                ? `Next task: <br><strong>${activeTask.text}</strong>`
+                : 'Add a new task to get started!';
+            setModalContent({ title: '⏰ Break Over!', message: nextTaskMessage, nextMode: 'focus', showCommentBox: false });
+        }
+        setIsModalVisible(true);
+    }, [appState, settings, stopTimer, tasksToday, dailyLog]);
+    
+    useEffect(() => {
+        if (appState.isRunning && appState.timeRemaining <= 0) {
+            completePhase();
+        }
+        document.title = `${Math.floor(appState.timeRemaining / 60).toString().padStart(2, '0')}:${(appState.timeRemaining % 60).toString().padStart(2, '0')} - ${appState.mode === 'focus' ? 'Focus' : 'Break'}`;
+    }, [appState.timeRemaining, appState.isRunning, appState.mode, completePhase]);
+
+    // Dynamic background effect
     useEffect(() => {
         const bgClass = appState.mode === 'focus'
             ? 'bg-gradient-to-br from-[#667eea] to-[#764ba2]'
@@ -77,65 +200,7 @@ const App: React.FC = () => {
         document.body.style.fontFamily = `'Segoe UI', Tahoma, Geneva, Verdana, sans-serif`;
     }, [appState.mode]);
     
-
-    const completePhase = useCallback(() => {
-        stopTimer();
-        notificationInterval.current = window.setInterval(playAlertLoop, 3000);
-        playAlertLoop();
-
-        if (appState.mode === 'focus') {
-            playFocusEndSound();
-            const newCompletedSessions = appState.completedSessions + 1;
-            const newTotalFocusMinutes = appState.totalFocusMinutes + settings.focusDuration;
-            
-            setAppState(prev => ({
-                ...prev,
-                completedSessions: newCompletedSessions,
-                totalFocusMinutes: newTotalFocusMinutes,
-            }));
-
-            if (appState.currentSession >= settings.sessionsPerCycle) {
-                setModalContent({ title: '🎉 Full Cycle Complete!', message: 'Congratulations! You completed a full study cycle.<br/>Take a well-deserved break!', nextMode: 'break', showCommentBox: true });
-            } else {
-                setModalContent({ title: '⏰ Focus Complete!', message: 'Great work! Time for a break.', nextMode: 'break', showCommentBox: true });
-            }
-        } else {
-            playBreakEndSound();
-            const nextTaskMessage = appState.tasks.length > 0
-                ? `Next task: <br><strong>${appState.tasks[0].text}</strong>`
-                : 'Add a new task to get started!';
-            setModalContent({ title: '⏰ Break Over!', message: nextTaskMessage, nextMode: 'focus', showCommentBox: false });
-        }
-        setIsModalVisible(true);
-    }, [appState, settings, stopTimer]);
-
-    useEffect(() => {
-        if (appState.isRunning && appState.timeRemaining <= 0) {
-            completePhase();
-        }
-        document.title = `${Math.floor(appState.timeRemaining / 60).toString().padStart(2, '0')}:${(appState.timeRemaining % 60).toString().padStart(2, '0')} - ${appState.mode === 'focus' ? 'Focus' : 'Break'}`;
-    }, [appState.timeRemaining, appState.isRunning, appState.mode, completePhase]);
-
-    const startTimer = async () => {
-        if (appState.isRunning) return;
-        resumeAudioContext();
-        setAppState(prev => ({ ...prev, isRunning: true }));
-        
-        timerInterval.current = window.setInterval(() => {
-            setAppState(prev => ({ ...prev, timeRemaining: prev.timeRemaining - 1 }));
-        }, 1000);
-
-        if ('wakeLock' in navigator) {
-            try {
-                wakeLock.current = await navigator.wakeLock.request('screen');
-            } catch (err) {
-                console.error('Wake Lock error:', err);
-            }
-        }
-
-        if (appState.mode === 'focus') playFocusStartSound(); else playBreakStartSound();
-    };
-
+    // Modal Continue Handler
     const handleModalContinue = (comment: string) => {
         if (notificationInterval.current) clearInterval(notificationInterval.current);
         
@@ -155,159 +220,86 @@ const App: React.FC = () => {
             mode: nextMode,
             currentSession: newCurrentSession,
             timeRemaining: newTime,
-            totalTime: newTime,
         }));
 
         setIsModalVisible(false);
         startTimer();
     };
     
-    const handleTaskCompletion = (comment: string) => {
-        if (appState.tasks.length === 0) return;
+    // Task Handlers
+    const handleTaskCompletion = async (comment: string) => {
+        const currentTask = tasksToday.find(t => t.completed_at === null);
+        if (!currentTask) return;
 
-        let currentTask = { ...appState.tasks[0] };
-        currentTask.completedPoms++;
+        const updatedTask: Task = { ...currentTask };
+        updatedTask.completed_poms++;
         if (comment) {
-            currentTask.comments = [...(currentTask.comments || []), comment];
+            updatedTask.comments = [...(updatedTask.comments || []), comment];
         }
 
-        if (currentTask.completedPoms >= currentTask.totalPoms) {
-            setAppState(prev => ({
-                ...prev,
-                tasks: prev.tasks.slice(1),
-                completedToday: [...prev.completedToday, currentTask],
-            }));
+        if (updatedTask.completed_poms >= updatedTask.total_poms) {
+            updatedTask.completed_at = new Date().toISOString();
+        }
+        
+        const newTasks = await dbService.updateTask(updatedTask);
+        if (newTasks) setTasks(newTasks);
+    };
+
+    const handleAddTask = async (text: string, poms: number, isTomorrow: boolean) => {
+        console.log(`[App.handleAddTask] Attempting to add task: "${text}" for ${isTomorrow ? 'tomorrow' : 'today'}`);
+        const newTasks = await dbService.addTask(text, poms, isTomorrow);
+        console.log('[App.handleAddTask] Received from dbService:', newTasks);
+        if (newTasks) {
+            console.log(`[App.handleAddTask] Updating state with ${newTasks.length} tasks.`);
+            setTasks(newTasks);
         } else {
-            const newTasks = [...appState.tasks];
-            newTasks[0] = currentTask;
-            setAppState(prev => ({ ...prev, tasks: newTasks }));
+            console.log('[App.handleAddTask] Received null from dbService. State not updated.');
         }
     };
     
-    // Load state from localStorage on initial render
-    useEffect(() => {
-        try {
-            const savedSettings = JSON.parse(localStorage.getItem('pomodoro-settings') || '{}');
-            if (savedSettings.focusDuration) setSettings(savedSettings);
+    const handleDeleteTask = async (id: string) => {
+        const newTasks = await dbService.deleteTask(id);
+        if (newTasks) setTasks(newTasks);
+    };
 
-            const todayStr = getTodayDateString();
-            const lastVisitedStr = localStorage.getItem('pomodoro-last-visited') || todayStr;
-            let loadedState: Partial<AppState> = {};
-
-            if (todayStr !== lastVisitedStr) {
-                const pendingTasksFromYesterday = JSON.parse(localStorage.getItem('pomodoro-pending-tasks') || '[]');
-                const yesterdaysLog = JSON.parse(localStorage.getItem(`pomodoro-log-${lastVisitedStr}`) || '{}');
-
-                if (pendingTasksFromYesterday.length > 0 || (yesterdaysLog.completed && yesterdaysLog.completed.length > 0)) {
-                    const archiveLog = {
-                        completed: yesterdaysLog.completed || [],
-                        incomplete: pendingTasksFromYesterday,
-                        stats: yesterdaysLog.stats || { completedSessions: 0, totalFocusMinutes: 0 }
-                    };
-                    localStorage.setItem(`pomodoro-log-${lastVisitedStr}`, JSON.stringify(archiveLog));
-                }
-
-                loadedState.tasks = JSON.parse(localStorage.getItem('pomodoro-tasks-tomorrow') || '[]');
-                loadedState.tasksForTomorrow = [];
-                loadedState.completedToday = [];
-                loadedState.completedSessions = 0;
-                loadedState.totalFocusMinutes = 0;
-            } else {
-                loadedState.tasks = JSON.parse(localStorage.getItem('pomodoro-pending-tasks') || '[]');
-                loadedState.tasksForTomorrow = JSON.parse(localStorage.getItem('pomodoro-tasks-tomorrow') || '[]');
-                const todaysLog = JSON.parse(localStorage.getItem(`pomodoro-log-${todayStr}`) || '{}');
-                loadedState.completedToday = todaysLog.completed || [];
-                loadedState.completedSessions = todaysLog.stats?.completedSessions || 0;
-                loadedState.totalFocusMinutes = todaysLog.stats?.totalFocusMinutes || 0;
-            }
-
-            const savedHistoryStart = localStorage.getItem('pomodoro-history-start');
-            const savedHistoryEnd = localStorage.getItem('pomodoro-history-end');
-            if(savedHistoryStart && savedHistoryEnd) {
-              setHistoryRange({start: savedHistoryStart, end: savedHistoryEnd})
-            }
-
-            setAppState(prev => ({ ...prev, ...loadedState, timeRemaining: (savedSettings.focusDuration || 25) * 60, totalTime: (savedSettings.focusDuration || 25) * 60 }));
-        } catch (e) {
-            console.error("Failed to load from localStorage:", e);
-        }
-    }, []);
-
-    // Save state to localStorage whenever it changes
-    useEffect(() => {
-        try {
-            const todayStr = getTodayDateString();
-            const dailyLog: DailyLog = {
-                completed: appState.completedToday,
-                incomplete: appState.tasks,
-                stats: {
-                    completedSessions: appState.completedSessions,
-                    totalFocusMinutes: appState.totalFocusMinutes,
-                }
-            };
-            localStorage.setItem(`pomodoro-log-${todayStr}`, JSON.stringify(dailyLog));
-            localStorage.setItem('pomodoro-pending-tasks', JSON.stringify(appState.tasks));
-            localStorage.setItem('pomodoro-tasks-tomorrow', JSON.stringify(appState.tasksForTomorrow));
-            localStorage.setItem('pomodoro-settings', JSON.stringify(settings));
-            localStorage.setItem('pomodoro-last-visited', todayStr);
-            localStorage.setItem('pomodoro-history-start', historyRange.start);
-            localStorage.setItem('pomodoro-history-end', historyRange.end);
-        } catch (e) {
-            console.error("Failed to save to localStorage:", e);
-        }
-    }, [appState, settings, historyRange]);
-
-    const handleAddTask = (text: string, poms: number, isTomorrow: boolean) => {
-        const newTask: Task = {
-            id: Date.now().toString(),
-            text,
-            totalPoms: poms,
-            completedPoms: 0,
-            comments: []
-        };
-        if (isTomorrow) {
-            setAppState(prev => ({ ...prev, tasksForTomorrow: [...prev.tasksForTomorrow, newTask] }));
-        } else {
-            setAppState(prev => ({ ...prev, tasks: [...prev.tasks, newTask] }));
-        }
+    const handleMoveTask = async (id: string, action: 'postpone' | 'duplicate') => {
+        const newTasks = await dbService.moveTask(id, action);
+        if (newTasks) setTasks(newTasks);
     };
     
-    const handleDeleteTask = (id: string, isTomorrow: boolean) => {
-        if (isTomorrow) {
-            setAppState(prev => ({ ...prev, tasksForTomorrow: prev.tasksForTomorrow.filter(t => t.id !== id) }));
-        } else {
-            setAppState(prev => ({ ...prev, tasks: prev.tasks.filter(t => t.id !== id) }));
-        }
+    const handleReorderTasks = async (reorderedTasks: Task[]) => {
+        // Note: Supabase doesn't have a built-in way to save order easily without an order column.
+        // For this app, we'll just update the local state for drag-and-drop reordering.
+        // The order will reset on the next page load.
+        const otherTasks = tasks.filter(t => t.due_date !== todayString || t.completed_at !== null);
+        setTasks([...reorderedTasks, ...otherTasks]);
     };
 
-    const handleMoveTask = (id: string, action: 'postpone' | 'duplicate') => {
-        const taskToMove = appState.tasks.find(t => t.id === id);
-        if (!taskToMove) return;
-
-        if (action === 'postpone') {
-            setAppState(prev => ({
-                ...prev,
-                tasks: prev.tasks.filter(t => t.id !== id),
-                tasksForTomorrow: [...prev.tasksForTomorrow, taskToMove]
-            }));
-        } else { // duplicate
-            const duplicatedTask = { ...taskToMove, id: Date.now().toString(), completedPoms: 0, comments: [] };
-            setAppState(prev => ({ ...prev, tasksForTomorrow: [...prev.tasksForTomorrow, duplicatedTask] }));
-        }
-    };
-
-    const handleSaveSettings = (newSettings: Settings) => {
+    const handleSaveSettings = async (newSettings: Settings) => {
+        await dbService.updateSettings(newSettings);
         setSettings(newSettings);
         resetTimer();
         setPage('timer'); // Navigate back to timer after saving
     };
 
+    const handleLogout = async () => {
+        const { error } = await supabase.auth.signOut();
+        if (error) console.error("Error logging out:", error);
+        setTasks([]);
+        setDailyLog({ date: getTodayDateString(), completed_sessions: 0, total_focus_minutes: 0 });
+        setPage('timer');
+    };
+
+    // Page Rendering Logic
     const renderPage = () => {
         switch (page) {
             case 'timer':
                 return <TimerPage
-                    appState={appState}
+                    tasksToday={tasksToday}
+                    completedToday={completedToday}
+                    dailyLog={dailyLog}
                     settings={settings}
+                    appState={appState}
                     startTimer={startTimer}
                     stopTimer={stopTimer}
                     resetTimer={resetTimer}
@@ -315,22 +307,21 @@ const App: React.FC = () => {
                 />;
             case 'plan':
                  return <PlanPage 
-                    tasks={appState.tasks}
-                    tasksForTomorrow={appState.tasksForTomorrow}
-                    completedToday={appState.completedToday}
+                    tasksToday={tasksToday}
+                    tasksForTomorrow={tasksForTomorrow}
+                    completedToday={completedToday}
                     onAddTask={handleAddTask}
                     onDeleteTask={handleDeleteTask}
                     onMoveTask={handleMoveTask}
-                    onReorderTasks={(reordered) => setAppState(p => ({ ...p, tasks: reordered }))}
+                    onReorderTasks={handleReorderTasks}
                  />;
             case 'stats':
-                return <StatsPage 
-                    appState={appState}
-                    historyRange={historyRange}
-                    setHistoryRange={setHistoryRange}
-                />;
+                return <StatsPage />;
             case 'ai':
-                return <AICoachPage appState={appState} />;
+                return <AICoachPage 
+                            completedTasks={allCompletedTasks} 
+                            incompleteTasks={allIncompleteTasks} 
+                       />;
             case 'settings':
                 return <SettingsPage 
                     settings={settings}
@@ -338,8 +329,11 @@ const App: React.FC = () => {
                 />;
             default:
                 return <TimerPage
-                    appState={appState}
+                    tasksToday={tasksToday}
+                    completedToday={completedToday}
+                    dailyLog={dailyLog}
                     settings={settings}
+                    appState={appState}
                     startTimer={startTimer}
                     stopTimer={stopTimer}
                     resetTimer={resetTimer}
@@ -347,11 +341,20 @@ const App: React.FC = () => {
                 />;
         }
     };
+    
+    // Main Component Render
+    if (isLoading) {
+        return <div className="w-full h-screen flex items-center justify-center bg-gray-900"><Spinner /></div>;
+    }
+
+    if (!session) {
+        return <AuthPage />;
+    }
 
     return (
         <div className="w-full max-w-2xl mx-auto px-4">
             <div className="bg-white/10 backdrop-blur-2xl rounded-3xl p-4 sm:p-8 shadow-2xl border border-white/20 animate-slideIn">
-                <Navbar currentPage={page} setPage={setPage} />
+                <Navbar currentPage={page} setPage={setPage} onLogout={handleLogout} />
                 <main className="mt-4">
                     {renderPage()}
                 </main>

@@ -6,7 +6,7 @@ import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend } from 'recha
 
 interface StatsPanelProps {
     completedToday: Task[];
-    tasks: Task[];
+    tasksToday: Task[];
     totalFocusMinutes: number;
     completedSessions: number;
 }
@@ -18,13 +18,13 @@ const StatItem: React.FC<{ label: string, value: string | number }> = ({ label, 
     </div>
 );
 
-const StatsPanel: React.FC<StatsPanelProps> = ({ completedToday, tasks, totalFocusMinutes, completedSessions }) => {
+const StatsPanel: React.FC<StatsPanelProps> = ({ completedToday, tasksToday, totalFocusMinutes, completedSessions }) => {
     const stats = useMemo(() => {
-        const totalTasks = completedToday.length + tasks.length;
+        const totalTasks = completedToday.length + tasksToday.length;
         const completionPercentage = totalTasks === 0 ? 0 : Math.round((completedToday.length / totalTasks) * 100);
-        const allTasks = [...completedToday, ...tasks];
-        const pomsDone = allTasks.reduce((acc, task) => acc + (task.completedPoms || 0), 0);
-        const pomsEst = allTasks.reduce((acc, task) => acc + (task.totalPoms || 0), 0);
+        const allTasks = [...completedToday, ...tasksToday];
+        const pomsDone = allTasks.reduce((acc, task) => acc + (task.completed_poms || 0), 0);
+        const pomsEst = allTasks.reduce((acc, task) => acc + (task.total_poms || 0), 0);
 
         return {
             totalTasks,
@@ -32,11 +32,11 @@ const StatsPanel: React.FC<StatsPanelProps> = ({ completedToday, tasks, totalFoc
             pomsDone,
             pomsEst
         };
-    }, [completedToday, tasks]);
+    }, [completedToday, tasksToday]);
 
     const chartData = [
         { name: 'Completed', value: completedToday.length },
-        { name: 'Incomplete', value: tasks.length },
+        { name: 'Incomplete', value: tasksToday.length },
     ];
     const COLORS = ['#34D399', '#F87171'];
 

@@ -1,6 +1,7 @@
 
+
 import React from 'react';
-import { AppState, Settings } from '../types';
+import { AppState, Settings, Task, DbDailyLog } from '../types';
 import Header from '../components/Header';
 import SessionInfo from '../components/SessionInfo';
 import ModeIndicator from '../components/ModeIndicator';
@@ -11,6 +12,9 @@ import StatsPanel from '../components/StatsPanel';
 interface TimerPageProps {
     appState: AppState;
     settings: Settings;
+    tasksToday: Task[];
+    completedToday: Task[];
+    dailyLog: DbDailyLog;
     startTimer: () => void;
     stopTimer: () => void;
     resetTimer: () => void;
@@ -18,7 +22,9 @@ interface TimerPageProps {
 }
 
 const TimerPage: React.FC<TimerPageProps> = (props) => {
-    const { appState, settings, startTimer, stopTimer, resetTimer, navigateToSettings } = props;
+    const { appState, settings, tasksToday, completedToday, dailyLog, startTimer, stopTimer, resetTimer, navigateToSettings } = props;
+    
+    const totalTime = appState.mode === 'focus' ? settings.focusDuration * 60 : settings.breakDuration * 60;
 
     return (
         <>
@@ -26,12 +32,12 @@ const TimerPage: React.FC<TimerPageProps> = (props) => {
             <SessionInfo
                 currentSession={appState.currentSession}
                 sessionsPerCycle={settings.sessionsPerCycle}
-                completedSessions={appState.completedSessions}
+                completedSessions={dailyLog.completed_sessions}
             />
             <ModeIndicator mode={appState.mode} />
             <TimerDisplay
                 timeRemaining={appState.timeRemaining}
-                totalTime={appState.totalTime}
+                totalTime={totalTime}
             />
             <Controls
                 isRunning={appState.isRunning}
@@ -41,10 +47,10 @@ const TimerPage: React.FC<TimerPageProps> = (props) => {
                 navigateToSettings={navigateToSettings}
             />
             <StatsPanel
-                completedToday={appState.completedToday}
-                tasks={appState.tasks}
-                totalFocusMinutes={appState.totalFocusMinutes}
-                completedSessions={appState.completedSessions}
+                completedToday={completedToday}
+                tasksToday={tasksToday}
+                totalFocusMinutes={dailyLog.total_focus_minutes}
+                completedSessions={dailyLog.completed_sessions}
             />
         </>
     );

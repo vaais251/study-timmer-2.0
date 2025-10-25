@@ -4,11 +4,11 @@ import { Task } from '../types';
 import TaskManager from '../components/TaskManager';
 
 interface PlanPageProps {
-    tasks: Task[];
+    tasksToday: Task[];
     tasksForTomorrow: Task[];
     completedToday: Task[];
     onAddTask: (text: string, poms: number, isTomorrow: boolean) => void;
-    onDeleteTask: (id: string, isTomorrow: boolean) => void;
+    onDeleteTask: (id: string) => void;
     onMoveTask: (id: string, action: 'postpone' | 'duplicate') => void;
     onReorderTasks: (reorderedTasks: Task[]) => void;
 }
@@ -16,7 +16,7 @@ interface PlanPageProps {
 const PlanPage: React.FC<PlanPageProps> = (props) => {
     return (
         <TaskManager
-            tasks={props.tasks}
+            tasksToday={props.tasksToday}
             tasksForTomorrow={props.tasksForTomorrow}
             completedToday={props.completedToday}
             onAddTask={props.onAddTask}

@@ -8,13 +8,15 @@ interface TaskItemProps {
     task: Task;
     isCompleted: boolean;
     isTomorrow: boolean;
-    onDelete: (id: string, isTomorrow: boolean) => void;
+    onDelete: (id: string) => void;
     onMove?: (id: string, action: 'postpone' | 'duplicate') => void;
     dragProps?: object;
+    ref?: React.Ref<HTMLLIElement>;
 }
 
-const TaskItem: React.FC<TaskItemProps> = ({ task, isCompleted, isTomorrow, onDelete, onMove, dragProps }) => (
+const TaskItem = React.forwardRef<HTMLLIElement, TaskItemProps>(({ task, isCompleted, isTomorrow, onDelete, onMove, dragProps }, ref) => (
     <li
+        ref={ref}
         className={`flex items-center justify-between gap-2 p-3 rounded-lg mb-2 transition-all duration-200 ${
             isCompleted 
                 ? 'bg-white/5 text-white/50 cursor-default' 
@@ -30,7 +32,7 @@ const TaskItem: React.FC<TaskItemProps> = ({ task, isCompleted, isTomorrow, onDe
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
             <span className={`text-xs px-2 py-1 rounded ${isTomorrow ? 'bg-amber-400/20 text-amber-300' : 'bg-white/20'}`}>
-                {task.completedPoms}/{task.totalPoms}
+                {task.completed_poms}/{task.total_poms}
             </span>
             {!isCompleted && !isTomorrow && onMove && (
                 <>
@@ -39,11 +41,12 @@ const TaskItem: React.FC<TaskItemProps> = ({ task, isCompleted, isTomorrow, onDe
                 </>
             )}
             {!isCompleted && (
-                <button onClick={() => onDelete(task.id, isTomorrow)} className="text-red-400 hover:text-red-300 text-2xl font-bold leading-none p-1 transition" title="Delete Task">&times;</button>
+                <button onClick={() => onDelete(task.id)} className="text-red-400 hover:text-red-300 text-2xl font-bold leading-none p-1 transition" title="Delete Task">&times;</button>
             )}
         </div>
     </li>
-);
+));
+
 
 interface TaskInputGroupProps {
     onAddTask: (text: string, poms: number) => void;
@@ -89,28 +92,38 @@ const TaskInputGroup: React.FC<TaskInputGroupProps> = ({ onAddTask, placeholder,
 };
 
 interface TaskManagerProps {
-    tasks: Task[];
+    tasksToday: Task[];
     tasksForTomorrow: Task[];
     completedToday: Task[];
     onAddTask: (text: string, poms: number, isTomorrow: boolean) => void;
-    onDeleteTask: (id: string, isTomorrow: boolean) => void;
+    onDeleteTask: (id: string) => void;
     onMoveTask: (id: string, action: 'postpone' | 'duplicate') => void;
     onReorderTasks: (reorderedTasks: Task[]) => void;
 }
 
-const TaskManager: React.FC<TaskManagerProps> = ({ tasks, tasksForTomorrow, completedToday, onAddTask, onDeleteTask, onMoveTask, onReorderTasks }) => {
+const TaskManager: React.FC<TaskManagerProps> = ({ tasksToday, tasksForTomorrow, completedToday, onAddTask, onDeleteTask, onMoveTask, onReorderTasks }) => {
     
-    const handleDragStart = (e: React.DragEvent<HTMLLIElement>, index: number) => {
-        e.dataTransfer.setData("taskIndex", index.toString());
+    const dragItem = React.useRef<number | null>(null);
+    const dragOverItem = React.useRef<number | null>(null);
+
+    const handleDragStart = (e: React.DragEvent<HTMLLIElement>, position: number) => {
+        dragItem.current = position;
     };
 
-    const handleDrop = (e: React.DragEvent<HTMLUListElement>, targetIndex: number) => {
-        const sourceIndex = parseInt(e.dataTransfer.getData("taskIndex"));
-        if (sourceIndex === targetIndex) return;
+    const handleDragEnter = (e: React.DragEvent<HTMLLIElement>, position: number) => {
+        dragOverItem.current = position;
+    };
 
-        const reordered = [...tasks];
-        const [movedTask] = reordered.splice(sourceIndex, 1);
-        reordered.splice(targetIndex, 0, movedTask);
+    const handleDrop = () => {
+        if (dragItem.current === null || dragOverItem.current === null) return;
+        
+        const reordered = [...tasksToday];
+        const dragItemContent = reordered[dragItem.current];
+        reordered.splice(dragItem.current, 1);
+        reordered.splice(dragOverItem.current, 0, dragItemContent);
+        
+        dragItem.current = null;
+        dragOverItem.current = null;
         onReorderTasks(reordered);
     };
 
@@ -127,7 +140,7 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, tasksForTomorrow, comp
                     className="max-h-64 overflow-y-auto pr-2"
                     onDragOver={(e) => e.preventDefault()}
                 >
-                    {tasks.map((task, index) => (
+                    {tasksToday.map((task, index) => (
                         <TaskItem 
                             key={task.id} 
                             task={task} 
@@ -135,13 +148,18 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, tasksForTomorrow, comp
                             isTomorrow={false}
                             onDelete={onDeleteTask} 
                             onMove={onMoveTask} 
-                            dragProps={{ draggable: true, onDragStart: (e) => handleDragStart(e, index), onDrop: (e) => handleDrop(e, index) }}
+                            dragProps={{ 
+                                draggable: true, 
+                                onDragStart: (e) => handleDragStart(e, index),
+                                onDragEnter: (e) => handleDragEnter(e, index),
+                                onDragEnd: handleDrop
+                            }}
                         />
                     ))}
                     {completedToday.map(task => (
                         <TaskItem key={task.id} task={task} isCompleted={true} isTomorrow={false} onDelete={onDeleteTask} />
                     ))}
-                    {tasks.length === 0 && completedToday.length === 0 && <p className="text-center text-white/60 p-4">All done! Add a new task to get started.</p>}
+                    {tasksToday.length === 0 && completedToday.length === 0 && <p className="text-center text-white/60 p-4">All done! Add a new task to get started.</p>}
                 </ul>
             </Panel>
             

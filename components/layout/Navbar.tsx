@@ -1,27 +1,26 @@
 
 import React from 'react';
 import { Page } from '../../types';
-import { TimerIcon, PlanIcon, StatsIcon, AIIcon, SettingsIcon } from '../common/Icons';
+import { TimerIcon, PlanIcon, StatsIcon, AIIcon, SettingsIcon, LogoutIcon } from '../common/Icons';
 
 interface NavItemProps {
-    label: Page;
+    label: string;
     icon: React.ReactNode;
-    currentPage: Page;
-    setPage: (page: Page) => void;
+    isActive: boolean;
+    onClick: () => void;
 }
 
-const NavItem: React.FC<NavItemProps> = ({ label, icon, currentPage, setPage }) => {
-    const isActive = currentPage === label;
+const NavItem: React.FC<NavItemProps> = ({ label, icon, isActive, onClick }) => {
     return (
         <button
-            onClick={() => setPage(label)}
+            onClick={onClick}
             className={`flex-1 flex flex-col items-center justify-center p-2 rounded-lg transition-colors duration-300 ${
                 isActive ? 'bg-white/20 text-white' : 'text-white/70 hover:bg-white/10'
             }`}
-            aria-label={`Navigate to ${label} page`}
+            aria-label={label}
         >
             {icon}
-            <span className="text-xs capitalize mt-1">{label}</span>
+            <span className="text-xs capitalize mt-1">{label.split(' ')[1] || label}</span>
         </button>
     );
 };
@@ -29,16 +28,18 @@ const NavItem: React.FC<NavItemProps> = ({ label, icon, currentPage, setPage }) 
 interface NavbarProps {
     currentPage: Page;
     setPage: (page: Page) => void;
+    onLogout: () => void;
 }
 
-const Navbar: React.FC<NavbarProps> = ({ currentPage, setPage }) => {
+const Navbar: React.FC<NavbarProps> = ({ currentPage, setPage, onLogout }) => {
     return (
         <nav className="flex justify-around items-center bg-black/20 rounded-full p-1.5 gap-1.5">
-            <NavItem label="timer" icon={<TimerIcon />} currentPage={currentPage} setPage={setPage} />
-            <NavItem label="plan" icon={<PlanIcon />} currentPage={currentPage} setPage={setPage} />
-            <NavItem label="stats" icon={<StatsIcon />} currentPage={currentPage} setPage={setPage} />
-            <NavItem label="ai" icon={<AIIcon />} currentPage={currentPage} setPage={setPage} />
-            <NavItem label="settings" icon={<SettingsIcon />} currentPage={currentPage} setPage={setPage} />
+            <NavItem label="timer" icon={<TimerIcon />} isActive={currentPage === 'timer'} onClick={() => setPage('timer')} />
+            <NavItem label="plan" icon={<PlanIcon />} isActive={currentPage === 'plan'} onClick={() => setPage('plan')} />
+            <NavItem label="stats" icon={<StatsIcon />} isActive={currentPage === 'stats'} onClick={() => setPage('stats')} />
+            <NavItem label="ai" icon={<AIIcon />} isActive={currentPage === 'ai'} onClick={() => setPage('ai')} />
+            <NavItem label="settings" icon={<SettingsIcon />} isActive={currentPage === 'settings'} onClick={() => setPage('settings')} />
+            <NavItem label="Logout" icon={<LogoutIcon />} isActive={false} onClick={onLogout} />
         </nav>
     );
 };

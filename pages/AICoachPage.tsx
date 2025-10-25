@@ -1,6 +1,7 @@
 
-import React, { useState, useCallback } from 'react';
-import { AppState } from '../types';
+
+import React, { useState, useMemo } from 'react';
+import { Task } from '../types';
 import { getTodayDateString } from '../utils/date';
 import { generateContent } from '../services/geminiService';
 import AIPanel from '../components/AIPanel';
@@ -12,39 +13,41 @@ function formatAIResponse(text: string): string {
         .replace(/\*(.*?)\*/g, '<em>$1</em>')
         .replace(/^(?:\*|-)\s(.*?)$/gm, '<li>$1</li>')
         .replace(/(<\/li>\s*<li>)/g, '</li><li>')
-        .replace(/(<li>.*?<\/li>)/gs, (match) => `<ul>${match}</ul>`)
+        .replace(/(<li>.*?<\/li>)/gs, (match) => `<ul class="list-disc list-inside ml-4">${match}</ul>`)
         .replace(/<\/ul>\s*<ul>/g, '')
         .replace(/\n/g, '<br>');
 }
 
 interface AICoachPageProps {
-    appState: AppState;
+    completedTasks: Task[];
+    incompleteTasks: Task[];
 }
 
-const AICoachPage: React.FC<AICoachPageProps> = ({ appState }) => {
+const AICoachPage: React.FC<AICoachPageProps> = ({ completedTasks, incompleteTasks }) => {
     const [insightsState, setInsightsState] = useState({ content: "Get AI-powered insights on your study habits based on today's performance.", isLoading: false });
     const [mentorState, setMentorState] = useState({ content: "Get personalized advice, content suggestions, and consistency tips.", isLoading: false });
 
-    const getAggregatedData = useCallback(() => {
-        return {
-            aggCompletedTasks: appState.completedToday,
-            aggIncompleteTasks: appState.tasks,
-        };
-    }, [appState]);
+    const todaysTasks = useMemo(() => {
+        const todayString = getTodayDateString();
+        const completedToday = completedTasks.filter(t => t.due_date === todayString);
+        const incompleteToday = incompleteTasks.filter(t => t.due_date === todayString);
+        return { completedToday, incompleteToday };
+    }, [completedTasks, incompleteTasks]);
+
 
     const handleGetInsights = async () => {
         setInsightsState({ ...insightsState, isLoading: true });
         
-        const { aggCompletedTasks, aggIncompleteTasks } = getAggregatedData();
+        const { completedToday, incompleteToday } = todaysTasks;
         const todayStr = getTodayDateString();
 
-        if (aggCompletedTasks.length === 0 && aggIncompleteTasks.length === 0) {
+        if (completedToday.length === 0 && incompleteToday.length === 0) {
             setInsightsState({ content: "Not enough data today to generate insights. Complete some tasks first!", isLoading: false });
             return;
         }
 
-        let completedData = aggCompletedTasks.map(t => `- Task: "${t.text}" (Est: ${t.totalPoms}, Done: ${t.completedPoms})`).join('\n');
-        let incompleteData = aggIncompleteTasks.map(t => `- Task: "${t.text}" (Est: ${t.totalPoms}, Done: ${t.completedPoms})`).join('\n');
+        let completedData = completedToday.map(t => `- Task: "${t.text}" (Est: ${t.total_poms}, Done: ${t.completed_poms})`).join('\n');
+        let incompleteData = incompleteToday.map(t => `- Task: "${t.text}" (Est: ${t.total_poms}, Done: ${t.completed_poms})`).join('\n');
 
         const prompt = `
             Act as a helpful and encouraging productivity coach. Analyze my data for today (${todayStr}).
@@ -69,10 +72,10 @@ const AICoachPage: React.FC<AICoachPageProps> = ({ appState }) => {
     
     const handleGetMentorAdvice = async (userPrompt = '') => {
         setMentorState({ ...mentorState, isLoading: true });
-        const { aggCompletedTasks, aggIncompleteTasks } = getAggregatedData();
+        const { completedToday, incompleteToday } = todaysTasks;
         const todayStr = getTodayDateString();
 
-        if (aggCompletedTasks.length === 0 && aggIncompleteTasks.length === 0) {
+        if (completedToday.length === 0 && incompleteToday.length === 0) {
             setMentorState({ content: "Not enough data today for mentorship. Complete some tasks first!", isLoading: false });
             return;
         }
@@ -82,10 +85,10 @@ const AICoachPage: React.FC<AICoachPageProps> = ({ appState }) => {
             Analyze my study patterns.
 
             My Completed Tasks:
-            ${aggCompletedTasks.map(t => `- "${t.text}"`).join('\n') || "None"}
+            ${completedToday.map(t => `- "${t.text}"`).join('\n') || "None"}
 
             My Incomplete Tasks:
-            ${aggIncompleteTasks.map(t => `- "${t.text}"`).join('\n') || "None"}
+            ${incompleteToday.map(t => `- "${t.text}"`).join('\n') || "None"}
 
             ${userPrompt ? `My specific question is: "${userPrompt}"\n` : ''}
 
