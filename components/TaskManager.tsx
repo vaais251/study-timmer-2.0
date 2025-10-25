@@ -1,19 +1,77 @@
+
 import React, { useState } from 'react';
-import { Task, Project } from '../types';
+import { Task, Project, Settings } from '../types';
 import Panel from './common/Panel';
-import { PostponeIcon, DuplicateIcon } from './common/Icons';
+import { PostponeIcon, DuplicateIcon, MoreVerticalIcon } from './common/Icons';
+
+interface TaskSettingsDropdownProps {
+    task: Task;
+    settings: Settings;
+    onSave: (id: string, newTimers: { focus: number | null, break: number | null }) => void;
+    onClose: () => void;
+}
+
+const TaskSettingsDropdown: React.FC<TaskSettingsDropdownProps> = ({ task, settings, onSave, onClose }) => {
+    const [focus, setFocus] = useState(task.custom_focus_duration || '');
+    const [breakTime, setBreakTime] = useState(task.custom_break_duration || '');
+
+    React.useEffect(() => {
+        setFocus(task.custom_focus_duration || '');
+        setBreakTime(task.custom_break_duration || '');
+    }, [task.custom_focus_duration, task.custom_break_duration]);
+
+    const handleSave = () => {
+        onSave(task.id, {
+            focus: focus ? parseInt(String(focus), 10) : null,
+            break: breakTime ? parseInt(String(breakTime), 10) : null,
+        });
+        onClose();
+    };
+
+    const handleReset = () => {
+        setFocus('');
+        setBreakTime('');
+        onSave(task.id, { focus: null, break: null });
+        onClose();
+    };
+
+    return (
+        <div className="absolute top-full right-0 mt-2 w-56 bg-slate-800 border border-white/20 rounded-lg shadow-xl p-3 z-10 animate-slideUp">
+            <label className="block text-xs text-white/70 mb-1">Custom Focus (mins)</label>
+            <input type="number" value={focus} onChange={e => setFocus(e.target.value)} placeholder={`Default: ${settings.focusDuration}`} className="w-full text-center bg-white/20 border border-white/30 rounded-lg p-2 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50 mb-2" />
+            
+            <label className="block text-xs text-white/70 mb-1">Custom Break (mins)</label>
+            <input type="number" value={breakTime} onChange={e => setBreakTime(e.target.value)} placeholder={`Default: ${settings.breakDuration}`} className="w-full text-center bg-white/20 border border-white/30 rounded-lg p-2 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50 mb-3" />
+            
+            <div className="flex gap-2 text-sm">
+                <button onClick={handleSave} className="flex-1 p-2 rounded-md font-bold text-white transition hover:scale-105 bg-gradient-to-br from-blue-500 to-cyan-600">Save</button>
+                <button onClick={handleReset} className="flex-1 p-2 rounded-md font-bold text-white transition hover:scale-105 bg-gradient-to-br from-gray-500 to-gray-600">Reset</button>
+            </div>
+             <style>{`
+              @keyframes slideUp { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+              .animate-slideUp { animation: slideUp 0.2s ease-out; }
+            `}</style>
+        </div>
+    );
+};
+
 
 interface TaskItemProps {
     task: Task;
     isCompleted: boolean;
     isTomorrow: boolean;
+    settings: Settings;
     onDelete: (id: string) => void;
     onMove?: (id: string, action: 'postpone' | 'duplicate') => void;
+    onUpdateTaskTimers: (id: string, newTimers: { focus: number | null, break: number | null }) => void;
     dragProps?: object;
     ref?: React.Ref<HTMLLIElement>;
 }
 
-const TaskItem = React.forwardRef<HTMLLIElement, TaskItemProps>(({ task, isCompleted, isTomorrow, onDelete, onMove, dragProps }, ref) => (
+const TaskItem = React.forwardRef<HTMLLIElement, TaskItemProps>(({ task, isCompleted, isTomorrow, settings, onDelete, onMove, onUpdateTaskTimers, dragProps }, ref) => {
+    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+    
+    return (
     <li
         ref={ref}
         className={`flex items-start justify-between gap-2 p-3 rounded-lg mb-2 transition-all duration-200 ${
@@ -32,10 +90,15 @@ const TaskItem = React.forwardRef<HTMLLIElement, TaskItemProps>(({ task, isCompl
                 <div className="flex items-center gap-2 mt-1 text-xs">
                     {task.projects && <span className="bg-blue-500/30 text-blue-300 px-2 py-0.5 rounded-full">{task.projects.name}</span>}
                     {task.tags?.map(tag => <span key={tag} className="bg-purple-500/30 text-purple-300 px-2 py-0.5 rounded-full">{tag}</span>)}
+                    {(task.custom_focus_duration || task.custom_break_duration) && 
+                        <span className="bg-cyan-500/30 text-cyan-300 px-2 py-0.5 rounded-full" title={`Focus: ${task.custom_focus_duration || 'Default'}m, Break: ${task.custom_break_duration || 'Default'}m`}>
+                            Custom Time
+                        </span>
+                    }
                 </div>
             </div>
         </div>
-        <div className="flex items-center gap-2 flex-shrink-0 pt-1">
+        <div className="flex items-center gap-2 flex-shrink-0 pt-1 relative">
             <span className={`text-xs px-2 py-1 rounded ${isTomorrow ? 'bg-amber-400/20 text-amber-300' : 'bg-white/20'}`}>
                 {task.completed_poms}/{task.total_poms}
             </span>
@@ -45,12 +108,19 @@ const TaskItem = React.forwardRef<HTMLLIElement, TaskItemProps>(({ task, isCompl
                     <button onClick={() => onMove(task.id, 'duplicate')} className="p-1 text-amber-300 hover:text-amber-200 transition" title="Duplicate for Tomorrow"><DuplicateIcon /></button>
                 </>
             )}
+             {!isCompleted && !isTomorrow && (
+                <button onClick={() => setIsSettingsOpen(o => !o)} className="p-1 text-cyan-300 hover:text-cyan-200 transition" title="Custom Timers"><MoreVerticalIcon /></button>
+            )}
             {!isCompleted && (
                 <button onClick={() => onDelete(task.id)} className="text-red-400 hover:text-red-300 text-2xl font-bold leading-none p-1 transition" title="Delete Task">&times;</button>
             )}
+
+            {isSettingsOpen && (
+                <TaskSettingsDropdown task={task} settings={settings} onSave={onUpdateTaskTimers} onClose={() => setIsSettingsOpen(false)} />
+            )}
         </div>
     </li>
-));
+)});
 
 
 interface TaskInputGroupProps {
@@ -147,14 +217,16 @@ interface TaskManagerProps {
     tasksForTomorrow: Task[];
     completedToday: Task[];
     projects: Project[];
+    settings: Settings;
     onAddTask: (text: string, poms: number, isTomorrow: boolean, projectId: string | null, tags: string[]) => void;
     onAddProject: (name: string) => Promise<string | null>;
     onDeleteTask: (id: string) => void;
     onMoveTask: (id: string, action: 'postpone' | 'duplicate') => void;
     onReorderTasks: (reorderedTasks: Task[]) => void;
+    onUpdateTaskTimers: (id: string, newTimers: { focus: number | null, break: number | null }) => void;
 }
 
-const TaskManager: React.FC<TaskManagerProps> = ({ tasksToday, tasksForTomorrow, completedToday, projects, onAddTask, onAddProject, onDeleteTask, onMoveTask, onReorderTasks }) => {
+const TaskManager: React.FC<TaskManagerProps> = ({ tasksToday, tasksForTomorrow, completedToday, projects, settings, onAddTask, onAddProject, onDeleteTask, onMoveTask, onReorderTasks, onUpdateTaskTimers }) => {
     
     const dragItem = React.useRef<number | null>(null);
     const dragOverItem = React.useRef<number | null>(null);
@@ -201,8 +273,10 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasksToday, tasksForTomorrow,
                             task={task} 
                             isCompleted={false} 
                             isTomorrow={false}
+                            settings={settings}
                             onDelete={onDeleteTask} 
-                            onMove={onMoveTask} 
+                            onMove={onMoveTask}
+                            onUpdateTaskTimers={onUpdateTaskTimers}
                             dragProps={{ 
                                 draggable: true, 
                                 onDragStart: (e) => handleDragStart(e, index),
@@ -212,7 +286,7 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasksToday, tasksForTomorrow,
                         />
                     ))}
                     {completedToday.map(task => (
-                        <TaskItem key={task.id} task={task} isCompleted={true} isTomorrow={false} onDelete={onDeleteTask} />
+                        <TaskItem key={task.id} task={task} isCompleted={true} isTomorrow={false} settings={settings} onDelete={onDeleteTask} onUpdateTaskTimers={onUpdateTaskTimers} />
                     ))}
                     {tasksToday.length === 0 && completedToday.length === 0 && <p className="text-center text-white/60 p-4">All done! Add a new task to get started.</p>}
                 </ul>
@@ -229,7 +303,7 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasksToday, tasksForTomorrow,
                 />
                 <ul className="max-h-48 overflow-y-auto pr-2">
                     {tasksForTomorrow.map(task => (
-                        <TaskItem key={task.id} task={task} isCompleted={false} isTomorrow={true} onDelete={onDeleteTask} />
+                        <TaskItem key={task.id} task={task} isCompleted={false} isTomorrow={true} settings={settings} onDelete={onDeleteTask} onUpdateTaskTimers={onUpdateTaskTimers} />
                     ))}
                     {tasksForTomorrow.length === 0 && <p className="text-center text-white/60 p-4">No tasks planned for tomorrow.</p>}
                 </ul>

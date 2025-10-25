@@ -1,6 +1,8 @@
+
 import React, { useState, useMemo } from 'react';
 import { Goal, Target, Project } from '../types';
 import Panel from '../components/common/Panel';
+import { TrashIcon } from '../components/common/Icons';
 
 interface GoalsPageProps {
     goals: Goal[];
@@ -13,9 +15,10 @@ interface GoalsPageProps {
     onDeleteTarget: (id: string) => void;
     onAddProject: (name: string, deadline: string | null) => Promise<string | null>;
     onUpdateProject: (id: string, completed: boolean) => void;
+    onDeleteProject: (id: string) => void;
 }
 
-const GoalsPage: React.FC<GoalsPageProps> = ({ goals, targets, projects, onAddGoal, onDeleteGoal, onAddTarget, onUpdateTarget, onDeleteTarget, onAddProject, onUpdateProject }) => {
+const GoalsPage: React.FC<GoalsPageProps> = ({ goals, targets, projects, onAddGoal, onDeleteGoal, onAddTarget, onUpdateTarget, onDeleteTarget, onAddProject, onUpdateProject, onDeleteProject }) => {
     const [newGoal, setNewGoal] = useState('');
     const [newTarget, setNewTarget] = useState('');
     const [newDeadline, setNewDeadline] = useState('');
@@ -114,6 +117,11 @@ const GoalsPage: React.FC<GoalsPageProps> = ({ goals, targets, projects, onAddGo
                                     </span>
                                 )}
                             </div>
+                             <button onClick={() => {
+                                if (window.confirm(`Are you sure you want to delete "${project.name}"? This will unlink it from all tasks.`)) {
+                                    onDeleteProject(project.id)
+                                }
+                            }} className="p-1 text-red-400 hover:text-red-300 transition" title="Delete Project"><TrashIcon /></button>
                         </div>
                     ))}
                     {activeProjects.length === 0 && <p className="text-center text-sm text-white/60 py-2">No active projects.</p>}

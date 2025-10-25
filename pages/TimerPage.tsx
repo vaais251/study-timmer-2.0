@@ -19,13 +19,29 @@ interface TimerPageProps {
     stopTimer: () => void;
     resetTimer: () => void;
     navigateToSettings: () => void;
+    currentTask?: Task;
 }
 
-const TimerPage: React.FC<TimerPageProps> = (props) => {
-    const { appState, settings, tasksToday, completedToday, dailyLog, startTimer, stopTimer, resetTimer, navigateToSettings } = props;
-    
-    const totalTime = appState.mode === 'focus' ? settings.focusDuration * 60 : settings.breakDuration * 60;
+const CurrentTaskDisplay: React.FC<{ task?: Task }> = ({ task }) => {
+    return (
+        <div className="text-center mb-4 h-12 flex items-center justify-center px-2">
+            <div className="bg-black/20 text-white/90 px-4 py-2 rounded-lg truncate max-w-full shadow-inner">
+                {task ? (
+                    <>
+                        <span className="font-semibold mr-2 opacity-80">🎯</span>
+                        <span className="italic">{task.text}</span>
+                    </>
+                ) : (
+                    <span className="text-white/60 italic">No task for today. Add one in the Plan tab!</span>
+                )}
+            </div>
+        </div>
+    );
+};
 
+const TimerPage: React.FC<TimerPageProps> = (props) => {
+    const { appState, settings, tasksToday, completedToday, dailyLog, startTimer, stopTimer, resetTimer, navigateToSettings, currentTask } = props;
+    
     return (
         <>
             <Header />
@@ -35,9 +51,10 @@ const TimerPage: React.FC<TimerPageProps> = (props) => {
                 completedSessions={dailyLog.completed_sessions}
             />
             <ModeIndicator mode={appState.mode} />
+            <CurrentTaskDisplay task={currentTask} />
             <TimerDisplay
                 timeRemaining={appState.timeRemaining}
-                totalTime={totalTime}
+                totalTime={appState.sessionTotalTime}
             />
             <Controls
                 isRunning={appState.isRunning}

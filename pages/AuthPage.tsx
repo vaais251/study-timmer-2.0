@@ -1,6 +1,17 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '../services/supabaseClient';
+
+// --- ACTION REQUIRED (Step 2) ---
+// Paste your Google Client ID here. You can find this in your Google Cloud Console
+// under APIs & Services > Credentials. It is the same Client ID you configured in Supabase.
+// FIX: Explicitly type GOOGLE_CLIENT_ID as string to avoid a TypeScript error on comparison.
+const GOOGLE_CLIENT_ID: string = "341516745442-3qtu2ba6oeetfo4p4babipstta523h0i.apps.googleusercontent.com";
+
+declare global {
+    interface Window {
+        google: any;
+    }
+}
 
 const AuthPage: React.FC = () => {
     const [isLogin, setIsLogin] = useState(true);
@@ -8,32 +19,102 @@ const AuthPage: React.FC = () => {
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [notification, setNotification] = useState<string | null>(null);
+
+    // This effect handles the new Google Sign-In button
+    useEffect(() => {
+        if (GOOGLE_CLIENT_ID === "YOUR_GOOGLE_CLIENT_ID_HERE") {
+             const buttonDiv = document.getElementById("googleSignInButton");
+             if (buttonDiv) {
+                buttonDiv.innerHTML = '<p class="text-red-400 text-xs text-center p-2">Google Sign-In is not configured.<br/>Please add your Client ID to AuthPage.tsx.</p>';
+             }
+             return;
+        }
+
+        const handleCredentialResponse = async (response: any) => {
+            setLoading(true);
+            setError(null);
+            
+            // We get the ID token from Google's response
+            const { credential } = response;
+            
+            // Then, we use it to sign in to Supabase without any redirects
+            const { error } = await supabase.auth.signInWithIdToken({
+                provider: 'google',
+                token: credential,
+            });
+
+            if (error) {
+                setError(error.message);
+            }
+            // On success, onAuthStateChange in App.tsx will handle the session update
+            setLoading(false);
+        };
+
+        const initializeGSI = () => {
+            if (!window.google || !window.google.accounts) {
+                console.error("Google script not loaded");
+                return;
+            }
+             try {
+                window.google.accounts.id.initialize({
+                    client_id: GOOGLE_CLIENT_ID,
+                    callback: handleCredentialResponse,
+                });
+
+                window.google.accounts.id.renderButton(
+                    document.getElementById("googleSignInButton"),
+                    // You can customize the button appearance here
+                    { theme: "outline", size: "large", type: "standard", text: "continue_with", width: "300" } 
+                );
+            } catch (e) {
+                console.error("Error initializing Google Sign In", e);
+                setError("Could not initialize Google Sign-In.");
+            }
+        }
+        
+        // Dynamically load the Google script
+        const script = document.createElement('script');
+        script.src = 'https://accounts.google.com/gsi/client';
+        script.async = true;
+        script.defer = true;
+        script.onload = initializeGSI;
+        document.body.appendChild(script);
+
+        return () => {
+            // Cleanup the script when the component unmounts
+            document.body.removeChild(script);
+        };
+    }, []);
 
     const handleAuth = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
         setError(null);
+        setNotification(null);
         
         try {
-            let authError;
             if (isLogin) {
                 const { error } = await supabase.auth.signInWithPassword({ email, password });
-                authError = error;
+                if (error) throw error;
             } else {
                 const { error } = await supabase.auth.signUp({ email, password });
-                authError = error;
+                if (error) throw error;
+                setNotification("Sign-up successful! Please check your email inbox (and spam folder) for a confirmation link.");
+                setEmail('');
+                setPassword('');
             }
-
-            if (authError) {
-                throw authError;
-            }
-            // The onAuthStateChange listener in App.tsx will handle the redirect.
         } catch (err: any) {
-            setError(err.error_description || err.message);
+            if (err.message && err.message.toLowerCase().includes('email not confirmed')) {
+                 setError('Your email is not confirmed. Please check your inbox for the confirmation link.');
+            } else {
+                setError(err.error_description || err.message);
+            }
         } finally {
             setLoading(false);
         }
     };
+
 
     return (
         <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#667eea] to-[#764ba2]">
@@ -43,6 +124,7 @@ const AuthPage: React.FC = () => {
                     <p className="text-white/80 text-center mb-6">{isLogin ? 'Sign in to continue' : 'Create an account to start'}</p>
 
                     {error && <p className="bg-red-500/50 text-white p-3 rounded-lg mb-4 text-center">{error}</p>}
+                    {notification && <p className="bg-green-500/50 text-white p-3 rounded-lg mb-4 text-center">{notification}</p>}
                     
                     <form onSubmit={handleAuth}>
                         <div className="mb-4">
@@ -75,9 +157,22 @@ const AuthPage: React.FC = () => {
                         </button>
                     </form>
 
+                    <div className="relative my-6">
+                        <div className="absolute inset-0 flex items-center" aria-hidden="true">
+                            <div className="w-full border-t border-white/30" />
+                        </div>
+                        <div className="relative flex justify-center">
+                            <span className="bg-[#3e3562] px-2 text-sm text-white/70">OR</span>
+                        </div>
+                    </div>
+
+                    <div className="flex justify-center">
+                        <div id="googleSignInButton"></div>
+                    </div>
+
                     <p className="text-center text-white/70 mt-6">
                         {isLogin ? "Don't have an account?" : "Already have an account?"}
-                        <button onClick={() => { setIsLogin(!isLogin); setError(null); }} className="font-bold text-white hover:underline ml-2">
+                        <button onClick={() => { setIsLogin(!isLogin); setError(null); setNotification(null); }} className="font-bold text-white hover:underline ml-2">
                             {isLogin ? 'Sign Up' : 'Login'}
                         </button>
                     </p>

@@ -1,3 +1,4 @@
+
 import { supabase } from './supabaseClient';
 import { Settings, Task, DbDailyLog, Project, Goal, Target } from '../types';
 import { getTodayDateString } from '../utils/date';
@@ -101,22 +102,19 @@ export const addTask = async (text: string, poms: number, isTomorrow: boolean, p
     return fetchAllTasks();
 };
 
-export const updateTask = async (task: Task): Promise<Task[] | null> => {
-    const { error } = await supabase
+export const updateTask = async (id: string, updates: Partial<Omit<Task, 'id' | 'user_id' | 'created_at' | 'projects'>>): Promise<Task | null> => {
+    const { data, error } = await supabase
         .from('tasks')
-        .update({
-            completed_poms: task.completed_poms,
-            comments: task.comments,
-            completed_at: task.completed_at,
-        })
-        .eq('id', task.id)
-        .select();
+        .update(updates)
+        .eq('id', id)
+        .select('*, projects(name)')
+        .single();
 
     if (error) {
         return null;
     }
 
-    return fetchAllTasks();
+    return data;
 };
 
 export const deleteTask = async (id: string): Promise<Task[] | null> => {
@@ -150,6 +148,8 @@ export const moveTask = async (id: string, action: 'postpone' | 'duplicate'): Pr
             comments: [],
             project_id: original.project_id,
             tags: original.tags,
+            custom_focus_duration: original.custom_focus_duration,
+            custom_break_duration: original.custom_break_duration,
         });
     }
     
@@ -186,6 +186,26 @@ export const updateProjectStatus = async (id: string, completed: boolean): Promi
         .update({ completed_at: completed ? new Date().toISOString() : null })
         .eq('id', id);
     
+    return error ? null : await getProjects();
+}
+
+export const deleteProject = async (id: string): Promise<Project[] | null> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    // 1. Unlink tasks
+    await supabase
+        .from('tasks')
+        .update({ project_id: null })
+        .eq('user_id', user.id)
+        .eq('project_id', id);
+
+    // 2. Delete project
+    const { error } = await supabase
+        .from('projects')
+        .delete()
+        .eq('id', id);
+
     return error ? null : await getProjects();
 }
 

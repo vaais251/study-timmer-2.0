@@ -41,6 +41,8 @@ export interface Task {
     project_id: string | null;
     tags: string[];
     projects?: { name: string } | null; // For joined data
+    custom_focus_duration: number | null;
+    custom_break_duration: number | null;
 }
 
 // Corresponds to the `settings` table (without user_id)
@@ -70,6 +72,7 @@ export interface AppState {
     currentSession: number;
     timeRemaining: number;
     isRunning: boolean;
+    sessionTotalTime: number;
 }
 
 // Supabase session and user for auth

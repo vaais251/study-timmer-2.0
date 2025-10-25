@@ -43,7 +43,7 @@ const App: React.FC = () => {
         mode: 'focus' as Mode,
         currentSession: 1,
         timeRemaining: settings.focusDuration * 60,
-        isRunning: false,
+        sessionTotalTime: settings.focusDuration * 60,
     });
 
     const [page, setPage] = useState<Page>('timer');
@@ -95,9 +95,13 @@ const App: React.FC = () => {
             if (userGoals) setGoals(userGoals);
             if (userTargets) setTargets(userTargets);
             
+            const firstTask = userTasks?.filter(t => t.due_date === getTodayDateString() && !t.completed_at)[0];
+            const initialFocusTime = firstTask?.custom_focus_duration || userSettings?.focusDuration || 25;
+
             setAppState(prev => ({
                 ...prev,
-                timeRemaining: (userSettings?.focusDuration || 25) * 60,
+                timeRemaining: initialFocusTime * 60,
+                sessionTotalTime: initialFocusTime * 60,
             }));
 
         } catch (error) {
@@ -115,6 +119,30 @@ const App: React.FC = () => {
         }
     }, [session, fetchData]);
     
+    // This effect ensures the timer display is always in sync with the current task's settings when paused.
+    useEffect(() => {
+        // This effect's job is to sync the PAUSED timer to the CURRENT task's settings.
+        if (appState.isRunning) {
+            return; // Don't interfere with a running timer.
+        }
+
+        if (appState.mode === 'focus') {
+            const currentTask = tasks.find(t => t.due_date === getTodayDateString() && !t.completed_at);
+            const newTimeInSeconds = (currentTask?.custom_focus_duration || settings.focusDuration) * 60;
+            
+            // Only update state if the time is actually different.
+            if (appState.timeRemaining !== newTimeInSeconds) {
+                setAppState(prev => ({
+                    ...prev,
+                    timeRemaining: newTimeInSeconds,
+                    sessionTotalTime: newTimeInSeconds,
+                }));
+            }
+        }
+        // No 'else' for break mode. The break timer is set when a focus session ends, which is sufficient.
+    }, [tasks, appState.isRunning, appState.mode, settings.focusDuration]);
+
+
     // Stop Timer Logic
     const stopTimer = useCallback(() => {
         if (!appState.isRunning) return;
@@ -126,13 +154,17 @@ const App: React.FC = () => {
     // Reset Timer Logic
     const resetTimer = useCallback(() => {
         stopTimer();
+        const firstTask = tasksToday.find(t => !t.completed_at);
+        const focusTime = (firstTask?.custom_focus_duration || settings.focusDuration) * 60;
+
         setAppState(prev => ({
             ...prev,
             mode: 'focus',
             currentSession: 1,
-            timeRemaining: settings.focusDuration * 60,
+            timeRemaining: focusTime,
+            sessionTotalTime: focusTime,
         }));
-    }, [stopTimer, settings.focusDuration]);
+    }, [stopTimer, settings.focusDuration, tasksToday]);
 
     // Start Timer Logic
     const startTimer = async () => {
@@ -166,7 +198,10 @@ const App: React.FC = () => {
         if (appState.mode === 'focus') {
             playFocusEndSound();
             newLog.completed_sessions++;
-            newLog.total_focus_minutes += settings.focusDuration;
+            
+            const currentTask = tasksToday.find(t => !t.completed_at);
+            const focusDuration = currentTask?.custom_focus_duration || settings.focusDuration;
+            newLog.total_focus_minutes += focusDuration;
             
             setDailyLog(newLog);
             await dbService.upsertDailyLog(newLog);
@@ -210,11 +245,19 @@ const App: React.FC = () => {
     }, [appState.mode]);
     
     // Modal Continue Handler
-    const handleModalContinue = (comment: string) => {
+    const handleModalContinue = async (comment: string) => {
         if (notificationInterval.current) clearInterval(notificationInterval.current);
         
-        if (modalContent.showCommentBox) {
-            handleTaskCompletion(comment);
+        let updatedTasks = [...tasks];
+        const wasFocusSession = modalContent.showCommentBox;
+
+        const taskJustWorkedOn = tasksToday.find(t => t.completed_at === null);
+
+        if (wasFocusSession) {
+            const result = await handleTaskCompletion(comment);
+            if (result) {
+                updatedTasks = tasks.map(t => t.id === result.id ? result : t);
+            }
         }
 
         const nextMode = modalContent.nextMode;
@@ -222,13 +265,22 @@ const App: React.FC = () => {
             ? (appState.currentSession >= settings.sessionsPerCycle ? 1 : appState.currentSession + 1)
             : appState.currentSession;
         
-        const newTime = (nextMode === 'focus' ? settings.focusDuration : settings.breakDuration) * 60;
+        let newTime;
+        const updatedTasksToday = updatedTasks.filter(t => t.due_date === getTodayDateString() && !t.completed_at);
+
+        if (nextMode === 'break') {
+            newTime = (taskJustWorkedOn?.custom_break_duration || settings.breakDuration) * 60;
+        } else {
+            const nextTask = updatedTasksToday[0];
+            newTime = (nextTask?.custom_focus_duration || settings.focusDuration) * 60;
+        }
 
         setAppState(prev => ({
             ...prev,
             mode: nextMode,
             currentSession: newCurrentSession,
             timeRemaining: newTime,
+            sessionTotalTime: newTime,
         }));
 
         setIsModalVisible(false);
@@ -236,23 +288,38 @@ const App: React.FC = () => {
     };
     
     // Task Handlers
-    const handleTaskCompletion = async (comment: string) => {
+    const handleTaskCompletion = async (comment: string): Promise<Task | null> => {
         const currentTask = tasksToday.find(t => t.completed_at === null);
-        if (!currentTask) return;
+        if (!currentTask) return null;
 
-        const updatedTask: Task = { ...currentTask };
-        updatedTask.completed_poms++;
-        if (comment) {
-            updatedTask.comments = [...(updatedTask.comments || []), comment];
-        }
+        const updatedFields: Partial<Task> = {
+            completed_poms: currentTask.completed_poms + 1,
+            comments: comment ? [...(currentTask.comments || []), comment] : currentTask.comments,
+        };
 
-        if (updatedTask.completed_poms >= updatedTask.total_poms) {
-            updatedTask.completed_at = new Date().toISOString();
+        if (updatedFields.completed_poms >= currentTask.total_poms) {
+            updatedFields.completed_at = new Date().toISOString();
         }
         
-        const newTasks = await dbService.updateTask(updatedTask);
-        if (newTasks) setTasks(newTasks);
+        const updatedTask = await dbService.updateTask(currentTask.id, updatedFields);
+        if (updatedTask) {
+            setTasks(prevTasks => prevTasks.map(t => t.id === updatedTask.id ? updatedTask : t));
+        }
+        return updatedTask;
     };
+    
+    const handleUpdateTaskTimers = async (id: string, newTimers: { focus: number | null, break: number | null }) => {
+        const updates = {
+            custom_focus_duration: newTimers.focus,
+            custom_break_duration: newTimers.break,
+        };
+        const updatedTask = await dbService.updateTask(id, updates);
+        
+        if (updatedTask) {
+             setTasks(prevTasks => prevTasks.map(t => (t.id === id ? updatedTask : t)));
+        }
+    };
+
 
     const handleAddTask = async (text: string, poms: number, isTomorrow: boolean, projectId: string | null, tags: string[]) => {
         const newTasks = await dbService.addTask(text, poms, isTomorrow, projectId, tags);
@@ -310,6 +377,19 @@ const App: React.FC = () => {
         const newProjects = await dbService.updateProjectStatus(id, completed);
         if (newProjects) setProjects(newProjects);
     };
+     const handleDeleteProject = async (id: string) => {
+        const newProjects = await dbService.deleteProject(id);
+        if (newProjects) {
+            setProjects(newProjects);
+            // Manually update tasks in state to remove project association
+            setTasks(prevTasks => prevTasks.map(t => {
+                if (t.project_id === id) {
+                    return { ...t, project_id: null, projects: null };
+                }
+                return t;
+            }));
+        }
+    };
 
     const handleSaveSettings = async (newSettings: Settings) => {
         await dbService.updateSettings(newSettings);
@@ -330,9 +410,12 @@ const App: React.FC = () => {
 
     // Page Rendering Logic
     const renderPage = () => {
+        const currentTask = tasksToday.find(t => !t.completed_at);
+
         switch (page) {
             case 'timer':
                 return <TimerPage
+                    currentTask={currentTask}
                     tasksToday={tasksToday}
                     completedToday={completedToday}
                     dailyLog={dailyLog}
@@ -349,11 +432,13 @@ const App: React.FC = () => {
                     tasksForTomorrow={tasksForTomorrow}
                     completedToday={completedToday}
                     projects={projects}
+                    settings={settings}
                     onAddTask={handleAddTask}
                     onAddProject={handleAddProject}
                     onDeleteTask={handleDeleteTask}
                     onMoveTask={handleMoveTask}
                     onReorderTasks={handleReorderTasks}
+                    onUpdateTaskTimers={handleUpdateTaskTimers}
                  />;
             case 'goals':
                 return <GoalsPage 
@@ -367,6 +452,7 @@ const App: React.FC = () => {
                     onDeleteTarget={handleDeleteTarget}
                     onAddProject={handleAddProject}
                     onUpdateProject={handleUpdateProjectStatus}
+                    onDeleteProject={handleDeleteProject}
                 />;
             case 'stats':
                 return <StatsPage />;
@@ -385,6 +471,7 @@ const App: React.FC = () => {
                 />;
             default:
                 return <TimerPage
+                    currentTask={currentTask}
                     tasksToday={tasksToday}
                     completedToday={completedToday}
                     dailyLog={dailyLog}

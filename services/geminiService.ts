@@ -4,7 +4,7 @@ import { GoogleGenAI } from "@google/genai";
 // IMPORTANT: For a production app, it's recommended to use environment variables.
 const GEMINI_API_KEY = "AIzaSyBT9IN5PiyqaWBdM9NekDg5d-5fWDuhZnE";
 
-if (GEMINI_API_KEY === "YOUR_GEMINI_API_KEY_HERE") {
+if (GEMINI_API_KEY === "AIzaSyBT9IN5PiyqaWBdM9NekDg5d-5fWDuhZnE") {
     console.warn("Gemini API key is not configured. Please add your key to services/geminiService.ts");
 }
 
@@ -12,7 +12,7 @@ const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
 
 export async function generateContent(prompt: string): Promise<string> {
     try {
-        if (GEMINI_API_KEY === "YOUR_GEMINI_API_KEY_HERE") {
+        if (GEMINI_API_KEY === "AIzaSyBT9IN5PiyqaWBdM9NekDg5d-5fWDuhZnE") {
             return "AI feature is disabled. Please configure your Gemini API key in `services/geminiService.ts` to enable it.";
         }
         
