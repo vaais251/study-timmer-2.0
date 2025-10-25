@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { AppState, Settings, Task, DbDailyLog } from '../types';
+import { AppState, Settings, Task, DbDailyLog, Mode } from '../types';
 import Header from '../components/Header';
 import SessionInfo from '../components/SessionInfo';
 import ModeIndicator from '../components/ModeIndicator';
@@ -56,6 +56,7 @@ const TimerPage: React.FC<TimerPageProps> = (props) => {
                 timeRemaining={appState.timeRemaining}
                 totalTime={appState.sessionTotalTime}
                 isRunning={appState.isRunning}
+                mode={appState.mode}
             />
             <Controls
                 isRunning={appState.isRunning}
