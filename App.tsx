@@ -95,8 +95,6 @@ const App: React.FC = () => {
     const tasksToday = tasks.filter(t => t.due_date === todayString && !t.completed_at);
     const tasksForTomorrow = tasks.filter(t => t.due_date > todayString && !t.completed_at);
     const completedToday = tasks.filter(t => !!t.completed_at && t.due_date === todayString);
-    const allIncompleteTasks = tasks.filter(t => !t.completed_at);
-    const allCompletedTasks = tasks.filter(t => !!t.completed_at);
 
 
     useEffect(() => {
@@ -607,8 +605,6 @@ const App: React.FC = () => {
                 return <StatsPage />;
             case 'ai':
                 return <AICoachPage 
-                            completedTasks={allCompletedTasks} 
-                            incompleteTasks={allIncompleteTasks}
                             goals={goals}
                             targets={targets}
                             projects={projects}
