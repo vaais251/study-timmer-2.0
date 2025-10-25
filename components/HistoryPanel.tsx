@@ -250,10 +250,23 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
 
     const selectedDayData = useMemo(() => {
         if (!selectedDay) return null;
-        const logForDay = logs.find(l => l.date === selectedDay);
+
         const tasksForDay = tasks.filter(t => t.due_date === selectedDay);
-        return { log: logForDay, tasks: tasksForDay };
-    }, [selectedDay, logs, tasks]);
+        const pomodoroHistoryForDay = pomodoroHistory.filter(p => p.ended_at.startsWith(selectedDay));
+
+        const completedTasksCount = tasksForDay.filter(t => t.completed_at).length;
+        const totalTasksCount = tasksForDay.length;
+        const completionPercentage = totalTasksCount > 0 ? Math.round((completedTasksCount / totalTasksCount) * 100) : 0;
+        const totalFocusMinutes = pomodoroHistoryForDay.reduce((sum, record) => sum + (Number(record.duration_minutes) || 0), 0);
+        
+        return {
+            tasks: tasksForDay,
+            completedTasksCount,
+            totalTasksCount,
+            completionPercentage,
+            totalFocusMinutes,
+        };
+    }, [selectedDay, tasks, pomodoroHistory]);
     
     const COLORS_TASKS = ['#34D399', '#F87171'];
     const COLORS_PROJECTS = ['#60A5FA', '#FBBF24'];
@@ -369,8 +382,9 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                 {selectedDayData ? (
                     <div className="bg-black/20 p-3 mt-3 rounded-lg text-white text-sm space-y-1">
                         <p><strong>Date:</strong> {selectedDay}</p>
-                        <p><strong>Completed Sessions:</strong> {selectedDayData.log?.completed_sessions ?? '0'}</p>
-                        <p><strong>Total Focus Minutes:</strong> {selectedDayData.log?.total_focus_minutes ?? '0'}</p>
+                        <p><strong>Completed Tasks:</strong> {selectedDayData.completedTasksCount} / {selectedDayData.totalTasksCount}</p>
+                        <p><strong>Task Completion:</strong> {selectedDayData.completionPercentage}%</p>
+                        <p><strong>Total Focus Minutes:</strong> {selectedDayData.totalFocusMinutes}</p>
                         <h4 className="font-bold pt-2">Tasks for this day: ({selectedDayData.tasks.length})</h4>
                          {selectedDayData.tasks.length > 0 ? (
                             <ul className='list-disc list-inside'>
