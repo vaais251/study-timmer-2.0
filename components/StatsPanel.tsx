@@ -7,7 +7,6 @@ interface StatsPanelProps {
     completedToday: Task[];
     tasksToday: Task[];
     totalFocusMinutes: number;
-    completedSessions: number;
 }
 
 const StatItem: React.FC<{ label: string, value: string | number }> = ({ label, value }) => (
@@ -17,7 +16,7 @@ const StatItem: React.FC<{ label: string, value: string | number }> = ({ label, 
     </div>
 );
 
-const StatsPanel: React.FC<StatsPanelProps> = ({ completedToday, tasksToday, totalFocusMinutes, completedSessions }) => {
+const StatsPanel: React.FC<StatsPanelProps> = ({ completedToday, tasksToday, totalFocusMinutes }) => {
     const stats = useMemo(() => {
         const totalTasks = completedToday.length + tasksToday.length;
         const completionPercentage = totalTasks === 0 ? 0 : Math.round((completedToday.length / totalTasks) * 100);
@@ -43,7 +42,7 @@ const StatsPanel: React.FC<StatsPanelProps> = ({ completedToday, tasksToday, tot
         <Panel title="📊 Today's Progress">
             <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                 <StatItem label="Focus Time" value={`${totalFocusMinutes}m`} />
-                <StatItem label="Sessions Done" value={completedSessions} />
+                <StatItem label="Tasks Done" value={completedToday.length} />
                 <StatItem label="Completion %" value={`${stats.completionPercentage}%`} />
                 <StatItem label="Total Tasks" value={stats.totalTasks} />
                 <StatItem label="Poms Done" value={stats.pomsDone} />

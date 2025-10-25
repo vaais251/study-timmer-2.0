@@ -1,4 +1,5 @@
 
+
 import React from 'react';
 import { AppState, Settings, Task, DbDailyLog, Mode } from '../types';
 import Header from '../components/Header';
@@ -70,7 +71,6 @@ const TimerPage: React.FC<TimerPageProps> = (props) => {
                 completedToday={completedToday}
                 tasksToday={tasksToday}
                 totalFocusMinutes={dailyLog.total_focus_minutes}
-                completedSessions={dailyLog.completed_sessions}
             />
         </>
     );

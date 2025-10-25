@@ -36,7 +36,7 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
     const aggregatedData = useMemo(() => {
         if (!logs || !tasks || !projects || !targets || !allTasks || !allProjects) {
             return {
-                totalFocus: 0, totalSessions: 0, completedCount: 0, totalTasks: 0, 
+                totalFocus: 0, completedCount: 0, totalTasks: 0, 
                 pomsDone: 0, pomsEst: 0, projectsCompleted: 0, targetsCompleted: 0,
                 lineChartData: [], 
                 taskBreakdownData: [{ name: 'Completed', value: 0 }, { name: 'Pending', value: 0 }],
@@ -45,7 +45,6 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
         }
 
         const totalFocus = logs.reduce((acc, log) => acc + log.total_focus_minutes, 0);
-        const totalSessions = logs.reduce((acc, log) => acc + log.completed_sessions, 0);
         const completedCount = tasks.filter(t => t.completed_at !== null).length;
         const totalTasks = tasks.length;
         const pomsDone = tasks.reduce((acc, t) => acc + t.completed_poms, 0);
@@ -94,7 +93,7 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
         ];
         
         return {
-            totalFocus, totalSessions, completedCount, totalTasks, pomsDone, pomsEst, projectsCompleted, targetsCompleted,
+            totalFocus, completedCount, totalTasks, pomsDone, pomsEst, projectsCompleted, targetsCompleted,
             lineChartData, taskBreakdownData, projectBreakdownData
         };
     }, [logs, tasks, allTasks, projects, allProjects, targets, historyRange]);
@@ -121,10 +120,10 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-white">
-                <StatCard title="Time & Sessions">
+                <StatCard title="Time & Tasks">
                     <div className="flex justify-around items-center h-full">
                         <StatItem label="Focus Time" value={`${aggregatedData.totalFocus}m`} />
-                        <StatItem label="Sessions" value={aggregatedData.totalSessions} />
+                        <StatItem label="Tasks Done" value={aggregatedData.completedCount} />
                     </div>
                 </StatCard>
                 <StatCard title="Task Progress">

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
@@ -241,7 +242,7 @@ const App: React.FC = () => {
             
             const currentTask = tasksToday.find(t => !t.completed_at);
             const focusDuration = currentTask?.custom_focus_duration || settings.focusDuration;
-            newLog.total_focus_minutes += focusDuration;
+            newLog.total_focus_minutes = (newLog.total_focus_minutes || 0) + focusDuration;
             
             setDailyLog(newLog);
             await dbService.upsertDailyLog(newLog);

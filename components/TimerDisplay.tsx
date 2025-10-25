@@ -23,11 +23,11 @@ const TimerDisplay: React.FC<TimerDisplayProps> = ({ timeRemaining, totalTime, i
 
     const isFocus = mode === 'focus';
     const theme = {
-        bgCircle: isFocus ? 'text-white/20' : 'text-slate-800/20',
-        progressCircle: isFocus ? 'text-white' : 'text-slate-800',
-        text: isFocus ? 'text-white' : 'text-slate-800',
+        bgCircle: 'text-white/20',
+        progressCircle: 'text-white',
+        text: isFocus ? 'text-white' : 'text-gray-900',
         textShadow: isFocus ? '0 0 15px rgba(255, 255, 255, 0.3)' : 'none',
-        glowColor: isFocus ? 'rgba(255, 255, 255, 0.5)' : 'rgba(40, 40, 40, 0.4)'
+        glowColor: 'rgba(255, 255, 255, 0.5)'
     };
 
     return (
