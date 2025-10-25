@@ -1,4 +1,5 @@
 
+
 import { Session, User } from '@supabase/supabase-js';
 
 export type Mode = 'focus' | 'break';
@@ -64,6 +65,15 @@ export interface DbDailyLog {
     date: string; // YYYY-MM-DD
     completed_sessions: number;
     total_focus_minutes: number;
+}
+
+// Corresponds to the new `pomodoro_history` table
+export interface PomodoroHistory {
+    id: string;
+    user_id: string;
+    task_id: string | null;
+    ended_at: string;
+    duration_minutes: number;
 }
 
 

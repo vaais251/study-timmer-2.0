@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import HistoryPanel from '../components/HistoryPanel';
 import Spinner from '../components/common/Spinner';
 import * as dbService from '../services/dbService';
-import { DbDailyLog, Task, Project, Target } from '../types';
+import { DbDailyLog, Task, Project, Target, Settings, PomodoroHistory } from '../types';
 import { getTodayDateString, getMonthStartDateString } from '../utils/date';
 
 const StatsPage: React.FC = () => {
@@ -18,6 +18,9 @@ const StatsPage: React.FC = () => {
     const [allProjects, setAllProjects] = useState<Project[]>([]);
     const [targets, setTargets] = useState<Target[]>([]);
     const [allTasks, setAllTasks] = useState<Task[]>([]);
+    const [settings, setSettings] = useState<Settings | null>(null);
+    const [pomodoroHistory, setPomodoroHistory] = useState<PomodoroHistory[]>([]);
+    const [consistencyLogs, setConsistencyLogs] = useState<DbDailyLog[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
@@ -25,13 +28,20 @@ const StatsPage: React.FC = () => {
         setIsLoading(true);
         setError(null);
         try {
-            const [fetchedLogs, fetchedTasks, fetchedProjects, fetchedTargets, fetchedAllProjects, fetchedAllTasks] = await Promise.all([
+            const [
+                fetchedLogs, fetchedTasks, fetchedProjects, fetchedTargets, 
+                fetchedAllProjects, fetchedAllTasks, fetchedSettings,
+                fetchedPomodoroHistory, fetchedConsistencyLogs
+            ] = await Promise.all([
                 dbService.getHistoricalLogs(start, end),
                 dbService.getHistoricalTasks(start, end),
                 dbService.getHistoricalProjects(start, end),
                 dbService.getHistoricalTargets(start, end),
                 dbService.getProjects(),
-                dbService.getAllTasksForStats()
+                dbService.getAllTasksForStats(),
+                dbService.getSettings(),
+                dbService.getPomodoroHistory(start, end),
+                dbService.getConsistencyLogs(180) // Fetch last 6 months
             ]);
             setLogs(fetchedLogs || []);
             setTasks(fetchedTasks || []);
@@ -39,6 +49,9 @@ const StatsPage: React.FC = () => {
             setAllProjects(fetchedAllProjects || []);
             setTargets(fetchedTargets || []);
             setAllTasks(fetchedAllTasks || []);
+            setSettings(fetchedSettings || null);
+            setPomodoroHistory(fetchedPomodoroHistory || []);
+            setConsistencyLogs(fetchedConsistencyLogs || []);
         } catch (err) {
             setError("Failed to load historical data. Please try again later.");
         } finally {
@@ -68,6 +81,9 @@ const StatsPage: React.FC = () => {
             allTasks={allTasks}
             historyRange={historyRange}
             setHistoryRange={setHistoryRange}
+            settings={settings}
+            pomodoroHistory={pomodoroHistory}
+            consistencyLogs={consistencyLogs}
         />
     );
 };

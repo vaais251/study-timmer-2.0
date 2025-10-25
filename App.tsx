@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
@@ -114,21 +115,29 @@ const App: React.FC = () => {
         if (!session) return;
         setIsLoading(true);
         try {
-            const [userSettings, userTasks, userDailyLog, userProjects, userGoals, userTargets] = await Promise.all([
+            const [userSettings, userTasks, userDailyLog, userProjects, userGoals, userTargets, todaysHistory] = await Promise.all([
                 dbService.getSettings(),
                 dbService.getTasks(),
                 dbService.getDailyLogForToday(),
                 dbService.getProjects(),
                 dbService.getGoals(),
-                dbService.getTargets()
+                dbService.getTargets(),
+                dbService.getTodaysPomodoroHistory()
             ]);
 
             if (userSettings) setSettings(userSettings);
             if (userTasks) setTasks(userTasks);
-            if (userDailyLog) setDailyLog(userDailyLog);
             if (userProjects) setProjects(userProjects);
             if (userGoals) setGoals(userGoals);
             if (userTargets) setTargets(userTargets);
+            
+            // Authoritative calculation for today's focus minutes from pomodoro_history
+            const authoritativeFocusMinutes = todaysHistory.reduce((sum, record) => sum + (Number(record.duration_minutes) || 0), 0);
+
+            if (userDailyLog) {
+                // Overwrite the potentially stale value from the DB with the fresh calculation
+                setDailyLog({ ...userDailyLog, total_focus_minutes: authoritativeFocusMinutes });
+            }
             
             // Only set the initial time if state was NOT restored from localStorage.
             // This prevents overwriting the timer when the tab is reloaded.
@@ -234,17 +243,22 @@ const App: React.FC = () => {
         notificationInterval.current = window.setInterval(playAlertLoop, 3000);
         playAlertLoop();
 
-        let newLog = { ...dailyLog };
-
         if (appState.mode === 'focus') {
             playFocusEndSound();
-            newLog.completed_sessions++;
-            
             const currentTask = tasksToday.find(t => !t.completed_at);
             const focusDuration = currentTask?.custom_focus_duration || settings.focusDuration;
-            newLog.total_focus_minutes = (newLog.total_focus_minutes || 0) + focusDuration;
-            
+
+            // Optimistic UI update for daily log
+            const newLog = {
+                ...dailyLog,
+                completed_sessions: dailyLog.completed_sessions + 1,
+                total_focus_minutes: dailyLog.total_focus_minutes + focusDuration
+            };
             setDailyLog(newLog);
+            
+            // Log the individual pomodoro session for authoritative tracking
+            await dbService.addPomodoroHistory(currentTask?.id || null, focusDuration);
+            // Also update the daily log in the DB (mainly for session count)
             await dbService.upsertDailyLog(newLog);
 
             if (appState.currentSession >= settings.sessionsPerCycle) {

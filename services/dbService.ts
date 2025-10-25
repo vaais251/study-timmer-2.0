@@ -1,5 +1,7 @@
+
+
 import { supabase } from './supabaseClient';
-import { Settings, Task, DbDailyLog, Project, Goal, Target } from '../types';
+import { Settings, Task, DbDailyLog, Project, Goal, Target, PomodoroHistory } from '../types';
 import { getTodayDateString } from '../utils/date';
 
 // --- Settings ---
@@ -467,4 +469,108 @@ export const getHistoricalTargets = async (startDate: string, endDate:string): P
         return [];
     }
     return data;
+};
+
+// --- Pomodoro History (for Heatmap) ---
+
+export const getTodaysPomodoroHistory = async (): Promise<PomodoroHistory[]> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
+
+    const today = getTodayDateString();
+
+    const { data, error } = await supabase
+        .from('pomodoro_history')
+        .select('*')
+        .eq('user_id', user.id)
+        .gte('ended_at', `${today}T00:00:00Z`)
+        .lte('ended_at', `${today}T23:59:59Z`);
+
+    if (error) {
+        console.error("Error fetching today's pomodoro history:", error);
+        return [];
+    }
+    return data;
+};
+
+
+export const addPomodoroHistory = async (taskId: string | null, duration: number): Promise<void> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    // The `insert` method expects an array of objects.
+    // We are also removing `ended_at` to let the database's `DEFAULT now()` function handle it.
+    // This is more robust and avoids potential client-side timezone or formatting issues.
+    const { error } = await supabase.from('pomodoro_history').insert([{
+        user_id: user.id,
+        task_id: taskId,
+        duration_minutes: duration,
+    }]);
+
+    if (error) {
+        // Log the full error for better debugging.
+        console.error("Error adding pomodoro history:", JSON.stringify(error, null, 2));
+    }
+};
+
+export const getPomodoroHistory = async (startDate: string, endDate: string): Promise<PomodoroHistory[]> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
+
+    const { data, error } = await supabase
+        .from('pomodoro_history')
+        .select('*')
+        .eq('user_id', user.id)
+        .gte('ended_at', `${startDate}T00:00:00Z`)
+        .lte('ended_at', `${endDate}T23:59:59Z`);
+
+    if (error) {
+        console.error("Error fetching pomodoro history:", error);
+        return [];
+    }
+    return data;
+};
+
+export const getConsistencyLogs = async (days = 180): Promise<DbDailyLog[]> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
+
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+    const startDateString = getTodayDateString(startDate);
+
+    // Fetch all tasks due within the date range to get total and completed counts.
+    const { data, error } = await supabase
+        .from('tasks')
+        .select('due_date, completed_at')
+        .eq('user_id', user.id)
+        .gte('due_date', startDateString);
+
+    if (error) {
+        console.error("Error fetching tasks for consistency logs:", error);
+        return [];
+    }
+
+    // Aggregate counts and completion status by day.
+    const statsByDay = new Map<string, { completed: number; total: number }>();
+    if (data) {
+        data.forEach(task => {
+            const dateString = task.due_date;
+            if (!statsByDay.has(dateString)) {
+                statsByDay.set(dateString, { completed: 0, total: 0 });
+            }
+            const dayStat = statsByDay.get(dateString)!;
+            dayStat.total++;
+            if (task.completed_at) {
+                dayStat.completed++;
+            }
+        });
+    }
+
+    // Map the aggregated data to the DbDailyLog structure, using the percentage for `completed_sessions`.
+    return Array.from(statsByDay.entries()).map(([date, stats]) => ({
+        date: date,
+        completed_sessions: stats.total > 0 ? Math.round((stats.completed / stats.total) * 100) : 0,
+        total_focus_minutes: 0, // Not used by the tracker, but required by the type
+    }));
 };

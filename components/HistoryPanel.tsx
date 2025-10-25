@@ -2,8 +2,9 @@
 
 import React, { useState, useMemo } from 'react';
 import Panel from './common/Panel';
-import { DbDailyLog, Task, Project, Target } from '../types';
-import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, LineChart, Line, XAxis, YAxis, CartesianGrid, Legend } from 'recharts';
+import { DbDailyLog, Task, Project, Target, Settings, PomodoroHistory } from '../types';
+import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, LineChart, Line, XAxis, YAxis, CartesianGrid, Legend, BarChart, Bar } from 'recharts';
+import { getTodayDateString } from '../utils/date';
 
 interface HistoryPanelProps {
     logs: DbDailyLog[];
@@ -14,6 +15,9 @@ interface HistoryPanelProps {
     targets: Target[];
     historyRange: { start: string; end: string };
     setHistoryRange: React.Dispatch<React.SetStateAction<{ start: string; end: string }>>;
+    settings: Settings | null;
+    pomodoroHistory: PomodoroHistory[];
+    consistencyLogs: DbDailyLog[];
 }
 
 const StatItem: React.FC<{ label: string, value: string | number }> = ({ label, value }) => (
@@ -30,7 +34,122 @@ const StatCard: React.FC<{title: string, children: React.ReactNode}> = ({ title,
     </div>
 );
 
-const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, projects, allProjects, targets, historyRange, setHistoryRange }) => {
+// --- New Component: Consistency Tracker ---
+const ConsistencyTracker: React.FC<{ logs: DbDailyLog[] }> = ({ logs }) => {
+    const data = useMemo(() => {
+        // The `logs` prop now contains the completion percentage in `completed_sessions`.
+        const activityMap: Map<string, number> = new Map(logs.map(log => [log.date, log.completed_sessions]));
+        const today = new Date();
+        const days = Array.from({ length: 180 }, (_, i) => {
+            const date = new Date();
+            date.setDate(today.getDate() - i);
+            return date;
+        }).reverse();
+
+        const firstDayOfWeek = days[0].getDay();
+        const placeholders = Array.from({ length: firstDayOfWeek }, (_, i) => <div key={`ph-${i}`} className="w-4 h-4" />);
+        
+        const cells = days.map(date => {
+            const dateString = getTodayDateString(date);
+            const percentage = activityMap.get(dateString) || 0;
+            
+            // Color thresholds are now based on completion percentage.
+            let colorClass = 'bg-white/10'; // 0%
+            if (percentage > 0) colorClass = 'bg-green-500/30';   // 1-24%
+            if (percentage >= 25) colorClass = 'bg-green-500/50';  // 25-49%
+            if (percentage >= 50) colorClass = 'bg-green-500/70';  // 50-74%
+            if (percentage >= 75) colorClass = 'bg-green-500/90';  // 75-99%
+            if (percentage === 100) colorClass = 'bg-green-500';   // 100%
+
+            // Tooltip now shows the completion percentage.
+            return <div key={dateString} className={`w-4 h-4 rounded-sm ${colorClass}`} title={`${percentage}% tasks completed on ${dateString}`} />;
+        });
+
+        return [...placeholders, ...cells];
+    }, [logs]);
+
+    const monthLabels = useMemo(() => {
+        const months = [];
+        let lastMonth = -1;
+        for (let i = 180 - 1; i >= 0; i -= 7) {
+            const date = new Date();
+            date.setDate(date.getDate() - i);
+            const month = date.getMonth();
+            if (month !== lastMonth) {
+                months.push(date.toLocaleString('default', { month: 'short' }));
+                lastMonth = month;
+            }
+        }
+        return months;
+    }, []);
+
+    return (
+        <div className="mt-8">
+            <h3 className="text-lg font-semibold text-white text-center mb-2">Daily Consistency Tracker</h3>
+            <div className="bg-black/20 p-3 rounded-lg overflow-x-auto">
+                <div className="flex justify-end gap-x-[72px] pr-2 mb-1">
+                    {monthLabels.map((m, i) => <span key={i} className="text-xs text-white/50">{m}</span>)}
+                </div>
+                <div className="grid grid-flow-col grid-rows-7 gap-1">{data}</div>
+            </div>
+        </div>
+    );
+};
+
+// --- New Component: Focus Heatmap ---
+const FocusHeatmap: React.FC<{ history: PomodoroHistory[] }> = ({ history }) => {
+    const heatmapData = useMemo(() => {
+        const grid = Array(7).fill(0).map(() => Array(24).fill(0));
+        let maxMinutes = 0;
+
+        history.forEach(item => {
+            const date = new Date(item.ended_at);
+            const day = date.getDay(); // Sunday = 0, Saturday = 6
+            const hour = date.getHours();
+            grid[day][hour] += Number(item.duration_minutes) || 0; // Ensure duration is a number
+            if (grid[day][hour] > maxMinutes) {
+                maxMinutes = grid[day][hour];
+            }
+        });
+
+        return { grid, maxMinutes };
+    }, [history]);
+
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const hours = ['12am', '6am', '12pm', '6pm', '11pm'];
+
+    return (
+        <div className="mt-8">
+            <h3 className="text-lg font-semibold text-white text-center mb-2">Weekly Focus Heatmap</h3>
+            <div className="bg-black/20 p-3 rounded-lg text-xs text-white/60 flex gap-2">
+                <div className="flex flex-col justify-between pt-1">
+                    {days.map(day => <div key={day} className="h-2">{day}</div>)}
+                </div>
+                <div className="flex-grow">
+                    <div className="grid grid-cols-24 gap-px">
+                        {heatmapData.grid.flat().map((minutes, i) => {
+                            const opacity = heatmapData.maxMinutes > 0 ? minutes / heatmapData.maxMinutes : 0;
+                            return (
+                                <div
+                                    key={i}
+                                    className="w-full h-2 rounded-sm"
+                                    style={{ backgroundColor: `rgba(67, 56, 202, ${opacity})` }}
+                                    title={`${minutes} focus minutes`}
+                                />
+                            );
+                        })}
+                    </div>
+                    <div className="flex justify-between mt-1">
+                         {hours.map(hour => <span key={hour}>{hour}</span>)}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+
+const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, projects, allProjects, targets, historyRange, setHistoryRange, settings, pomodoroHistory, consistencyLogs }) => {
     const [selectedDay, setSelectedDay] = useState<string>('');
     
     const aggregatedData = useMemo(() => {
@@ -40,11 +159,13 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                 pomsDone: 0, pomsEst: 0, projectsCompleted: 0, targetsCompleted: 0,
                 lineChartData: [], 
                 taskBreakdownData: [{ name: 'Completed', value: 0 }, { name: 'Pending', value: 0 }],
-                projectBreakdownData: [{ name: 'Completed', value: 0 }, { name: 'Pending', value: 0 }]
+                projectBreakdownData: [{ name: 'Completed', value: 0 }, { name: 'Pending', value: 0 }],
+                tagAnalysisData: []
             };
         }
 
-        const totalFocus = logs.reduce((acc, log) => acc + log.total_focus_minutes, 0);
+        // Authoritative calculation for focus time, using pomodoro_history as the source of truth.
+        const totalFocus = pomodoroHistory.reduce((acc, entry) => acc + (Number(entry.duration_minutes) || 0), 0);
         const completedCount = tasks.filter(t => t.completed_at !== null).length;
         const totalTasks = tasks.length;
         const pomsDone = tasks.reduce((acc, t) => acc + t.completed_poms, 0);
@@ -92,11 +213,40 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
             { name: 'Pending', value: totalPendingProjects },
         ];
         
+        const tagAnalysisData = (() => {
+            const tagFocusTimes = new Map<string, number>();
+            // FIX: Use optional chaining and provide a default of 25 minutes.
+            // This makes the chart resilient to cases where settings haven't been saved yet.
+            const defaultFocusDuration = settings?.focusDuration || 25;
+
+            tasks.forEach(task => {
+                if (task.completed_poms > 0 && Array.isArray(task.tags) && task.tags.length > 0) {
+                    const durationPerPom = task.custom_focus_duration || defaultFocusDuration;
+                    const totalFocusForTask = task.completed_poms * durationPerPom;
+                    task.tags.forEach(tag => {
+                        const tagKey = tag.trim().toLowerCase();
+                        if (tagKey) {
+                            const currentTotal = tagFocusTimes.get(tagKey) || 0;
+                            tagFocusTimes.set(tagKey, currentTotal + totalFocusForTask);
+                        }
+                    });
+                }
+            });
+
+            return Array.from(tagFocusTimes.entries())
+                .map(([name, minutes]) => ({
+                    name: name.charAt(0).toUpperCase() + name.slice(1),
+                    minutes,
+                }))
+                .sort((a, b) => b.minutes - a.minutes);
+        })();
+
+
         return {
             totalFocus, completedCount, totalTasks, pomsDone, pomsEst, projectsCompleted, targetsCompleted,
-            lineChartData, taskBreakdownData, projectBreakdownData
+            lineChartData, taskBreakdownData, projectBreakdownData, tagAnalysisData
         };
-    }, [logs, tasks, allTasks, projects, allProjects, targets, historyRange]);
+    }, [logs, tasks, allTasks, projects, allProjects, targets, historyRange, settings, pomodoroHistory]);
 
     const selectedDayData = useMemo(() => {
         if (!selectedDay) return null;
@@ -183,6 +333,33 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                 </div>
             </div>
 
+            <div className="h-80 mt-8">
+                <h3 className="text-lg font-semibold text-white text-center mb-2">Focus Time by Category</h3>
+                {aggregatedData.tagAnalysisData.length > 0 ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                        <BarChart
+                            layout="vertical"
+                            data={aggregatedData.tagAnalysisData}
+                            margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                        >
+                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.2)" />
+                            <XAxis type="number" stroke="rgba(255,255,255,0.7)" unit="m" />
+                            <YAxis dataKey="name" type="category" stroke="rgba(255,255,255,0.7)" width={80} tick={{ fontSize: 12 }} />
+                            <Tooltip
+                                cursor={{ fill: 'rgba(255,255,255,0.1)' }}
+                                contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }}
+                                formatter={(value: number) => [`${value} minutes`, 'Focus Time']}
+                            />
+                            <Legend wrapperStyle={{fontSize: "12px"}}/>
+                            <Bar dataKey="minutes" name="Focus Minutes" fill="#8884d8" />
+                        </BarChart>
+                    </ResponsiveContainer>
+                ) : (
+                    <div className="flex items-center justify-center h-full text-white/60">
+                        No tagged tasks with completed sessions in this date range.
+                    </div>
+                )}
+            </div>
 
             <div className="mt-8">
                 <h3 className="text-lg font-semibold text-white text-center mb-2">View a Specific Day</h3>
@@ -209,6 +386,10 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                     </div>
                 )}
             </div>
+
+            <ConsistencyTracker logs={consistencyLogs} />
+
+            <FocusHeatmap history={pomodoroHistory} />
 
         </Panel>
     );
