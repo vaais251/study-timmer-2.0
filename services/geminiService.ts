@@ -2,7 +2,7 @@ import { GoogleGenAI } from "@google/genai";
 
 // For deployment testing, paste your API key here.
 // IMPORTANT: For a production app, it's recommended to use environment variables.
-const GEMINI_API_KEY = "YOUR_GEMINI_API_KEY_HERE";
+const GEMINI_API_KEY = "AIzaSyBT9IN5PiyqaWBdM9NekDg5d-5fWDuhZnE";
 
 if (GEMINI_API_KEY === "YOUR_GEMINI_API_KEY_HERE") {
     console.warn("Gemini API key is not configured. Please add your key to services/geminiService.ts");
