@@ -33,7 +33,6 @@ const StatsPage: React.FC = () => {
             setLogs(fetchedLogs || []);
             setTasks(fetchedTasks || []);
         } catch (err) {
-            console.error("Error fetching historical data:", err);
             setError("Failed to load historical data. Please try again later.");
         } finally {
             setIsLoading(false);

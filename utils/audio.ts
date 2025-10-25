@@ -1,4 +1,5 @@
 
+
 let audioContext: AudioContext | null = null;
 
 const getAudioContext = (): AudioContext | null => {
@@ -31,7 +32,7 @@ const playSound = (frequency: number, duration: number): void => {
         oscillator.start(ctx.currentTime);
         oscillator.stop(ctx.currentTime + duration);
     } catch (e) {
-        console.error("Error playing sound: ", e);
+        
     }
 };
 

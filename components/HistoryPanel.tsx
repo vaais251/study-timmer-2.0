@@ -41,15 +41,34 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, historyRange, 
         
         const completionPerc = totalTasks > 0 ? Math.round((completedCount / totalTasks) * 100) : 0;
 
-        const lineChartData = logs.map(log => {
-            const tasksForDay = tasks.filter(t => t.due_date === log.date);
-            const completedForDay = tasksForDay.filter(t => t.completed_at !== null).length;
-            const completion = tasksForDay.length > 0 ? Math.round((completedForDay / tasksForDay.length) * 100) : 0;
+        const lineChartDataPoints = new Map<string, { total: number, completed: number }>();
+        if (historyRange.start && historyRange.end) {
+            let currentDate = new Date(historyRange.start + 'T00:00:00');
+            const endDate = new Date(historyRange.end + 'T00:00:00');
+            while(currentDate <= endDate) {
+                const dateString = currentDate.toISOString().split('T')[0];
+                lineChartDataPoints.set(dateString, { total: 0, completed: 0 });
+                currentDate.setDate(currentDate.getDate() + 1);
+            }
+        }
+
+        tasks.forEach(task => {
+            if (lineChartDataPoints.has(task.due_date)) {
+                const dayData = lineChartDataPoints.get(task.due_date)!;
+                dayData.total++;
+                if (task.completed_at) {
+                    dayData.completed++;
+                }
+            }
+        });
+
+        const lineChartData = Array.from(lineChartDataPoints.entries()).map(([dateString, data]) => {
+            const completion = data.total > 0 ? Math.round((data.completed / data.total) * 100) : 0;
             return {
-                date: new Date(log.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+                date: new Date(dateString + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
                 completion: completion,
             };
-        }).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        });
         
         return {
             totalFocus, totalSessions, completedCount, totalTasks, pomsDone, pomsEst, completionPerc,
@@ -59,7 +78,7 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, historyRange, 
             ],
             lineChartData
         };
-    }, [logs, tasks]);
+    }, [logs, tasks, historyRange]);
 
     const selectedDayData = useMemo(() => {
         if (!selectedDay) return null;

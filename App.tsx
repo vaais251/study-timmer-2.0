@@ -92,7 +92,7 @@ const App: React.FC = () => {
             }));
 
         } catch (error) {
-            console.error("Error fetching user data:", error);
+            
         } finally {
             setIsLoading(false);
         }
@@ -139,7 +139,7 @@ const App: React.FC = () => {
             try {
                 wakeLock.current = await navigator.wakeLock.request('screen');
             } catch (err: any) {
-                console.error(`Wake Lock error: ${err.name}, ${err.message}`);
+                // This error is not critical and can be ignored.
             }
         }
 
@@ -246,14 +246,9 @@ const App: React.FC = () => {
     };
 
     const handleAddTask = async (text: string, poms: number, isTomorrow: boolean) => {
-        console.log(`[App.handleAddTask] Attempting to add task: "${text}" for ${isTomorrow ? 'tomorrow' : 'today'}`);
         const newTasks = await dbService.addTask(text, poms, isTomorrow);
-        console.log('[App.handleAddTask] Received from dbService:', newTasks);
         if (newTasks) {
-            console.log(`[App.handleAddTask] Updating state with ${newTasks.length} tasks.`);
             setTasks(newTasks);
-        } else {
-            console.log('[App.handleAddTask] Received null from dbService. State not updated.');
         }
     };
     
@@ -283,8 +278,7 @@ const App: React.FC = () => {
     };
 
     const handleLogout = async () => {
-        const { error } = await supabase.auth.signOut();
-        if (error) console.error("Error logging out:", error);
+        await supabase.auth.signOut();
         setTasks([]);
         setDailyLog({ date: getTodayDateString(), completed_sessions: 0, total_focus_minutes: 0 });
         setPage('timer');

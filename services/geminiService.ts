@@ -1,4 +1,5 @@
 
+
 import { GoogleGenAI } from "@google/genai";
 
 let ai: GoogleGenAI | null = null;
@@ -12,7 +13,6 @@ const getAIClient = (): GoogleGenAI => {
     const API_KEY = "AIzaSyBT9IN5PiyqaWBdM9NekDg5d-5fWDuhZnE";
 
     if (!API_KEY) {
-      console.error("API_KEY is not set in geminiService.ts. Gemini API calls will fail.");
       throw new Error("Gemini API key is not configured.");
     }
     
@@ -40,7 +40,6 @@ export async function generateContent(prompt: string): Promise<string> {
             throw new Error("Received an empty response from Gemini API.");
         }
     } catch (error) {
-        console.error("Error calling Gemini API:", error);
         if (error instanceof Error) {
             return `Failed to get response from AI: ${error.message}`;
         }
