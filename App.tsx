@@ -19,7 +19,7 @@ import LoadingAnimation from './components/common/LoadingAnimation';
 import GoalsPage from './pages/GoalsPage';
 
 // Reads from localStorage to initialize the timer state synchronously.
-const getInitialAppState = (): { initialState: AppState; wasRestored: boolean } => {
+const getInitialAppState = (): { initialState: AppState; initialPhaseEndTime: number | null; wasRestored: boolean } => {
     const defaultState: AppState = {
         mode: 'focus',
         currentSession: 1,
@@ -32,26 +32,24 @@ const getInitialAppState = (): { initialState: AppState; wasRestored: boolean } 
 
     if (savedStateJSON) {
         try {
-            const { savedAppState, timestamp } = JSON.parse(savedStateJSON);
-            let finalState = savedAppState;
-
-            // If the timer was running, calculate time elapsed since the tab was closed
-            if (savedAppState.isRunning) {
-                const elapsedSeconds = Math.floor((Date.now() - timestamp) / 1000);
-                const newTimeRemaining = savedAppState.timeRemaining - elapsedSeconds;
-                finalState = {
-                    ...savedAppState,
-                    timeRemaining: newTimeRemaining > 0 ? newTimeRemaining : 0 
-                };
+            const { savedAppState, savedPhaseEndTime } = JSON.parse(savedStateJSON);
+            
+            // If the timer was running, calculate the correct remaining time from phaseEndTime
+            if (savedAppState.isRunning && savedPhaseEndTime) {
+                const newTimeRemaining = Math.max(0, Math.round((savedPhaseEndTime - Date.now()) / 1000));
+                const finalState = { ...savedAppState, timeRemaining: newTimeRemaining };
+                return { initialState: finalState, initialPhaseEndTime: savedPhaseEndTime, wasRestored: true };
             }
-            return { initialState: finalState, wasRestored: true };
+            
+            // If it was paused, the saved state is accurate.
+            return { initialState: savedAppState, initialPhaseEndTime: null, wasRestored: true };
         } catch (e) {
             console.error("Failed to parse saved state:", e);
             localStorage.removeItem('pomodoroAppState');
         }
     }
     
-    return { initialState: defaultState, wasRestored: false };
+    return { initialState: defaultState, initialPhaseEndTime: null, wasRestored: false };
 };
 
 
@@ -62,6 +60,7 @@ const App: React.FC = () => {
     // Initialize state synchronously from localStorage to prevent race conditions.
     const memoizedInitialState = useMemo(() => getInitialAppState(), []);
     const [appState, setAppState] = useState<AppState>(memoizedInitialState.initialState);
+    const [phaseEndTime, setPhaseEndTime] = useState<number | null>(memoizedInitialState.initialPhaseEndTime);
     const [didRestoreFromStorage, setDidRestoreFromStorage] = useState<boolean>(memoizedInitialState.wasRestored);
 
     const [settings, setSettings] = useState<Settings>({
@@ -89,7 +88,6 @@ const App: React.FC = () => {
     const notificationInterval = useRef<number | null>(null);
     const wakeLock = useRef<any | null>(null);
     const isInitialLoad = useRef(true);
-    const lastHiddenTimestamp = useRef<number | null>(null);
 
     // Derived state for tasks
     const todayString = getTodayDateString();
@@ -198,9 +196,9 @@ const App: React.FC = () => {
 
     // Stop Timer Logic
     const stopTimer = useCallback(() => {
-        if (!appState.isRunning && !timerInterval.current) return;
         setAppState(prev => ({ ...prev, isRunning: false }));
-    }, [appState.isRunning]);
+        setPhaseEndTime(null);
+    }, []);
 
     // Reset Timer Logic
     const resetTimer = useCallback(() => {
@@ -221,8 +219,9 @@ const App: React.FC = () => {
     const startTimer = useCallback(async () => {
         if (appState.isRunning) return;
         resumeAudioContext();
+        setPhaseEndTime(Date.now() + appState.timeRemaining * 1000);
         setAppState(prev => ({ ...prev, isRunning: true }));
-    }, [appState.isRunning]);
+    }, [appState.isRunning, appState.timeRemaining]);
     
     const playStartSound = useCallback(() => {
          if (appState.mode === 'focus') playFocusStartSound(); else playBreakStartSound();
@@ -294,45 +293,15 @@ const App: React.FC = () => {
         if (!isPristine) {
             const stateToSave = {
                 savedAppState: appState,
-                timestamp: Date.now(),
+                savedPhaseEndTime: phaseEndTime,
             };
             localStorage.setItem('pomodoroAppState', JSON.stringify(stateToSave));
         } else {
             localStorage.removeItem('pomodoroAppState');
         }
-    }, [appState, session]);
-
-    // This effect handles tab visibility to keep timer accurate in background
-    useEffect(() => {
-        const handleVisibilityChange = () => {
-            if (document.visibilityState === 'hidden') {
-                if (appState.isRunning) {
-                    // Save timestamp when tab is hidden and timer is running
-                    lastHiddenTimestamp.current = Date.now();
-                }
-            } else if (document.visibilityState === 'visible') {
-                if (appState.isRunning && lastHiddenTimestamp.current) {
-                    const elapsedSeconds = Math.floor((Date.now() - lastHiddenTimestamp.current) / 1000);
-                    setAppState(prev => {
-                        const newTimeRemaining = prev.timeRemaining - elapsedSeconds;
-                        return {
-                            ...prev,
-                            timeRemaining: newTimeRemaining > 0 ? newTimeRemaining : 0
-                        };
-                    });
-                    lastHiddenTimestamp.current = null;
-                }
-            }
-        };
-
-        document.addEventListener('visibilitychange', handleVisibilityChange);
-
-        return () => {
-            document.removeEventListener('visibilitychange', handleVisibilityChange);
-        };
-    }, [appState.isRunning]);
+    }, [appState, phaseEndTime, session]);
     
-    // This effect handles the timer interval and wake lock
+    // This effect handles the timer interval and wake lock. It's robust against tab throttling.
     useEffect(() => {
         const requestWakeLock = async () => {
              if ('wakeLock' in navigator && !wakeLock.current) {
@@ -348,10 +317,11 @@ const App: React.FC = () => {
             }
         };
 
-        if (appState.isRunning) {
+        if (appState.isRunning && phaseEndTime) {
             requestWakeLock();
             timerInterval.current = window.setInterval(() => {
-                setAppState(prev => ({ ...prev, timeRemaining: Math.max(0, prev.timeRemaining - 1) }));
+                const newTimeRemaining = Math.max(0, Math.round((phaseEndTime - Date.now()) / 1000));
+                setAppState(prev => ({ ...prev, timeRemaining: newTimeRemaining }));
             }, 1000);
         } else {
             releaseWakeLock();
@@ -364,7 +334,7 @@ const App: React.FC = () => {
             if (timerInterval.current) clearInterval(timerInterval.current);
             releaseWakeLock();
         }
-    }, [appState.isRunning]);
+    }, [appState.isRunning, phaseEndTime]);
     // --- END STATE PERSISTENCE LOGIC ---
 
     const handleStartClick = () => {
