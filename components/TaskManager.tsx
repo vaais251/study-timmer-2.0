@@ -1,8 +1,7 @@
-
 import React, { useState } from 'react';
 import { Task, Project, Settings } from '../types';
 import Panel from './common/Panel';
-import { PostponeIcon, DuplicateIcon, MoreVerticalIcon } from './common/Icons';
+import { PostponeIcon, DuplicateIcon, MoreVerticalIcon, UndoIcon } from './common/Icons';
 
 interface TaskSettingsDropdownProps {
     task: Task;
@@ -63,11 +62,12 @@ interface TaskItemProps {
     onDelete: (id: string) => void;
     onMove?: (id: string, action: 'postpone' | 'duplicate') => void;
     onUpdateTaskTimers: (id: string, newTimers: { focus: number | null, break: number | null }) => void;
+    onMarkTaskIncomplete?: (id: string) => void;
     dragProps?: object;
     ref?: React.Ref<HTMLLIElement>;
 }
 
-const TaskItem = React.forwardRef<HTMLLIElement, TaskItemProps>(({ task, isCompleted, settings, onDelete, onMove, onUpdateTaskTimers, dragProps }, ref) => {
+const TaskItem = React.forwardRef<HTMLLIElement, TaskItemProps>(({ task, isCompleted, settings, onDelete, onMove, onUpdateTaskTimers, onMarkTaskIncomplete, dragProps }, ref) => {
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const isDraggable = !isCompleted && dragProps;
     
@@ -99,7 +99,7 @@ const TaskItem = React.forwardRef<HTMLLIElement, TaskItemProps>(({ task, isCompl
             </div>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0 pt-1 relative">
-            <span className={`text-xs px-2 py-1 rounded ${isDraggable ? 'bg-white/20' : 'bg-amber-400/20 text-amber-300'}`}>
+            <span className={`text-xs px-2 py-1 rounded ${isCompleted ? 'bg-white/10' : 'bg-white/20'}`}>
                 {task.completed_poms}/{task.total_poms}
             </span>
             {isDraggable && onMove && (
@@ -110,6 +110,11 @@ const TaskItem = React.forwardRef<HTMLLIElement, TaskItemProps>(({ task, isCompl
             )}
              {isDraggable && (
                 <button onClick={() => setIsSettingsOpen(o => !o)} className="p-1 text-cyan-300 hover:text-cyan-200 transition" title="Custom Timers"><MoreVerticalIcon /></button>
+            )}
+            {isCompleted && onMarkTaskIncomplete && (
+                <button onClick={() => onMarkTaskIncomplete(task.id)} className="p-1 text-amber-300 hover:text-amber-200 transition" title="Mark as Incomplete">
+                    <UndoIcon />
+                </button>
             )}
             {!isCompleted && (
                 <button onClick={() => onDelete(task.id)} className="text-red-400 hover:text-red-300 text-2xl font-bold leading-none p-1 transition" title="Delete Task">&times;</button>
@@ -224,9 +229,10 @@ interface TaskManagerProps {
     onMoveTask: (id: string, action: 'postpone' | 'duplicate') => void;
     onReorderTasks: (reorderedTasks: Task[]) => void;
     onUpdateTaskTimers: (id: string, newTimers: { focus: number | null, break: number | null }) => void;
+    onMarkTaskIncomplete: (id: string) => void;
 }
 
-const TaskManager: React.FC<TaskManagerProps> = ({ tasksToday, tasksForTomorrow, completedToday, projects, settings, onAddTask, onAddProject, onDeleteTask, onMoveTask, onReorderTasks, onUpdateTaskTimers }) => {
+const TaskManager: React.FC<TaskManagerProps> = ({ tasksToday, tasksForTomorrow, completedToday, projects, settings, onAddTask, onAddProject, onDeleteTask, onMoveTask, onReorderTasks, onUpdateTaskTimers, onMarkTaskIncomplete }) => {
     
     // Refs and handlers for Today's list
     const dragItemToday = React.useRef<number | null>(null);
@@ -308,7 +314,7 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasksToday, tasksForTomorrow,
                         />
                     ))}
                     {completedToday.map(task => (
-                        <TaskItem key={task.id} task={task} isCompleted={true} settings={settings} onDelete={onDeleteTask} onUpdateTaskTimers={onUpdateTaskTimers} />
+                        <TaskItem key={task.id} task={task} isCompleted={true} settings={settings} onDelete={onDeleteTask} onUpdateTaskTimers={onUpdateTaskTimers} onMarkTaskIncomplete={onMarkTaskIncomplete} />
                     ))}
                     {tasksToday.length === 0 && completedToday.length === 0 && <p className="text-center text-white/60 p-4">All done! Add a new task to get started.</p>}
                 </ul>

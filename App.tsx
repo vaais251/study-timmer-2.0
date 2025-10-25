@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
@@ -446,6 +445,13 @@ const App: React.FC = () => {
         if (newTasks) setTasks(newTasks);
     };
 
+    const handleMarkTaskIncomplete = async (id: string) => {
+        const newTasks = await dbService.markTaskIncomplete(id);
+        if (newTasks) {
+            setTasks(newTasks);
+        }
+    };
+
     const handleMoveTask = async (id: string, action: 'postpone' | 'duplicate') => {
         const newTasks = await dbService.moveTask(id, action);
         if (newTasks) setTasks(newTasks);
@@ -566,6 +572,7 @@ const App: React.FC = () => {
                     onMoveTask={handleMoveTask}
                     onReorderTasks={handleReorderTasks}
                     onUpdateTaskTimers={handleUpdateTaskTimers}
+                    onMarkTaskIncomplete={handleMarkTaskIncomplete}
                  />;
             case 'goals':
                 return <GoalsPage 

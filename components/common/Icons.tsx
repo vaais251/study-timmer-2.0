@@ -1,4 +1,3 @@
-
 import React from 'react';
 
 const commonProps = {
@@ -23,6 +22,8 @@ export const PostponeIcon: React.FC = () => <svg {...commonProps}><path d="M14 5
 export const DuplicateIcon: React.FC = () => <svg {...commonProps}><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>;
 export const MoreVerticalIcon: React.FC = () => <svg {...iconWithStrokeProps}><circle cx="12" cy="12" r="1"></circle><circle cx="12" cy="5" r="1"></circle><circle cx="12" cy="19" r="1"></circle></svg>;
 export const TrashIcon: React.FC = () => <svg {...iconWithStrokeProps}><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>;
+export const UndoIcon: React.FC = () => <svg {...iconWithStrokeProps}><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5v0a5.5 5.5 0 0 1-5.5 5.5H11"/></svg>;
+
 
 // Navbar Icons
 export const TimerIcon: React.FC = () => <svg {...iconWithStrokeProps}><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>;

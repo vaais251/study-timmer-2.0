@@ -1,5 +1,3 @@
-
-
 import { supabase } from './supabaseClient';
 import { Settings, Task, DbDailyLog, Project, Goal, Target } from '../types';
 import { getTodayDateString } from '../utils/date';
@@ -216,6 +214,42 @@ export const moveTask = async (id: string, action: 'postpone' | 'duplicate'): Pr
     
     return getTasks();
 };
+
+export const markTaskIncomplete = async (id: string): Promise<Task[] | null> => {
+    // First, find the task to get its due_date
+    const { data: taskData, error: findError } = await supabase.from('tasks').select('due_date, user_id').eq('id', id).single();
+    if (findError || !taskData) {
+        console.error("Error finding task to mark incomplete:", findError);
+        return null;
+    }
+
+    // Find the max order for that day to place the re-opened task at the end
+    const { data: maxOrderData } = await supabase
+        .from('tasks')
+        .select('task_order')
+        .eq('user_id', taskData.user_id)
+        .eq('due_date', taskData.due_date)
+        .not('task_order', 'is', null)
+        .order('task_order', { ascending: false })
+        .limit(1)
+        .single();
+    
+    const newOrder = (maxOrderData?.task_order ?? -1) + 1;
+    
+    // Update the task to be incomplete and set its new order
+    const { error: updateError } = await supabase
+        .from('tasks')
+        .update({ completed_at: null, task_order: newOrder })
+        .eq('id', id);
+
+    if (updateError) {
+        console.error("Error marking task as incomplete:", updateError);
+        return null;
+    }
+    
+    return getTasks();
+};
+
 
 // --- Projects ---
 
