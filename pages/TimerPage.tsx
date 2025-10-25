@@ -55,6 +55,7 @@ const TimerPage: React.FC<TimerPageProps> = (props) => {
             <TimerDisplay
                 timeRemaining={appState.timeRemaining}
                 totalTime={appState.sessionTotalTime}
+                isRunning={appState.isRunning}
             />
             <Controls
                 isRunning={appState.isRunning}
