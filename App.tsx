@@ -89,6 +89,7 @@ const App: React.FC = () => {
     const notificationInterval = useRef<number | null>(null);
     const wakeLock = useRef<any | null>(null);
     const isInitialLoad = useRef(true);
+    const lastHiddenTimestamp = useRef<number | null>(null);
 
     // Derived state for tasks
     const todayString = getTodayDateString();
@@ -161,11 +162,8 @@ const App: React.FC = () => {
     
     // This effect ensures the timer display is always in sync with the current task's settings when paused.
     useEffect(() => {
-        // This is the critical change:
         // On the first render after loading is complete, we want to skip this effect
         // to avoid resetting a restored timer due to race conditions.
-        // `isInitialLoad.current` is set to false after this first run, allowing
-        // the effect to work for all subsequent, user-driven changes.
         if (isLoading || isInitialLoad.current) {
             if (!isLoading) {
                 isInitialLoad.current = false;
@@ -174,6 +172,12 @@ const App: React.FC = () => {
         }
 
         if (appState.isRunning) {
+            return;
+        }
+
+        // Only adjust the timer if it hasn't been started for the current phase.
+        // This prevents a paused timer from being reset to full duration if tasks/settings change.
+        if (appState.timeRemaining !== appState.sessionTotalTime) {
             return;
         }
 
@@ -189,7 +193,7 @@ const App: React.FC = () => {
                 }));
             }
         }
-    }, [isLoading, tasks, settings.focusDuration, appState.isRunning, appState.mode, appState.sessionTotalTime]);
+    }, [isLoading, tasks, settings.focusDuration, appState.isRunning, appState.mode, appState.sessionTotalTime, appState.timeRemaining]);
 
 
     // Stop Timer Logic
@@ -297,6 +301,36 @@ const App: React.FC = () => {
             localStorage.removeItem('pomodoroAppState');
         }
     }, [appState, session]);
+
+    // This effect handles tab visibility to keep timer accurate in background
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'hidden') {
+                if (appState.isRunning) {
+                    // Save timestamp when tab is hidden and timer is running
+                    lastHiddenTimestamp.current = Date.now();
+                }
+            } else if (document.visibilityState === 'visible') {
+                if (appState.isRunning && lastHiddenTimestamp.current) {
+                    const elapsedSeconds = Math.floor((Date.now() - lastHiddenTimestamp.current) / 1000);
+                    setAppState(prev => {
+                        const newTimeRemaining = prev.timeRemaining - elapsedSeconds;
+                        return {
+                            ...prev,
+                            timeRemaining: newTimeRemaining > 0 ? newTimeRemaining : 0
+                        };
+                    });
+                    lastHiddenTimestamp.current = null;
+                }
+            }
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+
+        return () => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+        };
+    }, [appState.isRunning]);
     
     // This effect handles the timer interval and wake lock
     useEffect(() => {
