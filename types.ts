@@ -40,6 +40,7 @@ export interface Task {
     completed_at: string | null;
     project_id: string | null;
     tags: string[];
+    task_order: number | null;
     projects?: { name: string } | null; // For joined data
     custom_focus_duration: number | null;
     custom_break_duration: number | null;

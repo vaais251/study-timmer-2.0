@@ -443,9 +443,30 @@ const App: React.FC = () => {
         if (newTasks) setTasks(newTasks);
     };
     
-    const handleReorderTasks = async (reorderedTasks: Task[]) => {
-        const otherTasks = tasks.filter(t => t.due_date !== todayString || t.completed_at !== null);
-        setTasks([...reorderedTasks, ...otherTasks]);
+    const handleReorderTasks = async (reorderedDayTasks: Task[]) => {
+        if (!reorderedDayTasks.length) return;
+
+        // Optimistic UI update: Replace the old items with the newly ordered ones.
+        const reorderedIds = new Set(reorderedDayTasks.map(t => t.id));
+        const otherTasks = tasks.filter(t => !reorderedIds.has(t.id));
+        setTasks([...reorderedDayTasks, ...otherTasks]);
+
+        // Prepare the data for the database update by assigning the new order index.
+        const tasksToUpdate = reorderedDayTasks.map((task, index) => ({
+            id: task.id,
+            task_order: index,
+        }));
+
+        // Call the service to persist the new order.
+        const updatedTasksFromDB = await dbService.updateTaskOrder(tasksToUpdate);
+        
+        // On success or failure, resync with the authoritative list from the DB.
+        if (updatedTasksFromDB) {
+            setTasks(updatedTasksFromDB);
+        } else {
+            console.error("Failed to save new task order. Reverting.");
+            fetchData();
+        }
     };
 
     // Goal, Target, & Project Handlers

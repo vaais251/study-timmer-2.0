@@ -56,17 +56,16 @@ export const getTasks = async (): Promise<Task[] | null> => {
         .select('*, projects(name)')
         .eq('user_id', user.id)
         .gte('due_date', today)
-        .order('created_at', { ascending: true });
+        .order('due_date', { ascending: true }) // Sort by date first
+        .order('task_order', { ascending: true, nullsLast: true }) // Then by custom order
+        .order('created_at', { ascending: true }); // Fallback sort
 
     if (error) {
+        console.error("Error fetching tasks:", error);
         return null;
     }
     
     return data;
-};
-
-const fetchAllTasks = async (): Promise<Task[] | null> => {
-    return getTasks();
 };
 
 export const addTask = async (text: string, poms: number, isTomorrow: boolean, projectId: string | null, tags: string[]): Promise<Task[] | null> => {
@@ -79,6 +78,17 @@ export const addTask = async (text: string, poms: number, isTomorrow: boolean, p
         ? getTodayDateString(new Date(Date.now() + 24 * 60 * 60 * 1000))
         : getTodayDateString();
 
+    const { data: maxOrderData } = await supabase
+        .from('tasks')
+        .select('task_order')
+        .eq('user_id', user.id)
+        .eq('due_date', dueDate)
+        .order('task_order', { ascending: false })
+        .limit(1)
+        .single();
+        
+    const newOrder = (maxOrderData?.task_order ?? -1) + 1;
+
     const taskToInsert = {
         user_id: user.id,
         text,
@@ -88,6 +98,7 @@ export const addTask = async (text: string, poms: number, isTomorrow: boolean, p
         comments: [],
         project_id: projectId,
         tags: tags,
+        task_order: newOrder,
     };
     
     const { error } = await supabase
@@ -96,10 +107,11 @@ export const addTask = async (text: string, poms: number, isTomorrow: boolean, p
         .select();
     
     if (error) {
+        console.error("Error adding task:", error);
         return null;
     }
     
-    return fetchAllTasks();
+    return getTasks();
 };
 
 export const updateTask = async (id: string, updates: Partial<Omit<Task, 'id' | 'user_id' | 'created_at' | 'projects'>>): Promise<Task | null> => {
@@ -111,35 +123,79 @@ export const updateTask = async (id: string, updates: Partial<Omit<Task, 'id' | 
         .single();
 
     if (error) {
+        console.error("Error updating task:", error);
         return null;
     }
 
     return data;
 };
 
+export const updateTaskOrder = async (tasksToUpdate: { id: string, task_order: number }[]): Promise<Task[] | null> => {
+    // Use Promise.all to run individual updates in parallel. This is safer than a single bulk upsert.
+    const updatePromises = tasksToUpdate.map(task =>
+        supabase
+            .from('tasks')
+            .update({ task_order: task.task_order })
+            .eq('id', task.id)
+    );
+
+    try {
+        const results = await Promise.all(updatePromises);
+        // Check if any of the parallel updates resulted in an error
+        const firstError = results.find(res => res.error);
+        if (firstError) {
+            throw firstError.error;
+        }
+    } catch (error) {
+        console.error("Error during parallel task order update:", error);
+        return null; // On failure, return null
+    }
+
+    // On success, refetch all tasks to ensure UI is in sync with DB
+    return getTasks();
+};
+
+
 export const deleteTask = async (id: string): Promise<Task[] | null> => {
     const { error } = await supabase.from('tasks').delete().eq('id', id);
     if (error) {
+        console.error("Error deleting task:", error);
         return null;
     }
-    return fetchAllTasks();
+    return getTasks();
 };
 
 export const moveTask = async (id: string, action: 'postpone' | 'duplicate'): Promise<Task[] | null> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
     const tomorrow = getTodayDateString(new Date(Date.now() + 24 * 60 * 60 * 1000));
     
+    const { data: maxOrderData } = await supabase
+        .from('tasks')
+        .select('task_order')
+        .eq('user_id', user.id)
+        .eq('due_date', tomorrow)
+        .order('task_order', { ascending: false })
+        .limit(1)
+        .single();
+    
+    const newOrderForTomorrow = (maxOrderData?.task_order ?? -1) + 1;
+
     if (action === 'postpone') {
-        await supabase
+        const { error } = await supabase
             .from('tasks')
-            .update({ due_date: tomorrow })
+            .update({ due_date: tomorrow, task_order: newOrderForTomorrow })
             .eq('id', id);
+        if (error) console.error("Error postponing task:", error);
     } else { // duplicate
         const { data: original, error: fetchError } = await supabase.from('tasks').select('*').eq('id', id).single();
         if (fetchError || !original) {
+            console.error("Error fetching original task to duplicate:", fetchError);
             return null;
         }
         
-        await supabase.from('tasks').insert({
+        const { error: insertError } = await supabase.from('tasks').insert({
             user_id: original.user_id,
             text: original.text,
             total_poms: original.total_poms,
@@ -150,10 +206,12 @@ export const moveTask = async (id: string, action: 'postpone' | 'duplicate'): Pr
             tags: original.tags,
             custom_focus_duration: original.custom_focus_duration,
             custom_break_duration: original.custom_break_duration,
+            task_order: newOrderForTomorrow,
         });
+         if (insertError) console.error("Error duplicating task:", insertError);
     }
     
-    return fetchAllTasks();
+    return getTasks();
 };
 
 // --- Projects ---

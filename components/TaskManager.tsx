@@ -59,7 +59,6 @@ const TaskSettingsDropdown: React.FC<TaskSettingsDropdownProps> = ({ task, setti
 interface TaskItemProps {
     task: Task;
     isCompleted: boolean;
-    isTomorrow: boolean;
     settings: Settings;
     onDelete: (id: string) => void;
     onMove?: (id: string, action: 'postpone' | 'duplicate') => void;
@@ -68,8 +67,9 @@ interface TaskItemProps {
     ref?: React.Ref<HTMLLIElement>;
 }
 
-const TaskItem = React.forwardRef<HTMLLIElement, TaskItemProps>(({ task, isCompleted, isTomorrow, settings, onDelete, onMove, onUpdateTaskTimers, dragProps }, ref) => {
+const TaskItem = React.forwardRef<HTMLLIElement, TaskItemProps>(({ task, isCompleted, settings, onDelete, onMove, onUpdateTaskTimers, dragProps }, ref) => {
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+    const isDraggable = !isCompleted && dragProps;
     
     return (
     <li
@@ -77,14 +77,14 @@ const TaskItem = React.forwardRef<HTMLLIElement, TaskItemProps>(({ task, isCompl
         className={`flex items-start justify-between gap-2 p-3 rounded-lg mb-2 transition-all duration-200 ${
             isCompleted 
                 ? 'bg-white/5 text-white/50 cursor-default' 
-                : isTomorrow
-                ? 'bg-white/5 border border-dashed border-amber-400/30'
-                : 'bg-white/10 hover:bg-white/20'
+                : isDraggable
+                ? 'bg-white/10 hover:bg-white/20'
+                : 'bg-white/5 border border-dashed border-amber-400/30'
         }`}
         {...dragProps}
     >
         <div className="flex items-start gap-3 flex-grow min-w-0">
-            {!isCompleted && !isTomorrow && <span className="text-white/70 cursor-grab pt-1">☰</span>}
+            {isDraggable && <span className="text-white/70 cursor-grab pt-1">☰</span>}
             <div className="flex-grow min-w-0">
                 <span className={`break-words ${isCompleted ? 'line-through' : ''}`}>{task.text}</span>
                 <div className="flex items-center gap-2 mt-1 text-xs">
@@ -99,16 +99,16 @@ const TaskItem = React.forwardRef<HTMLLIElement, TaskItemProps>(({ task, isCompl
             </div>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0 pt-1 relative">
-            <span className={`text-xs px-2 py-1 rounded ${isTomorrow ? 'bg-amber-400/20 text-amber-300' : 'bg-white/20'}`}>
+            <span className={`text-xs px-2 py-1 rounded ${isDraggable ? 'bg-white/20' : 'bg-amber-400/20 text-amber-300'}`}>
                 {task.completed_poms}/{task.total_poms}
             </span>
-            {!isCompleted && !isTomorrow && onMove && (
+            {isDraggable && onMove && (
                 <>
                     <button onClick={() => onMove(task.id, 'postpone')} className="p-1 text-amber-300 hover:text-amber-200 transition" title="Postpone to Tomorrow"><PostponeIcon /></button>
                     <button onClick={() => onMove(task.id, 'duplicate')} className="p-1 text-amber-300 hover:text-amber-200 transition" title="Duplicate for Tomorrow"><DuplicateIcon /></button>
                 </>
             )}
-             {!isCompleted && !isTomorrow && (
+             {isDraggable && (
                 <button onClick={() => setIsSettingsOpen(o => !o)} className="p-1 text-cyan-300 hover:text-cyan-200 transition" title="Custom Timers"><MoreVerticalIcon /></button>
             )}
             {!isCompleted && (
@@ -228,29 +228,52 @@ interface TaskManagerProps {
 
 const TaskManager: React.FC<TaskManagerProps> = ({ tasksToday, tasksForTomorrow, completedToday, projects, settings, onAddTask, onAddProject, onDeleteTask, onMoveTask, onReorderTasks, onUpdateTaskTimers }) => {
     
-    const dragItem = React.useRef<number | null>(null);
-    const dragOverItem = React.useRef<number | null>(null);
+    // Refs and handlers for Today's list
+    const dragItemToday = React.useRef<number | null>(null);
+    const dragOverItemToday = React.useRef<number | null>(null);
 
-    const handleDragStart = (e: React.DragEvent<HTMLLIElement>, position: number) => {
-        dragItem.current = position;
+    const handleDragStartToday = (e: React.DragEvent<HTMLLIElement>, position: number) => {
+        dragItemToday.current = position;
     };
-
-    const handleDragEnter = (e: React.DragEvent<HTMLLIElement>, position: number) => {
-        dragOverItem.current = position;
+    const handleDragEnterToday = (e: React.DragEvent<HTMLLIElement>, position: number) => {
+        dragOverItemToday.current = position;
     };
-
-    const handleDrop = () => {
-        if (dragItem.current === null || dragOverItem.current === null) return;
+    const handleDropToday = () => {
+        if (dragItemToday.current === null || dragOverItemToday.current === null) return;
         
         const reordered = [...tasksToday];
-        const dragItemContent = reordered[dragItem.current];
-        reordered.splice(dragItem.current, 1);
-        reordered.splice(dragOverItem.current, 0, dragItemContent);
+        const dragItemContent = reordered[dragItemToday.current];
+        reordered.splice(dragItemToday.current, 1);
+        reordered.splice(dragOverItemToday.current, 0, dragItemContent);
         
-        dragItem.current = null;
-        dragOverItem.current = null;
+        dragItemToday.current = null;
+        dragOverItemToday.current = null;
         onReorderTasks(reordered);
     };
+
+    // Refs and handlers for Tomorrow's list
+    const dragItemTomorrow = React.useRef<number | null>(null);
+    const dragOverItemTomorrow = React.useRef<number | null>(null);
+    
+    const handleDragStartTomorrow = (e: React.DragEvent<HTMLLIElement>, position: number) => {
+        dragItemTomorrow.current = position;
+    };
+    const handleDragEnterTomorrow = (e: React.DragEvent<HTMLLIElement>, position: number) => {
+        dragOverItemTomorrow.current = position;
+    };
+    const handleDropTomorrow = () => {
+        if (dragItemTomorrow.current === null || dragOverItemTomorrow.current === null) return;
+
+        const reordered = [...tasksForTomorrow];
+        const dragItemContent = reordered[dragItemTomorrow.current];
+        reordered.splice(dragItemTomorrow.current, 1);
+        reordered.splice(dragOverItemTomorrow.current, 0, dragItemContent);
+
+        dragItemTomorrow.current = null;
+        dragOverItemTomorrow.current = null;
+        onReorderTasks(reordered);
+    };
+
 
     return (
         <>
@@ -272,21 +295,20 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasksToday, tasksForTomorrow,
                             key={task.id} 
                             task={task} 
                             isCompleted={false} 
-                            isTomorrow={false}
                             settings={settings}
                             onDelete={onDeleteTask} 
                             onMove={onMoveTask}
                             onUpdateTaskTimers={onUpdateTaskTimers}
                             dragProps={{ 
                                 draggable: true, 
-                                onDragStart: (e) => handleDragStart(e, index),
-                                onDragEnter: (e) => handleDragEnter(e, index),
-                                onDragEnd: handleDrop
+                                onDragStart: (e) => handleDragStartToday(e, index),
+                                onDragEnter: (e) => handleDragEnterToday(e, index),
+                                onDragEnd: handleDropToday
                             }}
                         />
                     ))}
                     {completedToday.map(task => (
-                        <TaskItem key={task.id} task={task} isCompleted={true} isTomorrow={false} settings={settings} onDelete={onDeleteTask} onUpdateTaskTimers={onUpdateTaskTimers} />
+                        <TaskItem key={task.id} task={task} isCompleted={true} settings={settings} onDelete={onDeleteTask} onUpdateTaskTimers={onUpdateTaskTimers} />
                     ))}
                     {tasksToday.length === 0 && completedToday.length === 0 && <p className="text-center text-white/60 p-4">All done! Add a new task to get started.</p>}
                 </ul>
@@ -301,9 +323,22 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasksToday, tasksForTomorrow,
                     projects={projects}
                     onAddProject={onAddProject}
                 />
-                <ul className="max-h-48 overflow-y-auto pr-2">
-                    {tasksForTomorrow.map(task => (
-                        <TaskItem key={task.id} task={task} isCompleted={false} isTomorrow={true} settings={settings} onDelete={onDeleteTask} onUpdateTaskTimers={onUpdateTaskTimers} />
+                <ul className="max-h-48 overflow-y-auto pr-2" onDragOver={(e) => e.preventDefault()}>
+                    {tasksForTomorrow.map((task, index) => (
+                        <TaskItem 
+                           key={task.id} 
+                           task={task} 
+                           isCompleted={false} 
+                           settings={settings} 
+                           onDelete={onDeleteTask} 
+                           onUpdateTaskTimers={onUpdateTaskTimers}
+                           dragProps={{
+                               draggable: true,
+                               onDragStart: (e) => handleDragStartTomorrow(e, index),
+                               onDragEnter: (e) => handleDragEnterTomorrow(e, index),
+                               onDragEnd: handleDropTomorrow,
+                           }}
+                        />
                     ))}
                     {tasksForTomorrow.length === 0 && <p className="text-center text-white/60 p-4">No tasks planned for tomorrow.</p>}
                 </ul>
