@@ -1,25 +1,21 @@
+
 import { GoogleGenAI } from "@google/genai";
-
-// For deployment testing, paste your API key here.
-// IMPORTANT: For a production app, it's recommended to use environment variables.
-const GEMINI_API_KEY = "AIzaSyBT9IN5PiyqaWBdM9NekDg5d-5fWDuhZnE";
-
-if (GEMINI_API_KEY === "AIzaSyBT9IN5PiyqaWBdM9NekDg5d-5fWDuhZnE") {
-    console.warn("Gemini API key is not configured. Please add your key to services/geminiService.ts");
-}
-
-const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
 
 export async function generateContent(prompt: string): Promise<string> {
     try {
-        if (GEMINI_API_KEY === "AIzaSyBT9IN5PiyqaWBdM9NekDg5d-5fWDuhZnE") {
-            return "AI feature is disabled. Please configure your Gemini API key in `services/geminiService.ts` to enable it.";
+        // Always read the API key from the environment variables for each call.
+        // This is the most robust and secure method for handling credentials.
+        const apiKey ="AIzaSyBT9IN5PiyqaWBdM9NekDg5d-5fWDuhZnE";
+        if (!apiKey) {
+            console.warn("Gemini API key is not configured. AI features will be disabled.");
+            return "AI feature is disabled. Please ensure your Gemini API key is correctly set up in the environment.";
         }
         
+        const ai = new GoogleGenAI({ apiKey });
+
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: [{ parts: [{ text: prompt }] }],
-            // The user's code used google search, so we add it here.
             config: {
                 tools: [{ googleSearch: {} }],
             },
@@ -30,11 +26,14 @@ export async function generateContent(prompt: string): Promise<string> {
         if (text) {
             return text;
         } else {
-            throw new Error("Received an empty response from Gemini API.");
+            // This case might occur if the model returns a valid but empty response.
+            console.warn("Received an empty text response from Gemini API.");
+            return "The AI returned an empty response. You might want to rephrase your request.";
         }
     } catch (error) {
+        console.error("Error calling Gemini API:", error);
         if (error instanceof Error) {
-            return `Failed to get response from AI: ${error.message}`;
+            return `An error occurred while contacting the AI. Please check your API key and network connection. Details: ${error.message}`;
         }
         return "An unknown error occurred while contacting the AI.";
     }

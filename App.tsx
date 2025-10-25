@@ -341,51 +341,6 @@ const App: React.FC = () => {
         playStartSound();
         startTimer();
     }
-
-    // Modal Continue Handler
-    const handleModalContinue = async (comment: string) => {
-        if (notificationInterval.current) clearInterval(notificationInterval.current);
-        
-        let updatedTasks = [...tasks];
-        const wasFocusSession = modalContent.showCommentBox;
-
-        const taskJustWorkedOn = tasksToday.find(t => t.completed_at === null);
-
-        if (wasFocusSession) {
-            const result = await handleTaskCompletion(comment);
-            if (result) {
-                updatedTasks = tasks.map(t => t.id === result.id ? result : t);
-            }
-        }
-
-        const nextMode = modalContent.nextMode;
-        const newCurrentSession = nextMode === 'focus' 
-            ? (appState.currentSession >= settings.sessionsPerCycle ? 1 : appState.currentSession + 1)
-            : appState.currentSession;
-        
-        let newTime;
-        const updatedTasksToday = updatedTasks.filter(t => t.due_date === getTodayDateString() && !t.completed_at);
-
-        if (nextMode === 'break') {
-            newTime = (taskJustWorkedOn?.custom_break_duration || settings.breakDuration) * 60;
-        } else {
-            const nextTask = updatedTasksToday[0];
-            newTime = (nextTask?.custom_focus_duration || settings.focusDuration) * 60;
-        }
-
-        setAppState(prev => ({
-            ...prev,
-            mode: nextMode,
-            currentSession: newCurrentSession,
-            timeRemaining: newTime,
-            sessionTotalTime: newTime,
-            isRunning: false, // Ensure timer is paused before starting
-        }));
-
-        setIsModalVisible(false);
-        playStartSound();
-        startTimer();
-    };
     
     // Task Handlers
     const handleTaskCompletion = async (comment: string): Promise<Task | null> => {
@@ -401,11 +356,60 @@ const App: React.FC = () => {
             updatedFields.completed_at = new Date().toISOString();
         }
         
-        const updatedTask = await dbService.updateTask(currentTask.id, updatedFields);
-        if (updatedTask) {
-            setTasks(prevTasks => prevTasks.map(t => t.id === updatedTask.id ? updatedTask : t));
+        // Return the updated task from the DB, but do not set state here.
+        return await dbService.updateTask(currentTask.id, updatedFields);
+    };
+
+    // Modal Continue Handler
+    const handleModalContinue = async (comment: string) => {
+        if (notificationInterval.current) clearInterval(notificationInterval.current);
+        
+        let finalTasksState = [...tasks];
+        const wasFocusSession = modalContent.showCommentBox;
+
+        // Use the tasks state from this render to find the task that just finished.
+        const taskJustWorkedOn = tasks.find(t => t.due_date === getTodayDateString() && !t.completed_at);
+
+        if (wasFocusSession && taskJustWorkedOn) {
+            const updatedTask = await handleTaskCompletion(comment);
+            if (updatedTask) {
+                // Create the definitive new task list for this scope
+                finalTasksState = tasks.map(t => t.id === updatedTask.id ? updatedTask : t);
+                // And commit it to React state.
+                setTasks(finalTasksState);
+            }
         }
-        return updatedTask;
+
+        const nextMode = modalContent.nextMode;
+        const newCurrentSession = nextMode === 'focus' 
+            ? (appState.currentSession >= settings.sessionsPerCycle ? 1 : appState.currentSession + 1)
+            : appState.currentSession;
+        
+        // Use the fresh `finalTasksState` to determine what's next
+        const updatedTasksToday = finalTasksState.filter(t => t.due_date === getTodayDateString() && !t.completed_at);
+        let newTime;
+
+        if (nextMode === 'break') {
+            newTime = (taskJustWorkedOn?.custom_break_duration || settings.breakDuration) * 60;
+        } else {
+            const nextTask = updatedTasksToday[0];
+            newTime = (nextTask?.custom_focus_duration || settings.focusDuration) * 60;
+        }
+
+        const newEndTime = Date.now() + newTime * 1000;
+
+        setAppState(prev => ({
+            ...prev,
+            mode: nextMode,
+            currentSession: newCurrentSession,
+            timeRemaining: newTime,
+            sessionTotalTime: newTime,
+            isRunning: true, // Start timer immediately
+        }));
+        setPhaseEndTime(newEndTime);
+
+        setIsModalVisible(false);
+        playStartSound();
     };
     
     const handleUpdateTaskTimers = async (id: string, newTimers: { focus: number | null, break: number | null }) => {

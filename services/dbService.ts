@@ -1,4 +1,5 @@
 
+
 import { supabase } from './supabaseClient';
 import { Settings, Task, DbDailyLog, Project, Goal, Target } from '../types';
 import { getTodayDateString } from '../utils/date';
@@ -57,7 +58,7 @@ export const getTasks = async (): Promise<Task[] | null> => {
         .eq('user_id', user.id)
         .gte('due_date', today)
         .order('due_date', { ascending: true }) // Sort by date first
-        .order('task_order', { ascending: true, nullsLast: true }) // Then by custom order
+        .order('task_order', { ascending: true, nullsFirst: true }) // Then by custom order, putting unordered tasks first
         .order('created_at', { ascending: true }); // Fallback sort
 
     if (error) {
@@ -83,6 +84,7 @@ export const addTask = async (text: string, poms: number, isTomorrow: boolean, p
         .select('task_order')
         .eq('user_id', user.id)
         .eq('due_date', dueDate)
+        .not('task_order', 'is', null) // Ensure we only get tasks with an order
         .order('task_order', { ascending: false })
         .limit(1)
         .single();
@@ -176,6 +178,7 @@ export const moveTask = async (id: string, action: 'postpone' | 'duplicate'): Pr
         .select('task_order')
         .eq('user_id', user.id)
         .eq('due_date', tomorrow)
+        .not('task_order', 'is', null)
         .order('task_order', { ascending: false })
         .limit(1)
         .single();
