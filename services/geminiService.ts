@@ -1,15 +1,21 @@
-
 import { GoogleGenAI } from "@google/genai";
 
-// The API key is expected to be set in the environment variables.
-if (!process.env.API_KEY) {
-    throw new Error("Gemini API key is not configured in environment variables.");
+// For deployment testing, paste your API key here.
+// IMPORTANT: For a production app, it's recommended to use environment variables.
+const GEMINI_API_KEY = "YOUR_GEMINI_API_KEY_HERE";
+
+if (GEMINI_API_KEY === "YOUR_GEMINI_API_KEY_HERE") {
+    console.warn("Gemini API key is not configured. Please add your key to services/geminiService.ts");
 }
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
 
 export async function generateContent(prompt: string): Promise<string> {
     try {
+        if (GEMINI_API_KEY === "YOUR_GEMINI_API_KEY_HERE") {
+            return "AI feature is disabled. Please configure your Gemini API key in `services/geminiService.ts` to enable it.";
+        }
+        
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: [{ parts: [{ text: prompt }] }],
