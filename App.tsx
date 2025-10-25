@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
 import * as dbService from './services/dbService';
@@ -15,13 +15,54 @@ import AICoachPage from './pages/AICoachPage';
 import SettingsPage from './pages/SettingsPage';
 import CompletionModal from './components/CompletionModal';
 import AuthPage from './pages/AuthPage';
-import Spinner from './components/common/Spinner';
+import LoadingAnimation from './components/common/LoadingAnimation';
 import GoalsPage from './pages/GoalsPage';
+
+// Reads from localStorage to initialize the timer state synchronously.
+const getInitialAppState = (): { initialState: AppState; wasRestored: boolean } => {
+    const defaultState: AppState = {
+        mode: 'focus',
+        currentSession: 1,
+        timeRemaining: 25 * 60,
+        sessionTotalTime: 25 * 60,
+        isRunning: false,
+    };
+
+    const savedStateJSON = localStorage.getItem('pomodoroAppState');
+
+    if (savedStateJSON) {
+        try {
+            const { savedAppState, timestamp } = JSON.parse(savedStateJSON);
+            let finalState = savedAppState;
+
+            // If the timer was running, calculate time elapsed since the tab was closed
+            if (savedAppState.isRunning) {
+                const elapsedSeconds = Math.floor((Date.now() - timestamp) / 1000);
+                const newTimeRemaining = savedAppState.timeRemaining - elapsedSeconds;
+                finalState = {
+                    ...savedAppState,
+                    timeRemaining: newTimeRemaining > 0 ? newTimeRemaining : 0 
+                };
+            }
+            return { initialState: finalState, wasRestored: true };
+        } catch (e) {
+            console.error("Failed to parse saved state:", e);
+            localStorage.removeItem('pomodoroAppState');
+        }
+    }
+    
+    return { initialState: defaultState, wasRestored: false };
+};
+
 
 const App: React.FC = () => {
     const [session, setSession] = useState<Session | null>(null);
     const [isLoading, setIsLoading] = useState(true);
-    const [isStateRestored, setIsStateRestored] = useState(false);
+
+    // Initialize state synchronously from localStorage to prevent race conditions.
+    const memoizedInitialState = useMemo(() => getInitialAppState(), []);
+    const [appState, setAppState] = useState<AppState>(memoizedInitialState.initialState);
+    const [didRestoreFromStorage, setDidRestoreFromStorage] = useState<boolean>(memoizedInitialState.wasRestored);
 
     const [settings, setSettings] = useState<Settings>({
         focusDuration: 25,
@@ -40,14 +81,6 @@ const App: React.FC = () => {
         total_focus_minutes: 0,
     });
 
-    const [appState, setAppState] = useState<AppState>({
-        mode: 'focus',
-        currentSession: 1,
-        timeRemaining: settings.focusDuration * 60,
-        sessionTotalTime: settings.focusDuration * 60,
-        isRunning: false,
-    });
-
     const [page, setPage] = useState<Page>('timer');
     const [isModalVisible, setIsModalVisible] = useState(false);
     const [modalContent, setModalContent] = useState({ title: '', message: '', nextMode: 'focus' as Mode, showCommentBox: false });
@@ -55,6 +88,7 @@ const App: React.FC = () => {
     const timerInterval = useRef<number | null>(null);
     const notificationInterval = useRef<number | null>(null);
     const wakeLock = useRef<any | null>(null);
+    const isInitialLoad = useRef(true);
 
     // Derived state for tasks
     const todayString = getTodayDateString();
@@ -97,21 +131,25 @@ const App: React.FC = () => {
             if (userGoals) setGoals(userGoals);
             if (userTargets) setTargets(userTargets);
             
-            const firstTask = userTasks?.filter(t => t.due_date === getTodayDateString() && !t.completed_at)[0];
-            const initialFocusTime = firstTask?.custom_focus_duration || userSettings?.focusDuration || 25;
+            // Only set the initial time if state was NOT restored from localStorage.
+            // This prevents overwriting the timer when the tab is reloaded.
+            if (!didRestoreFromStorage) {
+                const firstTask = userTasks?.filter(t => t.due_date === getTodayDateString() && !t.completed_at)[0];
+                const initialFocusTime = firstTask?.custom_focus_duration || userSettings?.focusDuration || 25;
 
-            setAppState(prev => ({
-                ...prev,
-                timeRemaining: initialFocusTime * 60,
-                sessionTotalTime: initialFocusTime * 60,
-            }));
+                setAppState(prev => ({
+                    ...prev,
+                    timeRemaining: initialFocusTime * 60,
+                    sessionTotalTime: initialFocusTime * 60,
+                }));
+            }
 
         } catch (error) {
-            
+            console.error("Error fetching data:", error);
         } finally {
             setIsLoading(false);
         }
-    }, [session]);
+    }, [session, didRestoreFromStorage]);
 
     useEffect(() => {
         if (session) {
@@ -123,34 +161,41 @@ const App: React.FC = () => {
     
     // This effect ensures the timer display is always in sync with the current task's settings when paused.
     useEffect(() => {
-        // This effect's job is to sync the PAUSED timer to the CURRENT task's settings.
+        // This is the critical change:
+        // On the first render after loading is complete, we want to skip this effect
+        // to avoid resetting a restored timer due to race conditions.
+        // `isInitialLoad.current` is set to false after this first run, allowing
+        // the effect to work for all subsequent, user-driven changes.
+        if (isLoading || isInitialLoad.current) {
+            if (!isLoading) {
+                isInitialLoad.current = false;
+            }
+            return;
+        }
+
         if (appState.isRunning) {
-            return; // Don't interfere with a running timer.
+            return;
         }
 
         if (appState.mode === 'focus') {
             const currentTask = tasks.find(t => t.due_date === getTodayDateString() && !t.completed_at);
-            const newTimeInSeconds = (currentTask?.custom_focus_duration || settings.focusDuration) * 60;
-            
-            // Only update state if the time is actually different.
-            if (appState.timeRemaining !== newTimeInSeconds) {
+            const newTotalTime = (currentTask?.custom_focus_duration || settings.focusDuration) * 60;
+
+            if (appState.sessionTotalTime !== newTotalTime) {
                 setAppState(prev => ({
                     ...prev,
-                    timeRemaining: newTimeInSeconds,
-                    sessionTotalTime: newTimeInSeconds,
+                    timeRemaining: newTotalTime,
+                    sessionTotalTime: newTotalTime,
                 }));
             }
         }
-        // No 'else' for break mode. The break timer is set when a focus session ends, which is sufficient.
-    }, [tasks, appState.isRunning, appState.mode, settings.focusDuration]);
+    }, [isLoading, tasks, settings.focusDuration, appState.isRunning, appState.mode, appState.sessionTotalTime]);
 
 
     // Stop Timer Logic
     const stopTimer = useCallback(() => {
-        if (!appState.isRunning) return;
+        if (!appState.isRunning && !timerInterval.current) return;
         setAppState(prev => ({ ...prev, isRunning: false }));
-        if (timerInterval.current) clearInterval(timerInterval.current);
-        if (wakeLock.current) wakeLock.current.release().then(() => wakeLock.current = null);
     }, [appState.isRunning]);
 
     // Reset Timer Logic
@@ -169,25 +214,16 @@ const App: React.FC = () => {
     }, [stopTimer, settings.focusDuration, tasksToday]);
 
     // Start Timer Logic
-    const startTimer = async () => {
+    const startTimer = useCallback(async () => {
         if (appState.isRunning) return;
         resumeAudioContext();
         setAppState(prev => ({ ...prev, isRunning: true }));
-        
-        timerInterval.current = window.setInterval(() => {
-            setAppState(prev => ({ ...prev, timeRemaining: prev.timeRemaining - 1 }));
-        }, 1000);
+    }, [appState.isRunning]);
+    
+    const playStartSound = useCallback(() => {
+         if (appState.mode === 'focus') playFocusStartSound(); else playBreakStartSound();
+    }, [appState.mode]);
 
-        if ('wakeLock' in navigator) {
-            try {
-                wakeLock.current = await navigator.wakeLock.request('screen');
-            } catch (err: any) {
-                // This error is not critical and can be ignored.
-            }
-        }
-
-        if (appState.mode === 'focus') playFocusStartSound(); else playBreakStartSound();
-    };
 
     // Phase Completion Logic
     const completePhase = useCallback(async () => {
@@ -247,60 +283,60 @@ const App: React.FC = () => {
     }, [appState.mode]);
     
     // --- STATE PERSISTENCE LOGIC ---
+    // Save state to localStorage whenever it changes
     useEffect(() => {
-        const handleBeforeUnload = () => {
-            const isPristine = !appState.isRunning && appState.timeRemaining === appState.sessionTotalTime;
-            if (!isPristine) {
-                const stateToSave = {
-                    savedAppState: appState,
-                    timestamp: Date.now(),
-                };
-                localStorage.setItem('pomodoroAppState', JSON.stringify(stateToSave));
-            } else {
-                localStorage.removeItem('pomodoroAppState');
+        if (!session) return;
+        const isPristine = !appState.isRunning && appState.timeRemaining === appState.sessionTotalTime;
+        if (!isPristine) {
+            const stateToSave = {
+                savedAppState: appState,
+                timestamp: Date.now(),
+            };
+            localStorage.setItem('pomodoroAppState', JSON.stringify(stateToSave));
+        } else {
+            localStorage.removeItem('pomodoroAppState');
+        }
+    }, [appState, session]);
+    
+    // This effect handles the timer interval and wake lock
+    useEffect(() => {
+        const requestWakeLock = async () => {
+             if ('wakeLock' in navigator && !wakeLock.current) {
+                try {
+                    wakeLock.current = await navigator.wakeLock.request('screen');
+                } catch (err) {}
             }
         };
 
-        window.addEventListener('beforeunload', handleBeforeUnload);
-        return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-    }, [appState]);
-
-    useEffect(() => {
-        if (!isLoading && session && !isStateRestored) {
-            const savedStateJSON = localStorage.getItem('pomodoroAppState');
-            if (savedStateJSON) {
-                try {
-                    const { savedAppState, timestamp } = JSON.parse(savedStateJSON);
-
-                    if (savedAppState.isRunning) {
-                        const elapsedSeconds = Math.floor((Date.now() - timestamp) / 1000);
-                        const newTimeRemaining = savedAppState.timeRemaining - elapsedSeconds;
-
-                        if (newTimeRemaining > 0) {
-                            const restoredState = { ...savedAppState, timeRemaining: newTimeRemaining };
-                            setAppState(restoredState);
-                            timerInterval.current = window.setInterval(() => {
-                                setAppState(prev => ({ ...prev, timeRemaining: prev.timeRemaining - 1 }));
-                            }, 1000);
-                            if ('wakeLock' in navigator) {
-                                navigator.wakeLock.request('screen').then(lock => {
-                                    wakeLock.current = lock;
-                                }).catch(() => {});
-                            }
-                        } else {
-                            setAppState({ ...savedAppState, timeRemaining: 0 });
-                        }
-                    } else {
-                        setAppState(savedAppState);
-                    }
-                } catch (e) {
-                    localStorage.removeItem('pomodoroAppState');
-                }
+        const releaseWakeLock = () => {
+            if (wakeLock.current) {
+                wakeLock.current.release().then(() => { wakeLock.current = null; });
             }
-            setIsStateRestored(true);
+        };
+
+        if (appState.isRunning) {
+            requestWakeLock();
+            timerInterval.current = window.setInterval(() => {
+                setAppState(prev => ({ ...prev, timeRemaining: Math.max(0, prev.timeRemaining - 1) }));
+            }, 1000);
+        } else {
+            releaseWakeLock();
+            if (timerInterval.current) {
+                clearInterval(timerInterval.current);
+                timerInterval.current = null;
+            }
         }
-    }, [isLoading, session, isStateRestored]);
+        return () => {
+            if (timerInterval.current) clearInterval(timerInterval.current);
+            releaseWakeLock();
+        }
+    }, [appState.isRunning]);
     // --- END STATE PERSISTENCE LOGIC ---
+
+    const handleStartClick = () => {
+        playStartSound();
+        startTimer();
+    }
 
     // Modal Continue Handler
     const handleModalContinue = async (comment: string) => {
@@ -339,9 +375,11 @@ const App: React.FC = () => {
             currentSession: newCurrentSession,
             timeRemaining: newTime,
             sessionTotalTime: newTime,
+            isRunning: false, // Ensure timer is paused before starting
         }));
 
         setIsModalVisible(false);
+        playStartSound();
         startTimer();
     };
     
@@ -457,11 +495,13 @@ const App: React.FC = () => {
     };
 
     const handleLogout = async () => {
+        localStorage.removeItem('pomodoroAppState');
         await supabase.auth.signOut();
         setTasks([]);
         setProjects([]);
         setGoals([]);
         setTargets([]);
+        setDidRestoreFromStorage(false); // Reset persistence flag on logout
         setDailyLog({ date: getTodayDateString(), completed_sessions: 0, total_focus_minutes: 0 });
         setPage('timer');
     };
@@ -479,7 +519,7 @@ const App: React.FC = () => {
                     dailyLog={dailyLog}
                     settings={settings}
                     appState={appState}
-                    startTimer={startTimer}
+                    startTimer={handleStartClick}
                     stopTimer={stopTimer}
                     resetTimer={resetTimer}
                     navigateToSettings={() => setPage('settings')}
@@ -535,7 +575,7 @@ const App: React.FC = () => {
                     dailyLog={dailyLog}
                     settings={settings}
                     appState={appState}
-                    startTimer={startTimer}
+                    startTimer={handleStartClick}
                     stopTimer={stopTimer}
                     resetTimer={resetTimer}
                     navigateToSettings={() => setPage('settings')}
@@ -545,7 +585,7 @@ const App: React.FC = () => {
     
     // Main Component Render
     if (isLoading) {
-        return <div className="w-full h-screen flex items-center justify-center bg-gray-900"><Spinner /></div>;
+        return <LoadingAnimation />;
     }
 
     if (!session) {
