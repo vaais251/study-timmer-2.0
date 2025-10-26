@@ -1,6 +1,7 @@
 
 
 
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
@@ -298,21 +299,6 @@ const App: React.FC = () => {
         }
         document.title = `${Math.floor(appState.timeRemaining / 60).toString().padStart(2, '0')}:${(appState.timeRemaining % 60).toString().padStart(2, '0')} - ${appState.mode === 'focus' ? 'Focus' : 'Break'}`;
     }, [appState.timeRemaining, appState.isRunning, appState.mode, completePhase]);
-
-    // Dynamic background effect
-    useEffect(() => {
-        const bgClass = appState.mode === 'focus'
-            ? 'bg-gradient-to-br from-[#667eea] to-[#764ba2]'
-            : 'bg-gradient-to-br from-[#a8e063] to-[#56ab2f]';
-        document.body.className = `${bgClass} transition-colors duration-1000 ease-in-out`;
-        document.body.style.minHeight = '100vh';
-        document.body.style.display = 'flex';
-        document.body.style.justifyContent = 'center';
-        document.body.style.alignItems = 'flex-start';
-        document.body.style.paddingTop = '2.5rem';
-        document.body.style.paddingBottom = '2.5rem';
-        document.body.style.fontFamily = `'Segoe UI', Tahoma, Geneva, Verdana, sans-serif`;
-    }, [appState.mode]);
     
     // --- STATE PERSISTENCE LOGIC ---
     // Save state to localStorage whenever it changes
@@ -679,31 +665,40 @@ const App: React.FC = () => {
     if (!session) {
         return <AuthPage />;
     }
+    
+    const bgClass = appState.mode === 'focus'
+        ? 'bg-gradient-to-br from-[#667eea] to-[#764ba2]'
+        : 'bg-gradient-to-br from-[#a8e063] to-[#56ab2f]';
 
     return (
-        <div className="w-full max-w-2xl mx-auto px-4">
-            <div className="bg-white/10 backdrop-blur-2xl rounded-3xl p-4 sm:p-8 shadow-2xl border border-white/20 animate-slideIn">
-                <Navbar currentPage={page} setPage={setPage} onLogout={handleLogout} />
-                <main className="mt-4">
-                    {renderPage()}
-                </main>
+        <div 
+          className={`min-h-screen w-full flex justify-center items-start pt-10 pb-10 ${bgClass}`}
+          style={{fontFamily: `'Segoe UI', Tahoma, Geneva, Verdana, sans-serif`}}
+        >
+            <div className="w-full max-w-2xl mx-auto px-4">
+                <div className="bg-white/10 backdrop-blur-2xl rounded-3xl p-4 sm:p-8 shadow-2xl border border-white/20 animate-slideIn">
+                    <Navbar currentPage={page} setPage={setPage} onLogout={handleLogout} />
+                    <main className="mt-4">
+                        {renderPage()}
+                    </main>
+                </div>
+                {isModalVisible && (
+                    <CompletionModal
+                        title={modalContent.title}
+                        message={modalContent.message}
+                        nextMode={modalContent.nextMode}
+                        showCommentBox={modalContent.showCommentBox}
+                        onContinue={handleModalContinue}
+                    />
+                )}
+                <style>{`
+                  @keyframes slideIn {
+                      from { opacity: 0; transform: translateY(-30px); }
+                      to { opacity: 1; transform: translateY(0); }
+                  }
+                  .animate-slideIn { animation: slideIn 0.5s ease-out; }
+                `}</style>
             </div>
-            {isModalVisible && (
-                <CompletionModal
-                    title={modalContent.title}
-                    message={modalContent.message}
-                    nextMode={modalContent.nextMode}
-                    showCommentBox={modalContent.showCommentBox}
-                    onContinue={handleModalContinue}
-                />
-            )}
-            <style>{`
-              @keyframes slideIn {
-                  from { opacity: 0; transform: translateY(-30px); }
-                  to { opacity: 1; transform: translateY(0); }
-              }
-              .animate-slideIn { animation: slideIn 0.5s ease-out; }
-            `}</style>
         </div>
     );
 };

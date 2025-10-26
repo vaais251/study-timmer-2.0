@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { PomodoroHistory, Task } from '../types';
 import * as dbService from '../services/dbService';
@@ -6,6 +7,27 @@ import Panel from './common/Panel';
 import Spinner from './common/Spinner';
 
 const TEN_THOUSAND_HOURS_IN_MINUTES = 10000 * 60;
+
+const formatTimeForMastery = (minutes: number): string => {
+    const totalMinutesRounded = Math.round(minutes);
+
+    if (totalMinutesRounded < 1) {
+        if (minutes > 0) return "<1m";
+        return "0m";
+    }
+
+    const hours = Math.floor(totalMinutesRounded / 60);
+    const remainingMinutes = totalMinutesRounded % 60;
+
+    if (hours > 0 && remainingMinutes > 0) {
+        return `${hours}h ${remainingMinutes}m`;
+    }
+    if (hours > 0) {
+        return `${hours}h`;
+    }
+    return `${remainingMinutes}m`;
+};
+
 
 const FocusBreakdownChart: React.FC<{ data: { name: string; minutes: number }[], dateRange: {start: string, end: string} }> = ({ data, dateRange }) => {
     const totalMinutes = useMemo(() => data.reduce((sum, item) => sum + item.minutes, 0), [data]);
@@ -141,15 +163,17 @@ const ExpertiseTracker: React.FC = () => {
             }
         });
 
-        // Use allExpertiseData as the template to ensure all categories are present in the list,
-        // even if they have 0 minutes in the selected range.
-        return allExpertiseData.map(category => {
-            const minutesInRange = tagMinutesMap.get(category.name) || 0;
+        // Use allExpertiseData as the source for all categories and all-time progress
+        return allExpertiseData.map(allTimeCategoryData => {
+            const minutesInRange = tagMinutesMap.get(allTimeCategoryData.name) || 0;
             return {
-                ...category,
+                // from allTimeCategoryData, for all-time progress bar
+                name: allTimeCategoryData.name,
+                displayName: allTimeCategoryData.displayName,
+                progress: allTimeCategoryData.progress,
+                
+                // calculated for the selected date range, for text display
                 totalMinutes: minutesInRange,
-                totalHours: minutesInRange / 60,
-                progress: (minutesInRange / TEN_THOUSAND_HOURS_IN_MINUTES) * 100,
             };
         });
     }, [dateRange, history, tasks, allExpertiseData]);
@@ -233,11 +257,11 @@ const ExpertiseTracker: React.FC = () => {
                         <option key={opt.name} value={opt.name} className="bg-gray-800">{opt.displayName}</option>
                     ))}
                 </select>
-                <div>
+                <div className="min-h-[70px]">
                     <div className="flex justify-between items-center mb-1 text-sm">
                         <span className="font-bold text-white">{data.displayName}</span>
                         <span className="text-white/80">
-                            {data.totalHours.toFixed(2)} / 10,000 hrs
+                            {formatTimeForMastery(data.totalMinutes)} / 10,000 hrs
                         </span>
                     </div>
                     <div className="w-full bg-black/30 rounded-full h-4 shadow-inner">
@@ -246,7 +270,9 @@ const ExpertiseTracker: React.FC = () => {
                             style={{ width: `${Math.min(100, data.progress)}%` }}
                         ></div>
                     </div>
-                    <p className="text-right text-xs text-white/60 mt-1">{data.progress.toFixed(4)}% complete</p>
+                     <div className="text-right text-xs text-white/60 mt-1">
+                        {data.progress.toFixed(4)}% complete
+                    </div>
                 </div>
             </div>
         );

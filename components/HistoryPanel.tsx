@@ -225,7 +225,8 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
     
     const COLORS_TASKS = ['#34D399', '#F87171'];
     const COLORS_PROJECTS = ['#60A5FA', '#FBBF24'];
-    const COLORS_PIE = ['#8884d8', '#82ca9d', '#ffc658', '#ff8042', '#0088FE', '#00C49F', '#FFBB28'];
+    const COLORS_PIE = ['#F59E0B', '#10B981', '#84CC16', '#EC4899', '#38BDF8', '#F43F5E', '#6366F1'];
+
 
     const pieChartData = useMemo(() => 
         aggregatedData.tagAnalysisData.map(item => ({ name: item.name, value: item.minutes })),
@@ -292,7 +293,7 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                         <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.2)" />
                         <XAxis dataKey="date" stroke="rgba(255,255,255,0.7)" tick={{ fontSize: 10 }} />
                         <YAxis stroke="rgba(255,255,255,0.7)" unit="%" domain={[0, 100]} />
-                        <Tooltip contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }} />
+                        <Tooltip contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }} itemStyle={{ color: 'white' }} labelStyle={{ color: 'white', fontWeight: 'bold' }} />
                         <Legend wrapperStyle={{fontSize: "12px"}}/>
                         <Line type="monotone" dataKey="completion" name="Task Completion %" stroke="#f59e0b" activeDot={{ r: 8 }} />
                     </LineChart>
@@ -307,7 +308,7 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                             <Pie data={aggregatedData.taskBreakdownData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} fill="#8884d8" label>
                                 {aggregatedData.taskBreakdownData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS_TASKS[index % COLORS_TASKS.length]} />)}
                             </Pie>
-                            <Tooltip contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }} />
+                            <Tooltip contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }} itemStyle={{ color: 'white' }} />
                             <Legend wrapperStyle={{fontSize: "12px"}}/>
                         </PieChart>
                     </ResponsiveContainer>
@@ -319,7 +320,7 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                             <Pie data={aggregatedData.projectBreakdownData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} fill="#8884d8" label>
                                 {aggregatedData.projectBreakdownData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS_PROJECTS[index % COLORS_PROJECTS.length]} />)}
                             </Pie>
-                            <Tooltip contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }} />
+                            <Tooltip contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }} itemStyle={{ color: 'white' }} />
                             <Legend wrapperStyle={{fontSize: "12px"}}/>
                         </PieChart>
                     </ResponsiveContainer>
@@ -342,10 +343,12 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                                 <Tooltip
                                     cursor={{ fill: 'rgba(255,255,255,0.1)' }}
                                     contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }}
+                                    itemStyle={{ color: 'white' }} 
+                                    labelStyle={{ color: 'white', fontWeight: 'bold' }}
                                     formatter={(value: number) => [`${value} minutes`, 'Focus Time']}
                                 />
                                 <Legend wrapperStyle={{fontSize: "12px"}}/>
-                                <Bar dataKey="minutes" name="Focus Minutes" fill="#8884d8" />
+                                <Bar dataKey="minutes" name="Focus Minutes" fill="#f59e0b" />
                             </BarChart>
                         </ResponsiveContainer>
                     ) : (
@@ -410,6 +413,7 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                                     </Pie>
                                     <Tooltip 
                                         contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }}
+                                        itemStyle={{ color: 'white' }}
                                         formatter={(value: number) => [`${value} minutes`, 'Focus Time']}
                                     />
                                     <Legend wrapperStyle={{ bottom: 0 }} />

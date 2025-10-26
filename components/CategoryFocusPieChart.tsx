@@ -1,4 +1,5 @@
 
+
 import React, { useMemo } from 'react';
 import { Task, PomodoroHistory } from '../types';
 import Panel from './common/Panel';
@@ -9,7 +10,7 @@ interface CategoryFocusPieChartProps {
     todaysHistory: PomodoroHistory[];
 }
 
-const COLORS = ['#8884d8', '#82ca9d', '#ffc658', '#ff8042', '#0088FE', '#00C49F', '#FFBB28'];
+const COLORS = ['#F59E0B', '#10B981', '#84CC16', '#EC4899', '#38BDF8', '#F43F5E', '#6366F1'];
 
 const CategoryFocusPieChart: React.FC<CategoryFocusPieChartProps> = ({ tasks, todaysHistory }) => {
     const chartData = useMemo(() => {
@@ -84,6 +85,7 @@ const CategoryFocusPieChart: React.FC<CategoryFocusPieChartProps> = ({ tasks, to
                         </Pie>
                         <Tooltip 
                             contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }}
+                            itemStyle={{ color: 'white' }}
                             formatter={(value: number) => [`${value} minutes`, 'Focus Time']}
                         />
                         <Legend wrapperStyle={{ bottom: -5 }} />
