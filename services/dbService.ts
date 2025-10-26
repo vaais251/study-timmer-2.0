@@ -1,5 +1,6 @@
 
 
+
 import { supabase } from './supabaseClient';
 import { Settings, Task, DbDailyLog, Project, Goal, Target, PomodoroHistory } from '../types';
 import { getTodayDateString } from '../utils/date';
@@ -159,11 +160,25 @@ export const updateTaskOrder = async (tasksToUpdate: { id: string, task_order: n
 
 
 export const deleteTask = async (id: string): Promise<Task[] | null> => {
-    const { error } = await supabase.from('tasks').delete().eq('id', id);
-    if (error) {
-        console.error("Error deleting task:", error);
+    // Step 1: Delete associated pomodoro history. This ensures focus time is also removed.
+    const { error: historyError } = await supabase
+        .from('pomodoro_history')
+        .delete()
+        .eq('task_id', id);
+
+    if (historyError) {
+        console.error("Error deleting pomodoro history for task:", historyError);
+        // We will still attempt to delete the task itself.
+    }
+
+    // Step 2: Delete the task itself.
+    const { error: taskError } = await supabase.from('tasks').delete().eq('id', id);
+    if (taskError) {
+        console.error("Error deleting task:", taskError);
         return null;
     }
+
+    // Step 3: Return the updated list of tasks. The calling component will handle state updates.
     return getTasks();
 };
 

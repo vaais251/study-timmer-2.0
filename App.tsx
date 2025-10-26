@@ -472,7 +472,28 @@ const App: React.FC = () => {
     
     const handleDeleteTask = async (id: string) => {
         const newTasks = await dbService.deleteTask(id);
-        if (newTasks) setTasks(newTasks);
+        if (newTasks) {
+            setTasks(newTasks);
+            
+            // After task and its history are deleted from DB, we need to refresh the local state.
+            const fetchedTodaysHistory = await dbService.getTodaysPomodoroHistory();
+            setTodaysHistory(fetchedTodaysHistory);
+            
+            // Recalculate stats for today
+            const authoritativeFocusMinutes = fetchedTodaysHistory.reduce((sum, record) => sum + (Number(record.duration_minutes) || 0), 0);
+            const newCompletedSessions = fetchedTodaysHistory.length;
+            
+            const newLog = {
+                ...dailyLog, // preserve id and user_id if they exist
+                completed_sessions: newCompletedSessions,
+                total_focus_minutes: authoritativeFocusMinutes
+            };
+
+            setDailyLog(newLog);
+            
+            // And update the daily log in the DB.
+            await dbService.upsertDailyLog(newLog);
+        }
     };
 
     const handleMarkTaskIncomplete = async (id: string) => {
