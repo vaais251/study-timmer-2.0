@@ -18,6 +18,7 @@ export const getSettings = async (): Promise<Settings | null> => {
         .single();
 
     if (error && error.code !== 'PGRST116') { // PGRST116: "exact one row not found"
+        console.error("Error fetching settings:", JSON.stringify(error, null, 2));
         return null;
     }
     
@@ -63,7 +64,7 @@ export const getTasks = async (): Promise<Task[] | null> => {
         .order('created_at', { ascending: true }); // Fallback sort
 
     if (error) {
-        console.error("Error fetching tasks:", error);
+        console.error("Error fetching tasks:", JSON.stringify(error, null, 2));
         return null;
     }
     
@@ -110,7 +111,7 @@ export const addTask = async (text: string, poms: number, isTomorrow: boolean, p
         .select();
     
     if (error) {
-        console.error("Error adding task:", error);
+        console.error("Error adding task:", JSON.stringify(error, null, 2));
         return null;
     }
     
@@ -126,7 +127,7 @@ export const updateTask = async (id: string, updates: Partial<Omit<Task, 'id' | 
         .single();
 
     if (error) {
-        console.error("Error updating task:", error);
+        console.error("Error updating task:", JSON.stringify(error, null, 2));
         return null;
     }
 
@@ -150,7 +151,7 @@ export const updateTaskOrder = async (tasksToUpdate: { id: string, task_order: n
             throw firstError.error;
         }
     } catch (error) {
-        console.error("Error during parallel task order update:", error);
+        console.error("Error during parallel task order update:", JSON.stringify(error, null, 2));
         return null; // On failure, return null
     }
 
@@ -167,14 +168,14 @@ export const deleteTask = async (id: string): Promise<Task[] | null> => {
         .eq('task_id', id);
 
     if (historyError) {
-        console.error("Error deleting pomodoro history for task:", historyError);
+        console.error("Error deleting pomodoro history for task:", JSON.stringify(historyError, null, 2));
         // We will still attempt to delete the task itself.
     }
 
     // Step 2: Delete the task itself.
     const { error: taskError } = await supabase.from('tasks').delete().eq('id', id);
     if (taskError) {
-        console.error("Error deleting task:", taskError);
+        console.error("Error deleting task:", JSON.stringify(taskError, null, 2));
         return null;
     }
 
@@ -205,11 +206,11 @@ export const moveTask = async (id: string, action: 'postpone' | 'duplicate'): Pr
             .from('tasks')
             .update({ due_date: tomorrow, task_order: newOrderForTomorrow })
             .eq('id', id);
-        if (error) console.error("Error postponing task:", error);
+        if (error) console.error("Error postponing task:", JSON.stringify(error, null, 2));
     } else { // duplicate
         const { data: original, error: fetchError } = await supabase.from('tasks').select('*').eq('id', id).single();
         if (fetchError || !original) {
-            console.error("Error fetching original task to duplicate:", fetchError);
+            console.error("Error fetching original task to duplicate:", JSON.stringify(fetchError, null, 2));
             return null;
         }
         
@@ -226,7 +227,7 @@ export const moveTask = async (id: string, action: 'postpone' | 'duplicate'): Pr
             custom_break_duration: original.custom_break_duration,
             task_order: newOrderForTomorrow,
         });
-         if (insertError) console.error("Error duplicating task:", insertError);
+         if (insertError) console.error("Error duplicating task:", JSON.stringify(insertError, null, 2));
     }
     
     return getTasks();
@@ -236,7 +237,7 @@ export const markTaskIncomplete = async (id: string): Promise<Task[] | null> => 
     // First, find the task to get its due_date
     const { data: taskData, error: findError } = await supabase.from('tasks').select('due_date, user_id').eq('id', id).single();
     if (findError || !taskData) {
-        console.error("Error finding task to mark incomplete:", findError);
+        console.error("Error finding task to mark incomplete:", JSON.stringify(findError, null, 2));
         return null;
     }
 
@@ -260,7 +261,7 @@ export const markTaskIncomplete = async (id: string): Promise<Task[] | null> => 
         .eq('id', id);
 
     if (updateError) {
-        console.error("Error marking task as incomplete:", updateError);
+        console.error("Error marking task as incomplete:", JSON.stringify(updateError, null, 2));
         return null;
     }
     
@@ -382,7 +383,7 @@ export const getDailyLogForToday = async (): Promise<DbDailyLog | null> => {
         .single();
     
     if (error && error.code !== 'PGRST116') {
-        
+        console.error("Error fetching daily log for today:", JSON.stringify(error, null, 2));
     }
 
     return data || { date: today, completed_sessions: 0, total_focus_minutes: 0, user_id: user.id };
@@ -399,7 +400,9 @@ export const upsertDailyLog = async (log: DbDailyLog): Promise<void> => {
         total_focus_minutes: log.total_focus_minutes,
     }, { onConflict: 'user_id, date' });
 
-    if (error) {}
+    if (error) {
+        console.error("Error upserting daily log:", JSON.stringify(error, null, 2));
+    }
 };
 
 
@@ -502,7 +505,7 @@ export const getTodaysPomodoroHistory = async (): Promise<PomodoroHistory[]> => 
         .lte('ended_at', `${today}T23:59:59Z`);
 
     if (error) {
-        console.error("Error fetching today's pomodoro history:", error);
+        console.error("Error fetching today's pomodoro history:", JSON.stringify(error, null, 2));
         return [];
     }
     return data;
@@ -540,7 +543,7 @@ export const getPomodoroHistory = async (startDate: string, endDate: string): Pr
         .lte('ended_at', `${endDate}T23:59:59Z`);
 
     if (error) {
-        console.error("Error fetching pomodoro history:", error);
+        console.error("Error fetching pomodoro history:", JSON.stringify(error, null, 2));
         return [];
     }
     return data;
@@ -557,7 +560,7 @@ export const getAllPomodoroHistory = async (): Promise<PomodoroHistory[]> => {
         .order('ended_at', { ascending: false });
 
     if (error) {
-        console.error("Error fetching all pomodoro history:", error);
+        console.error("Error fetching all pomodoro history:", JSON.stringify(error, null, 2));
         return [];
     }
     return data;
@@ -579,7 +582,7 @@ export const getConsistencyLogs = async (days = 180): Promise<DbDailyLog[]> => {
         .gte('due_date', startDateString);
 
     if (error) {
-        console.error("Error fetching tasks for consistency logs:", error);
+        console.error("Error fetching tasks for consistency logs:", JSON.stringify(error, null, 2));
         return [];
     }
 
