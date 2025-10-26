@@ -36,61 +36,117 @@ const StatCard: React.FC<{title: string, children: React.ReactNode}> = ({ title,
 
 // --- New Component: Consistency Tracker ---
 const ConsistencyTracker: React.FC<{ logs: DbDailyLog[] }> = ({ logs }) => {
-    const data = useMemo(() => {
-        // The `logs` prop now contains the completion percentage in `completed_sessions`.
+    const { weeks, monthLabels } = useMemo(() => {
         const activityMap: Map<string, number> = new Map(logs.map(log => [log.date, log.completed_sessions]));
         const today = new Date();
-        const days = Array.from({ length: 180 }, (_, i) => {
+        const daysToShow = 180; // Approx 6 months
+        const days = Array.from({ length: daysToShow }, (_, i) => {
             const date = new Date();
-            date.setDate(today.getDate() - i);
+            date.setDate(today.getDate() - (daysToShow - 1 - i));
             return date;
-        }).reverse();
-
-        const firstDayOfWeek = days[0].getDay();
-        const placeholders = Array.from({ length: firstDayOfWeek }, (_, i) => <div key={`ph-${i}`} className="w-4 h-4" />);
-        
-        const cells = days.map(date => {
-            const dateString = getTodayDateString(date);
-            const percentage = activityMap.get(dateString) || 0;
-            
-            // Color thresholds are now based on completion percentage.
-            let colorClass = 'bg-white/10'; // 0%
-            if (percentage > 0) colorClass = 'bg-green-500/30';   // 1-24%
-            if (percentage >= 25) colorClass = 'bg-green-500/50';  // 25-49%
-            if (percentage >= 50) colorClass = 'bg-green-500/70';  // 50-74%
-            if (percentage >= 75) colorClass = 'bg-green-500/90';  // 75-99%
-            if (percentage === 100) colorClass = 'bg-green-500';   // 100%
-
-            // Tooltip now shows the completion percentage.
-            return <div key={dateString} className={`w-4 h-4 rounded-sm ${colorClass}`} title={`${percentage}% tasks completed on ${dateString}`} />;
         });
 
-        return [...placeholders, ...cells];
-    }, [logs]);
+        const firstDayOfWeek = days[0].getDay(); // 0=Sun, 1=Mon, ...
 
-    const monthLabels = useMemo(() => {
-        const months = [];
-        let lastMonth = -1;
-        for (let i = 180 - 1; i >= 0; i -= 7) {
-            const date = new Date();
-            date.setDate(date.getDate() - i);
-            const month = date.getMonth();
-            if (month !== lastMonth) {
-                months.push(date.toLocaleString('default', { month: 'short' }));
-                lastMonth = month;
-            }
+        const allCells = [
+            ...Array(firstDayOfWeek).fill(null),
+            ...days.map(date => {
+                const dateString = getTodayDateString(date);
+                const percentage = activityMap.get(dateString) || 0;
+
+                let colorClass = 'bg-gray-800'; // Corresponds to GitHub's no-contribution color
+                if (percentage > 0 && percentage < 25) colorClass = 'bg-emerald-900';
+                if (percentage >= 25 && percentage < 50) colorClass = 'bg-emerald-700';
+                if (percentage >= 50 && percentage < 75) colorClass = 'bg-emerald-500';
+                if (percentage >= 75) colorClass = 'bg-emerald-300';
+
+                return {
+                    date: dateString,
+                    colorClass,
+                    percentage,
+                    month: date.getMonth(),
+                };
+            })
+        ];
+
+        const weeks = [];
+        for (let i = 0; i < allCells.length; i += 7) {
+            weeks.push(allCells.slice(i, i + 7));
         }
-        return months;
-    }, []);
+
+        const monthLabels: { name: string; startColumn: number }[] = [];
+        let lastMonth = -1;
+        weeks.forEach((week, colIndex) => {
+            const firstDayOfNewMonthInWeek = week.find(day => day && day.month !== lastMonth);
+            if (firstDayOfNewMonthInWeek) {
+                lastMonth = firstDayOfNewMonthInWeek.month;
+                if (colIndex > 0 || monthLabels.length === 0) {
+                     monthLabels.push({
+                        name: new Date(today.getFullYear(), lastMonth).toLocaleString('default', { month: 'short' }),
+                        startColumn: colIndex,
+                    });
+                }
+            }
+        });
+
+        return { weeks, monthLabels };
+    }, [logs]);
 
     return (
         <div className="mt-8">
-            <h3 className="text-lg font-semibold text-white text-center mb-2">Daily Consistency Tracker</h3>
-            <div className="bg-black/20 p-3 rounded-lg overflow-x-auto">
-                <div className="flex justify-end gap-x-[72px] pr-2 mb-1">
-                    {monthLabels.map((m, i) => <span key={i} className="text-xs text-white/50">{m}</span>)}
+            <h3 className="text-lg font-semibold text-white text-center mb-4">Daily Consistency Tracker</h3>
+            <div className="bg-black/20 p-4 rounded-lg overflow-x-auto">
+                <div className="inline-block">
+                    <div className="flex" style={{ paddingLeft: '2.5rem', paddingBottom: '0.5rem' }}>
+                        {monthLabels.map((month, index) => {
+                            const nextMonth = monthLabels[index + 1];
+                            const colSpan = nextMonth ? nextMonth.startColumn - month.startColumn : weeks.length - month.startColumn;
+                            // Cell width (w-3) is 12px, gap is 4px. Total per column = 16px.
+                            return (
+                                <div key={month.name} className="text-xs text-white/50" style={{ minWidth: `${colSpan * 16}px` }}>
+                                    {month.name}
+                                </div>
+                            );
+                        })}
+                    </div>
+                    <div className="flex gap-3">
+                        <div className="grid grid-rows-7 text-xs text-white/50 w-8 shrink-0 text-right pr-2">
+                            <span></span>
+                            <span className="self-center">Mon</span>
+                            <span></span>
+                            <span className="self-center">Wed</span>
+                            <span></span>
+                            <span className="self-center">Fri</span>
+                            <span></span>
+                        </div>
+                        
+                        <div className="flex gap-1">
+                            {weeks.map((week, weekIndex) => (
+                                <div key={weekIndex} className="grid grid-rows-7 gap-1">
+                                    {week.map((day, dayIndex) => (
+                                        day 
+                                        ? <div 
+                                            key={day.date} 
+                                            className={`w-3 h-3 rounded-sm ${day.colorClass}`} 
+                                            title={`${day.percentage}% tasks completed on ${day.date}`} 
+                                          />
+                                        : <div key={`ph-${weekIndex}-${dayIndex}`} className="w-3 h-3" />
+                                    ))}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
                 </div>
-                <div className="grid grid-flow-col grid-rows-7 gap-1">{data}</div>
+
+                <div className="flex justify-end items-center mt-4 text-xs text-white/60 gap-2 pr-4">
+                    <span>Less</span>
+                    <div className="w-3 h-3 rounded-sm bg-gray-800"></div>
+                    <div className="w-3 h-3 rounded-sm bg-emerald-900"></div>
+                    <div className="w-3 h-3 rounded-sm bg-emerald-700"></div>
+                    <div className="w-3 h-3 rounded-sm bg-emerald-500"></div>
+                    <div className="w-3 h-3 rounded-sm bg-emerald-300"></div>
+                    <span>More</span>
+                </div>
             </div>
         </div>
     );
