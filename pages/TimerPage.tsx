@@ -1,7 +1,8 @@
 
 
-import React from 'react';
-import { AppState, Settings, Task, DbDailyLog, Mode } from '../types';
+
+import React, { useMemo } from 'react';
+import { AppState, Settings, Task, DbDailyLog, Mode, PomodoroHistory } from '../types';
 import Header from '../components/Header';
 import SessionInfo from '../components/SessionInfo';
 import ModeIndicator from '../components/ModeIndicator';
@@ -9,6 +10,8 @@ import TimerDisplay from '../components/TimerDisplay';
 import Controls from '../components/Controls';
 import StatsPanel from '../components/StatsPanel';
 import AmbientSounds from '../components/AmbientSounds';
+import CategoryFocusChart from '../components/CategoryFocusChart';
+import CategoryFocusPieChart from '../components/CategoryFocusPieChart';
 
 interface TimerPageProps {
     appState: AppState;
@@ -21,6 +24,7 @@ interface TimerPageProps {
     resetTimer: () => void;
     navigateToSettings: () => void;
     currentTask?: Task;
+    todaysHistory: PomodoroHistory[];
 }
 
 const CurrentTaskDisplay: React.FC<{ task?: Task }> = ({ task }) => {
@@ -41,8 +45,10 @@ const CurrentTaskDisplay: React.FC<{ task?: Task }> = ({ task }) => {
 };
 
 const TimerPage: React.FC<TimerPageProps> = (props) => {
-    const { appState, settings, tasksToday, completedToday, dailyLog, startTimer, stopTimer, resetTimer, navigateToSettings, currentTask } = props;
+    const { appState, settings, tasksToday, completedToday, dailyLog, startTimer, stopTimer, resetTimer, navigateToSettings, currentTask, todaysHistory } = props;
     
+    const allTodaysTasks = useMemo(() => [...tasksToday, ...completedToday], [tasksToday, completedToday]);
+
     return (
         <>
             <Header />
@@ -71,6 +77,15 @@ const TimerPage: React.FC<TimerPageProps> = (props) => {
                 completedToday={completedToday}
                 tasksToday={tasksToday}
                 totalFocusMinutes={dailyLog.total_focus_minutes}
+            />
+            <CategoryFocusChart
+                tasks={allTodaysTasks}
+                todaysHistory={todaysHistory}
+                totalFocusMinutes={dailyLog.total_focus_minutes}
+            />
+            <CategoryFocusPieChart
+                tasks={allTodaysTasks}
+                todaysHistory={todaysHistory}
             />
         </>
     );

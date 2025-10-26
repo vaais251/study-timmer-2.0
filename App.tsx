@@ -1,10 +1,11 @@
 
 
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
 import * as dbService from './services/dbService';
-import { Task, Settings, Mode, Page, DbDailyLog, Project, Goal, Target, AppState } from './types';
+import { Task, Settings, Mode, Page, DbDailyLog, Project, Goal, Target, AppState, PomodoroHistory } from './types';
 import { getTodayDateString } from './utils/date';
 import { playFocusStartSound, playFocusEndSound, playBreakStartSound, playBreakEndSound, playAlertLoop, resumeAudioContext } from './utils/audio';
 
@@ -74,6 +75,7 @@ const App: React.FC = () => {
     const [projects, setProjects] = useState<Project[]>([]);
     const [goals, setGoals] = useState<Goal[]>([]);
     const [targets, setTargets] = useState<Target[]>([]);
+    const [todaysHistory, setTodaysHistory] = useState<PomodoroHistory[]>([]);
     
     const [dailyLog, setDailyLog] = useState<DbDailyLog>({
         date: getTodayDateString(),
@@ -113,7 +115,7 @@ const App: React.FC = () => {
         if (!session) return;
         setIsLoading(true);
         try {
-            const [userSettings, userTasks, userDailyLog, userProjects, userGoals, userTargets, todaysHistory] = await Promise.all([
+            const [userSettings, userTasks, userDailyLog, userProjects, userGoals, userTargets, fetchedTodaysHistory] = await Promise.all([
                 dbService.getSettings(),
                 dbService.getTasks(),
                 dbService.getDailyLogForToday(),
@@ -122,6 +124,8 @@ const App: React.FC = () => {
                 dbService.getTargets(),
                 dbService.getTodaysPomodoroHistory()
             ]);
+            
+            setTodaysHistory(fetchedTodaysHistory);
 
             if (userSettings) setSettings(userSettings);
             if (userTasks) setTasks(userTasks);
@@ -130,7 +134,7 @@ const App: React.FC = () => {
             if (userTargets) setTargets(userTargets);
             
             // Authoritative calculation for today's focus minutes from pomodoro_history
-            const authoritativeFocusMinutes = todaysHistory.reduce((sum, record) => sum + (Number(record.duration_minutes) || 0), 0);
+            const authoritativeFocusMinutes = fetchedTodaysHistory.reduce((sum, record) => sum + (Number(record.duration_minutes) || 0), 0);
 
             if (userDailyLog) {
                 // Overwrite the potentially stale value from the DB with the fresh calculation
@@ -256,6 +260,19 @@ const App: React.FC = () => {
             
             // Log the individual pomodoro session for authoritative tracking
             await dbService.addPomodoroHistory(currentTask?.id || null, focusDuration);
+            
+            // Optimistically update history for immediate UI feedback
+            if (session) {
+                const newHistoryRecord: PomodoroHistory = {
+                    id: `temp-${Date.now()}`,
+                    user_id: session.user.id,
+                    task_id: currentTask?.id || null,
+                    ended_at: new Date().toISOString(),
+                    duration_minutes: focusDuration,
+                };
+                setTodaysHistory(prev => [...prev, newHistoryRecord]);
+            }
+            
             // Also update the daily log in the DB (mainly for session count)
             await dbService.upsertDailyLog(newLog);
 
@@ -273,7 +290,7 @@ const App: React.FC = () => {
             setModalContent({ title: '⏰ Break Over!', message: nextTaskMessage, nextMode: 'focus', showCommentBox: false });
         }
         setIsModalVisible(true);
-    }, [appState, settings, stopTimer, tasksToday, dailyLog]);
+    }, [appState, settings, stopTimer, tasksToday, dailyLog, session]);
     
     useEffect(() => {
         if (appState.isRunning && appState.timeRemaining <= 0) {
@@ -549,6 +566,7 @@ const App: React.FC = () => {
         setProjects([]);
         setGoals([]);
         setTargets([]);
+        setTodaysHistory([]);
         setDidRestoreFromStorage(false); // Reset persistence flag on logout
         setDailyLog({ date: getTodayDateString(), completed_sessions: 0, total_focus_minutes: 0 });
         setPage('timer');
@@ -571,6 +589,7 @@ const App: React.FC = () => {
                     stopTimer={stopTimer}
                     resetTimer={resetTimer}
                     navigateToSettings={() => setPage('settings')}
+                    todaysHistory={todaysHistory}
                 />;
             case 'plan':
                  return <PlanPage 
@@ -626,6 +645,7 @@ const App: React.FC = () => {
                     stopTimer={stopTimer}
                     resetTimer={resetTimer}
                     navigateToSettings={() => setPage('settings')}
+                    todaysHistory={todaysHistory}
                 />;
         }
     };

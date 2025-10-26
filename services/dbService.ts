@@ -531,6 +531,23 @@ export const getPomodoroHistory = async (startDate: string, endDate: string): Pr
     return data;
 };
 
+export const getAllPomodoroHistory = async (): Promise<PomodoroHistory[]> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
+
+    const { data, error } = await supabase
+        .from('pomodoro_history')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('ended_at', { ascending: false });
+
+    if (error) {
+        console.error("Error fetching all pomodoro history:", error);
+        return [];
+    }
+    return data;
+};
+
 export const getConsistencyLogs = async (days = 180): Promise<DbDailyLog[]> => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return [];

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Task, Project, Settings } from '../types';
 import TaskManager from '../components/TaskManager';
+import ExpertiseTracker from '../components/ExpertiseTracker';
 
 interface PlanPageProps {
     tasksToday: Task[];
@@ -19,20 +20,23 @@ interface PlanPageProps {
 
 const PlanPage: React.FC<PlanPageProps> = (props) => {
     return (
-        <TaskManager
-            tasksToday={props.tasksToday}
-            tasksForTomorrow={props.tasksForTomorrow}
-            completedToday={props.completedToday}
-            projects={props.projects}
-            settings={props.settings}
-            onAddTask={props.onAddTask}
-            onAddProject={props.onAddProject}
-            onDeleteTask={props.onDeleteTask}
-            onMoveTask={props.onMoveTask}
-            onReorderTasks={props.onReorderTasks}
-            onUpdateTaskTimers={props.onUpdateTaskTimers}
-            onMarkTaskIncomplete={props.onMarkTaskIncomplete}
-        />
+        <>
+            <TaskManager
+                tasksToday={props.tasksToday}
+                tasksForTomorrow={props.tasksForTomorrow}
+                completedToday={props.completedToday}
+                projects={props.projects}
+                settings={props.settings}
+                onAddTask={props.onAddTask}
+                onAddProject={props.onAddProject}
+                onDeleteTask={props.onDeleteTask}
+                onMoveTask={props.onMoveTask}
+                onReorderTasks={props.onReorderTasks}
+                onUpdateTaskTimers={props.onUpdateTaskTimers}
+                onMarkTaskIncomplete={props.onMarkTaskIncomplete}
+            />
+            <ExpertiseTracker />
+        </>
     );
 };
 

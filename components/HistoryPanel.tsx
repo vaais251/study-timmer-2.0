@@ -96,58 +96,6 @@ const ConsistencyTracker: React.FC<{ logs: DbDailyLog[] }> = ({ logs }) => {
     );
 };
 
-// --- New Component: Focus Heatmap ---
-const FocusHeatmap: React.FC<{ history: PomodoroHistory[] }> = ({ history }) => {
-    const heatmapData = useMemo(() => {
-        const grid = Array(7).fill(0).map(() => Array(24).fill(0));
-        let maxMinutes = 0;
-
-        history.forEach(item => {
-            const date = new Date(item.ended_at);
-            const day = date.getDay(); // Sunday = 0, Saturday = 6
-            const hour = date.getHours();
-            grid[day][hour] += Number(item.duration_minutes) || 0; // Ensure duration is a number
-            if (grid[day][hour] > maxMinutes) {
-                maxMinutes = grid[day][hour];
-            }
-        });
-
-        return { grid, maxMinutes };
-    }, [history]);
-
-    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    const hours = ['12am', '6am', '12pm', '6pm', '11pm'];
-
-    return (
-        <div className="mt-8">
-            <h3 className="text-lg font-semibold text-white text-center mb-2">Weekly Focus Heatmap</h3>
-            <div className="bg-black/20 p-3 rounded-lg text-xs text-white/60 flex gap-2">
-                <div className="flex flex-col justify-between pt-1">
-                    {days.map(day => <div key={day} className="h-2">{day}</div>)}
-                </div>
-                <div className="flex-grow">
-                    <div className="grid grid-cols-24 gap-px">
-                        {heatmapData.grid.flat().map((minutes, i) => {
-                            const opacity = heatmapData.maxMinutes > 0 ? minutes / heatmapData.maxMinutes : 0;
-                            return (
-                                <div
-                                    key={i}
-                                    className="w-full h-2 rounded-sm"
-                                    style={{ backgroundColor: `rgba(67, 56, 202, ${opacity})` }}
-                                    title={`${minutes} focus minutes`}
-                                />
-                            );
-                        })}
-                    </div>
-                    <div className="flex justify-between mt-1">
-                         {hours.map(hour => <span key={hour}>{hour}</span>)}
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-};
-
 
 const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, projects, allProjects, targets, historyRange, setHistoryRange, settings, pomodoroHistory, consistencyLogs }) => {
     const [selectedDay, setSelectedDay] = useState<string>('');
@@ -214,22 +162,29 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
         ];
         
         const tagAnalysisData = (() => {
-            const tagFocusTimes = new Map<string, number>();
-            // FIX: Use optional chaining and provide a default of 25 minutes.
-            // This makes the chart resilient to cases where settings haven't been saved yet.
-            const defaultFocusDuration = settings?.focusDuration || 25;
+            // Authoritative calculation using pomodoro_history as the source of truth for time spent.
+            // This ensures consistency with the Mastery Tracker.
+            const taskMap = new Map<string, string[]>();
+            allTasks.forEach(task => {
+                if (task.id && task.tags?.length > 0) {
+                    taskMap.set(task.id, task.tags);
+                }
+            });
 
-            tasks.forEach(task => {
-                if (task.completed_poms > 0 && Array.isArray(task.tags) && task.tags.length > 0) {
-                    const durationPerPom = task.custom_focus_duration || defaultFocusDuration;
-                    const totalFocusForTask = task.completed_poms * durationPerPom;
-                    task.tags.forEach(tag => {
-                        const tagKey = tag.trim().toLowerCase();
-                        if (tagKey) {
-                            const currentTotal = tagFocusTimes.get(tagKey) || 0;
-                            tagFocusTimes.set(tagKey, currentTotal + totalFocusForTask);
-                        }
-                    });
+            const tagFocusTimes = new Map<string, number>();
+
+            pomodoroHistory.forEach(item => {
+                if (item.task_id) {
+                    const tags = taskMap.get(item.task_id);
+                    if (tags) {
+                        tags.forEach(tag => {
+                            const normalizedTag = tag.trim().toLowerCase();
+                            if (normalizedTag) {
+                                const currentTotal = tagFocusTimes.get(normalizedTag) || 0;
+                                tagFocusTimes.set(normalizedTag, currentTotal + (Number(item.duration_minutes) || 0));
+                            }
+                        });
+                    }
                 }
             });
 
@@ -270,6 +225,31 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
     
     const COLORS_TASKS = ['#34D399', '#F87171'];
     const COLORS_PROJECTS = ['#60A5FA', '#FBBF24'];
+    const COLORS_PIE = ['#8884d8', '#82ca9d', '#ffc658', '#ff8042', '#0088FE', '#00C49F', '#FFBB28'];
+
+    const pieChartData = useMemo(() => 
+        aggregatedData.tagAnalysisData.map(item => ({ name: item.name, value: item.minutes })),
+        [aggregatedData.tagAnalysisData]
+    );
+
+    const totalFocusMinutesInRange = useMemo(() => 
+        pieChartData.reduce((sum, item) => sum + item.value, 0),
+        [pieChartData]
+    );
+
+    const RADIAN = Math.PI / 180;
+    const renderCustomizedLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }: any) => {
+        if (percent * 100 < 5) return null;
+        const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
+        const x = cx + radius * Math.cos(-midAngle * RADIAN);
+        const y = cy + radius * Math.sin(-midAngle * RADIAN);
+
+        return (
+            <text x={x} y={y} fill="white" textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central" className="text-sm font-bold">
+                {`${(percent * 100).toFixed(0)}%`}
+            </text>
+        );
+    };
 
     return (
         <Panel title="📜 History & Progress">
@@ -346,32 +326,34 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                 </div>
             </div>
 
-            <div className="h-80 mt-8">
-                <h3 className="text-lg font-semibold text-white text-center mb-2">Focus Time by Category</h3>
-                {aggregatedData.tagAnalysisData.length > 0 ? (
-                    <ResponsiveContainer width="100%" height="100%">
-                        <BarChart
-                            layout="vertical"
-                            data={aggregatedData.tagAnalysisData}
-                            margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
-                        >
-                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.2)" />
-                            <XAxis type="number" stroke="rgba(255,255,255,0.7)" unit="m" />
-                            <YAxis dataKey="name" type="category" stroke="rgba(255,255,255,0.7)" width={80} tick={{ fontSize: 12 }} />
-                            <Tooltip
-                                cursor={{ fill: 'rgba(255,255,255,0.1)' }}
-                                contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }}
-                                formatter={(value: number) => [`${value} minutes`, 'Focus Time']}
-                            />
-                            <Legend wrapperStyle={{fontSize: "12px"}}/>
-                            <Bar dataKey="minutes" name="Focus Minutes" fill="#8884d8" />
-                        </BarChart>
-                    </ResponsiveContainer>
-                ) : (
-                    <div className="flex items-center justify-center h-full text-white/60">
-                        No tagged tasks with completed sessions in this date range.
-                    </div>
-                )}
+            <div className="mt-8">
+                <div className="h-96">
+                    <h3 className="text-lg font-semibold text-white text-center mb-2">Focus Time by Category</h3>
+                    {aggregatedData.tagAnalysisData.length > 0 ? (
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart
+                                layout="vertical"
+                                data={aggregatedData.tagAnalysisData}
+                                margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                            >
+                                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.2)" />
+                                <XAxis type="number" stroke="rgba(255,255,255,0.7)" unit="m" />
+                                <YAxis dataKey="name" type="category" stroke="rgba(255,255,255,0.7)" width={80} tick={{ fontSize: 12 }} />
+                                <Tooltip
+                                    cursor={{ fill: 'rgba(255,255,255,0.1)' }}
+                                    contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }}
+                                    formatter={(value: number) => [`${value} minutes`, 'Focus Time']}
+                                />
+                                <Legend wrapperStyle={{fontSize: "12px"}}/>
+                                <Bar dataKey="minutes" name="Focus Minutes" fill="#8884d8" />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    ) : (
+                        <div className="flex items-center justify-center h-full text-white/60">
+                            No tagged tasks with completed sessions in this date range.
+                        </div>
+                    )}
+                </div>
             </div>
 
             <div className="mt-8">
@@ -403,8 +385,48 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
 
             <ConsistencyTracker logs={consistencyLogs} />
 
-            <FocusHeatmap history={pomodoroHistory} />
-
+            <div className="mt-8">
+                <div className="h-96">
+                    <h3 className="text-lg font-semibold text-white text-center mb-2">Focus Distribution (%)</h3>
+                     {pieChartData.length > 0 ? (
+                        <div className="w-full h-full relative">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <PieChart>
+                                    <Pie
+                                        data={pieChartData}
+                                        cx="50%"
+                                        cy="50%"
+                                        labelLine={false}
+                                        label={renderCustomizedLabel}
+                                        outerRadius={110}
+                                        innerRadius={70}
+                                        fill="#8884d8"
+                                        dataKey="value"
+                                        paddingAngle={2}
+                                    >
+                                        {pieChartData.map((entry, index) => (
+                                            <Cell key={`cell-${index}`} fill={COLORS_PIE[index % COLORS_PIE.length]} stroke="none" />
+                                        ))}
+                                    </Pie>
+                                    <Tooltip 
+                                        contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }}
+                                        formatter={(value: number) => [`${value} minutes`, 'Focus Time']}
+                                    />
+                                    <Legend wrapperStyle={{ bottom: 0 }} />
+                                </PieChart>
+                            </ResponsiveContainer>
+                            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-[60%] text-center pointer-events-none">
+                                <span className="text-4xl font-bold text-white">{totalFocusMinutesInRange}</span>
+                                <span className="block text-sm text-white/70">Total Mins</span>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="flex items-center justify-center h-full text-white/60">
+                            No data to display.
+                        </div>
+                    )}
+                </div>
+            </div>
         </Panel>
     );
 };
