@@ -2,6 +2,8 @@
 
 
 
+
+
 import React, { useMemo } from 'react';
 import { AppState, Settings, Task, DbDailyLog, Mode, PomodoroHistory } from '../types';
 import Header from '../components/Header';
@@ -78,7 +80,6 @@ const TimerPage: React.FC<TimerPageProps> = (props) => {
             <StatsPanel
                 completedToday={completedToday}
                 tasksToday={tasksToday}
-                totalFocusMinutes={dailyLog.total_focus_minutes}
                 historicalLogs={historicalLogs}
             />
             <CategoryFocusChart

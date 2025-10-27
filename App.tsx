@@ -1,5 +1,4 @@
 
-
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
@@ -122,9 +121,9 @@ const App: React.FC = () => {
         setIsLoading(true);
         try {
             const today = getTodayDateString();
-            const nineDaysAgo = new Date();
-            nineDaysAgo.setDate(nineDaysAgo.getDate() - 8);
-            const startDate = getTodayDateString(nineDaysAgo);
+            const fourteenDaysAgo = new Date();
+            fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 13); // Today + 13 previous days for week-over-week
+            const startDate = getTodayDateString(fourteenDaysAgo);
 
             // Fetch raw data sources first
             const [userSettings, userTasks, userProjects, userGoals, userTargets, userCommitments, allPomodoroHistoryForRange] = await Promise.all([
@@ -141,7 +140,7 @@ const App: React.FC = () => {
             const logsByDate = new Map<string, DbDailyLog>();
             
             // Initialize map for all days in range to handle days with no activity
-            const loopDate = new Date(nineDaysAgo);
+            const loopDate = new Date(fourteenDaysAgo);
             const todayDate = new Date();
             todayDate.setHours(23, 59, 59, 999); // Ensure today is included
             while (loopDate <= todayDate) {
@@ -155,7 +154,9 @@ const App: React.FC = () => {
             }
             
             allPomodoroHistoryForRange.forEach(p => {
-                const date = p.ended_at.split('T')[0];
+                const localDate = new Date(p.ended_at);
+                const date = getTodayDateString(localDate);
+                
                 if (logsByDate.has(date)) {
                     const log = logsByDate.get(date)!;
                     log.completed_sessions += 1;
