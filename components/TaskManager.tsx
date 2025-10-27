@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect } from 'react';
 import { Task, Project, Settings } from '../types';
 import Panel from './common/Panel';
@@ -136,7 +137,7 @@ const TaskItem = React.forwardRef<HTMLLIElement, TaskItemProps>(({ task, isCompl
     return (
     <li
         ref={ref}
-        className={`flex items-start justify-between gap-2 p-3 rounded-lg mb-2 transition-all duration-200 ${
+        className={`flex flex-col sm:flex-row items-start sm:justify-between gap-2 p-3 rounded-lg mb-2 transition-all duration-200 ${
             isCompleted 
                 ? 'bg-white/5 text-white/50 cursor-default' 
                 : isDraggable
@@ -145,11 +146,11 @@ const TaskItem = React.forwardRef<HTMLLIElement, TaskItemProps>(({ task, isCompl
         }`}
         {...dragProps}
     >
-        <div className="flex items-start gap-3 flex-grow min-w-0">
+        <div className="flex items-start gap-3 flex-grow min-w-0 w-full">
             {isDraggable && <span className="text-white/70 cursor-grab pt-1">☰</span>}
             <div className="flex-grow min-w-0">
                 <span className={`break-words ${isCompleted ? 'line-through' : ''}`}>{task.text}</span>
-                <div className="flex items-center gap-2 mt-1 text-xs">
+                <div className="flex items-center flex-wrap gap-2 mt-1 text-xs">
                     {task.projects && <span className="bg-blue-500/30 text-blue-300 px-2 py-0.5 rounded-full">{task.projects.name}</span>}
                     {task.tags?.map(tag => <span key={tag} className="bg-purple-500/30 text-purple-300 px-2 py-0.5 rounded-full">{tag}</span>)}
                     {(task.custom_focus_duration || task.custom_break_duration) && 
@@ -160,7 +161,7 @@ const TaskItem = React.forwardRef<HTMLLIElement, TaskItemProps>(({ task, isCompl
                 </div>
             </div>
         </div>
-        <div className="flex items-center gap-2 flex-shrink-0 pt-1 relative">
+        <div className="flex items-center justify-end gap-2 flex-shrink-0 w-full sm:w-auto pt-1 relative">
             <span className={`text-xs px-2 py-1 rounded ${isCompleted ? 'bg-white/10' : 'bg-white/20'}`}>
                 {task.completed_poms}/{task.total_poms}
             </span>
