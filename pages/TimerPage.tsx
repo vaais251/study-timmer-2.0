@@ -82,12 +82,6 @@ const TimerPage: React.FC<TimerPageProps> = (props) => {
                     remainingTasksToday={tasksToday.length}
                     focusLeft={formatMinutes(focusTimeRemainingMinutes)}
                 />
-                <Controls
-                    isRunning={appState.isRunning}
-                    startTimer={startTimer}
-                    stopTimer={stopTimer}
-                    resetTimer={resetTimer}
-                />
                 <CurrentTaskDisplay task={currentTask} />
             </div>
             
@@ -97,13 +91,13 @@ const TimerPage: React.FC<TimerPageProps> = (props) => {
                 isRunning={appState.isRunning}
                 mode={appState.mode}
             />
-            
-            {/* Show full controls only when timer is running, otherwise they are in the panel above */}
-             {appState.isRunning && (
-                <div className="flex justify-center gap-4 sm:gap-6 mb-6">
-                    {/* Placeholder for potential future controls specific to running state */}
-                </div>
-             )}
+
+            <Controls
+                isRunning={appState.isRunning}
+                startTimer={startTimer}
+                stopTimer={stopTimer}
+                resetTimer={resetTimer}
+            />
 
             <AmbientSounds />
             <StatsPanel
