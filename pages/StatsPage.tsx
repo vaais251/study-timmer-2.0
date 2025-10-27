@@ -21,6 +21,7 @@ const StatsPage: React.FC = () => {
     const [settings, setSettings] = useState<Settings | null>(null);
     const [pomodoroHistory, setPomodoroHistory] = useState<PomodoroHistory[]>([]);
     const [consistencyLogs, setConsistencyLogs] = useState<DbDailyLog[]>([]);
+    const [timelinePomodoroHistory, setTimelinePomodoroHistory] = useState<PomodoroHistory[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
@@ -28,10 +29,17 @@ const StatsPage: React.FC = () => {
         setIsLoading(true);
         setError(null);
         try {
+            const today = new Date();
+            const thirtyDaysAgo = new Date();
+            thirtyDaysAgo.setDate(today.getDate() - 29);
+            const timelineStartDate = getTodayDateString(thirtyDaysAgo);
+            const timelineEndDate = getTodayDateString(today);
+
             const [
                 fetchedLogs, fetchedTasks, fetchedProjects, fetchedTargets, 
                 fetchedAllProjects, fetchedAllTasks, fetchedSettings,
-                fetchedPomodoroHistory, fetchedConsistencyLogs
+                fetchedPomodoroHistory, fetchedConsistencyLogs,
+                fetchedTimelineHistory
             ] = await Promise.all([
                 dbService.getHistoricalLogs(start, end),
                 dbService.getHistoricalTasks(start, end),
@@ -41,7 +49,8 @@ const StatsPage: React.FC = () => {
                 dbService.getAllTasksForStats(),
                 dbService.getSettings(),
                 dbService.getPomodoroHistory(start, end),
-                dbService.getConsistencyLogs(180) // Fetch last 6 months
+                dbService.getConsistencyLogs(180), // Fetch last 6 months
+                dbService.getPomodoroHistory(timelineStartDate, timelineEndDate)
             ]);
             setLogs(fetchedLogs || []);
             setTasks(fetchedTasks || []);
@@ -52,6 +61,7 @@ const StatsPage: React.FC = () => {
             setSettings(fetchedSettings || null);
             setPomodoroHistory(fetchedPomodoroHistory || []);
             setConsistencyLogs(fetchedConsistencyLogs || []);
+            setTimelinePomodoroHistory(fetchedTimelineHistory || []);
         } catch (err) {
             setError("Failed to load historical data. Please try again later.");
         } finally {
@@ -84,6 +94,7 @@ const StatsPage: React.FC = () => {
             settings={settings}
             pomodoroHistory={pomodoroHistory}
             consistencyLogs={consistencyLogs}
+            timelinePomodoroHistory={timelinePomodoroHistory}
         />
     );
 };

@@ -18,6 +18,7 @@ interface HistoryPanelProps {
     settings: Settings | null;
     pomodoroHistory: PomodoroHistory[];
     consistencyLogs: DbDailyLog[];
+    timelinePomodoroHistory: PomodoroHistory[];
 }
 
 const StatItem: React.FC<{ label: string, value: string | number }> = ({ label, value }) => (
@@ -28,7 +29,7 @@ const StatItem: React.FC<{ label: string, value: string | number }> = ({ label, 
 );
 
 const StatCard: React.FC<{title: string, children: React.ReactNode}> = ({ title, children }) => (
-    <div className="bg-white/5 p-4 rounded-xl">
+    <div className="bg-white/5 p-4 rounded-xl h-full flex flex-col justify-center">
         <h3 className="font-bold text-center mb-3 text-white/70 uppercase tracking-wider text-sm">{title}</h3>
         {children}
     </div>
@@ -152,8 +153,123 @@ const ConsistencyTracker: React.FC<{ logs: DbDailyLog[] }> = ({ logs }) => {
     );
 };
 
+const CategoryTimelineChart: React.FC<{ tasks: Task[], history: PomodoroHistory[] }> = ({ tasks, history }) => {
+    const [view, setView] = useState<'month' | 'week'>('month');
 
-const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, projects, allProjects, targets, historyRange, setHistoryRange, settings, pomodoroHistory, consistencyLogs }) => {
+    const chartData = useMemo(() => {
+        const today = new Date();
+        const startDate = new Date();
+        startDate.setDate(today.getDate() - (view === 'month' ? 29 : 6));
+        
+        const startDateString = getTodayDateString(startDate);
+        const endDateString = getTodayDateString(today);
+
+        const filteredHistory = history.filter(h => {
+            const hDate = h.ended_at.split('T')[0];
+            return hDate >= startDateString && hDate <= endDateString;
+        });
+
+        const taskMap = new Map<string, Task>();
+        tasks.forEach(task => taskMap.set(task.id, task));
+
+        const dataByDate = new Map<string, { date: string, [key: string]: number | string }>();
+        const allTags = new Set<string>();
+
+        // Initialize date map for all days in the range
+        const loopDate = new Date(startDate);
+        while (loopDate <= today) {
+            const dateStr = getTodayDateString(loopDate);
+            dataByDate.set(dateStr, { date: new Date(dateStr + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) });
+            loopDate.setDate(loopDate.getDate() + 1);
+        }
+
+        filteredHistory.forEach(h => {
+            const task = h.task_id ? taskMap.get(h.task_id) : null;
+            if (task && task.tags && task.tags.length > 0) {
+                const dateStr = h.ended_at.split('T')[0];
+                const dayData = dataByDate.get(dateStr);
+                if (dayData) {
+                    task.tags.forEach(tag => {
+                        const normalizedTag = tag.trim().toLowerCase();
+                        if (normalizedTag) {
+                            allTags.add(normalizedTag);
+                            dayData[normalizedTag] = (dayData[normalizedTag] || 0) as number + (Number(h.duration_minutes) || 0);
+                        }
+                    });
+                }
+            }
+        });
+        
+        const sortedTags = Array.from(allTags).sort();
+        const finalData = Array.from(dataByDate.values());
+
+        // Ensure all tags are present in all date objects for recharts
+        finalData.forEach(dayData => {
+            sortedTags.forEach(tag => {
+                if (!dayData[tag]) {
+                    dayData[tag] = 0;
+                }
+            });
+        });
+
+        return { data: finalData, tags: sortedTags };
+
+    }, [view, tasks, history]);
+
+    const COLORS = ['#F59E0B', '#10B981', '#38BDF8', '#EC4899', '#84CC16', '#F43F5E', '#6366F1'];
+    
+    return (
+        <div className="mt-8">
+            <h3 className="text-lg font-semibold text-white text-center mb-2">Category Focus Over Time</h3>
+             <div className="flex justify-center gap-2 mb-4 bg-black/20 p-1 rounded-full max-w-sm mx-auto">
+                <button 
+                    onClick={() => setView('week')} 
+                    className={`flex-1 p-2 text-sm rounded-full font-bold transition-colors ${view === 'week' ? 'bg-white/20 text-white' : 'text-white/60 hover:bg-white/10'}`}
+                >
+                    This Week
+                </button>
+                 <button 
+                    onClick={() => setView('month')} 
+                    className={`flex-1 p-2 text-sm rounded-full font-bold transition-colors ${view === 'month' ? 'bg-white/20 text-white' : 'text-white/60 hover:bg-white/10'}`}
+                >
+                    This Month
+                </button>
+            </div>
+            {chartData.data.length > 0 && chartData.tags.length > 0 ? (
+                 <div className="h-96 mt-4">
+                    <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={chartData.data} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.2)" />
+                            <XAxis dataKey="date" stroke="rgba(255,255,255,0.7)" tick={{ fontSize: 10 }} />
+                            <YAxis stroke="rgba(255,255,255,0.7)" unit="m" />
+                            <Tooltip contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }} itemStyle={{ color: 'white' }} labelStyle={{ color: 'white', fontWeight: 'bold' }} />
+                            <Legend wrapperStyle={{fontSize: "12px"}}/>
+                            {chartData.tags.map((tag, index) => (
+                                <Line 
+                                    key={tag} 
+                                    type="monotone" 
+                                    dataKey={tag} 
+                                    name={tag.charAt(0).toUpperCase() + tag.slice(1)}
+                                    stroke={COLORS[index % COLORS.length]} 
+                                    strokeWidth={2}
+                                    dot={{ r: 2 }}
+                                    activeDot={{ r: 6 }}
+                                />
+                            ))}
+                        </LineChart>
+                    </ResponsiveContainer>
+                </div>
+            ) : (
+                <div className="h-64 flex items-center justify-center text-white/60 bg-black/10 rounded-lg">
+                    <p>No tagged focus sessions found for this period.</p>
+                </div>
+            )}
+        </div>
+    );
+};
+
+
+const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, projects, allProjects, targets, historyRange, setHistoryRange, settings, pomodoroHistory, consistencyLogs, timelinePomodoroHistory }) => {
     const [selectedDay, setSelectedDay] = useState<string>(getTodayDateString());
     const [detailViewType, setDetailViewType] = useState<'day' | 'week' | 'month' | 'all'>('day');
 
@@ -388,6 +504,7 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
 
     return (
         <Panel title="📜 History & Progress">
+            {/* --- Section 1: Controls --- */}
             <div className="mb-6 space-y-2">
                 <h3 className="text-lg font-semibold text-white text-center">Select Date Range</h3>
                 <div className="flex flex-col sm:flex-row items-center justify-center gap-2">
@@ -401,6 +518,7 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                 </div>
             </div>
 
+            {/* --- Section 2: KPIs --- */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-white">
                 <StatCard title="Time & Tasks">
                     <div className="flex justify-around items-center h-full">
@@ -424,96 +542,160 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                 </StatCard>
             </div>
 
-            <div className="h-64 mt-8">
-                 <h3 className="text-lg font-semibold text-white text-center mb-2">Daily Task Completion %</h3>
-                 <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={aggregatedData.lineChartData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.2)" />
-                        <XAxis dataKey="date" stroke="rgba(255,255,255,0.7)" tick={{ fontSize: 10 }} />
-                        <YAxis stroke="rgba(255,255,255,0.7)" unit="%" domain={[0, 100]} />
-                        <Tooltip contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }} itemStyle={{ color: 'white' }} labelStyle={{ color: 'white', fontWeight: 'bold' }} />
-                        <Legend wrapperStyle={{fontSize: "12px"}}/>
-                        <Line type="monotone" dataKey="completion" name="Task Completion %" stroke="#f59e0b" activeDot={{ r: 8 }} />
-                    </LineChart>
-                </ResponsiveContainer>
-            </div>
+            {/* --- Section 3: Consistency Tracker --- */}
+            <ConsistencyTracker logs={consistencyLogs} />
 
-            <div className="h-64 mt-8">
-                 <h3 className="text-lg font-semibold text-white text-center mb-2">Daily Focus Minutes</h3>
-                 <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={aggregatedData.focusLineChartData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.2)" />
-                        <XAxis dataKey="date" stroke="rgba(255,255,255,0.7)" tick={{ fontSize: 10 }} />
-                        <YAxis stroke="rgba(255,255,255,0.7)" unit="m" />
-                        <Tooltip contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }} itemStyle={{ color: 'white' }} labelStyle={{ color: 'white', fontWeight: 'bold' }} />
-                        <Legend wrapperStyle={{fontSize: "12px"}}/>
-                        <Line type="monotone" dataKey="focusMinutes" name="Focus Minutes" stroke="#34D399" activeDot={{ r: 8 }} />
-                    </LineChart>
-                </ResponsiveContainer>
-            </div>
-
-            <div className="grid md:grid-cols-2 gap-6 mt-8">
-                 <div className="h-56">
-                    <h3 className="text-lg font-semibold text-white text-center mb-2">Overall Task Breakdown</h3>
-                    <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                            <Pie data={aggregatedData.taskBreakdownData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} fill="#8884d8" label>
-                                {aggregatedData.taskBreakdownData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS_TASKS[index % COLORS_TASKS.length]} />)}
-                            </Pie>
-                            <Tooltip contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }} itemStyle={{ color: 'white' }} />
-                            <Legend wrapperStyle={{fontSize: "12px"}}/>
-                        </PieChart>
-                    </ResponsiveContainer>
-                </div>
-                 <div className="h-56">
-                    <h3 className="text-lg font-semibold text-white text-center mb-2">Overall Project Breakdown</h3>
-                    <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                            <Pie data={aggregatedData.projectBreakdownData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} fill="#8884d8" label>
-                                {aggregatedData.projectBreakdownData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS_PROJECTS[index % COLORS_PROJECTS.length]} />)}
-                            </Pie>
-                            <Tooltip contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }} itemStyle={{ color: 'white' }} />
-                            <Legend wrapperStyle={{fontSize: "12px"}}/>
-                        </PieChart>
-                    </ResponsiveContainer>
-                </div>
-            </div>
-
-            <div className="mt-8">
-                <div className="h-96">
-                    <h3 className="text-lg font-semibold text-white text-center mb-2">Focus Time by Category</h3>
-                    {aggregatedData.tagAnalysisData.length > 0 ? (
-                        <ResponsiveContainer width="100%" height="100%">
-                            <BarChart
-                                layout="vertical"
-                                data={aggregatedData.tagAnalysisData}
-                                margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
-                            >
+            {/* --- Section 4: Time-based Trends --- */}
+            <div className="mt-8 space-y-6">
+                <div>
+                    <h3 className="text-lg font-semibold text-white text-center mb-2">Daily Focus Minutes</h3>
+                    <div className="h-72">
+                         <ResponsiveContainer width="100%" height="100%">
+                            <LineChart data={aggregatedData.focusLineChartData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.2)" />
-                                <XAxis type="number" stroke="rgba(255,255,255,0.7)" unit="m" />
-                                <YAxis dataKey="name" type="category" stroke="rgba(255,255,255,0.7)" width={80} tick={{ fontSize: 12 }} />
-                                <Tooltip
-                                    cursor={{ fill: 'rgba(255,255,255,0.1)' }}
-                                    contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }}
-                                    itemStyle={{ color: 'white' }} 
-                                    labelStyle={{ color: 'white', fontWeight: 'bold' }}
-                                    formatter={(value: number) => [`${value} minutes`, 'Focus Time']}
-                                />
+                                <XAxis dataKey="date" stroke="rgba(255,255,255,0.7)" tick={{ fontSize: 10 }} />
+                                <YAxis stroke="rgba(255,255,255,0.7)" unit="m" />
+                                <Tooltip contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }} itemStyle={{ color: 'white' }} labelStyle={{ color: 'white', fontWeight: 'bold' }} />
                                 <Legend wrapperStyle={{fontSize: "12px"}}/>
-                                <Bar dataKey="minutes" name="Focus Minutes" fill="#f59e0b" />
-                            </BarChart>
+                                <Line type="monotone" dataKey="focusMinutes" name="Focus Minutes" stroke="#34D399" activeDot={{ r: 8 }} />
+                            </LineChart>
                         </ResponsiveContainer>
-                    ) : (
-                        <div className="flex items-center justify-center h-full text-white/60">
-                            No tagged tasks with completed sessions in this date range.
-                        </div>
-                    )}
+                    </div>
+                </div>
+                <div>
+                    <h3 className="text-lg font-semibold text-white text-center mb-2">Daily Task Completion %</h3>
+                    <div className="h-72">
+                         <ResponsiveContainer width="100%" height="100%">
+                            <LineChart data={aggregatedData.lineChartData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.2)" />
+                                <XAxis dataKey="date" stroke="rgba(255,255,255,0.7)" tick={{ fontSize: 10 }} />
+                                <YAxis stroke="rgba(255,255,255,0.7)" unit="%" domain={[0, 100]} />
+                                <Tooltip contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }} itemStyle={{ color: 'white' }} labelStyle={{ color: 'white', fontWeight: 'bold' }} />
+                                <Legend wrapperStyle={{fontSize: "12px"}}/>
+                                <Line type="monotone" dataKey="completion" name="Task Completion %" stroke="#f59e0b" activeDot={{ r: 8 }} />
+                            </LineChart>
+                        </ResponsiveContainer>
+                    </div>
                 </div>
             </div>
 
+            {/* --- Section 5: Focus Breakdown --- */}
+            <div className="mt-8 space-y-6">
+                <div>
+                    <h3 className="text-lg font-semibold text-white text-center mb-2">Focus Time by Category</h3>
+                    <div className="h-96">
+                        {aggregatedData.tagAnalysisData.length > 0 ? (
+                            <ResponsiveContainer width="100%" height="100%">
+                                <BarChart
+                                    layout="vertical"
+                                    data={aggregatedData.tagAnalysisData}
+                                    margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                                >
+                                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.2)" />
+                                    <XAxis type="number" stroke="rgba(255,255,255,0.7)" unit="m" />
+                                    <YAxis dataKey="name" type="category" stroke="rgba(255,255,255,0.7)" width={80} tick={{ fontSize: 12 }} />
+                                    <Tooltip
+                                        cursor={{ fill: 'rgba(255,255,255,0.1)' }}
+                                        contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }}
+                                        itemStyle={{ color: 'white' }} 
+                                        labelStyle={{ color: 'white', fontWeight: 'bold' }}
+                                        formatter={(value: number) => [`${value} minutes`, 'Focus Time']}
+                                    />
+                                    <Legend wrapperStyle={{fontSize: "12px"}}/>
+                                    <Bar dataKey="minutes" name="Focus Minutes" fill="#f59e0b" />
+                                </BarChart>
+                            </ResponsiveContainer>
+                        ) : (
+                            <div className="flex items-center justify-center h-full text-white/60 bg-black/10 rounded-lg">
+                                No tagged tasks with completed sessions in this date range.
+                            </div>
+                        )}
+                    </div>
+                </div>
+                <div>
+                     <h3 className="text-lg font-semibold text-white text-center mb-2">Focus Distribution (%)</h3>
+                    <div className="h-96">
+                         {pieChartData.length > 0 ? (
+                            <div className="w-full h-full relative">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <PieChart>
+                                        <Pie
+                                            data={pieChartData}
+                                            cx="50%"
+                                            cy="50%"
+                                            labelLine={false}
+                                            label={renderCustomizedLabel}
+                                            outerRadius={110}
+                                            innerRadius={70}
+                                            fill="#8884d8"
+                                            dataKey="value"
+                                            paddingAngle={2}
+                                        >
+                                            {pieChartData.map((entry, index) => (
+                                                <Cell key={`cell-${index}`} fill={COLORS_PIE[index % COLORS_PIE.length]} stroke="none" />
+                                            ))}
+                                        </Pie>
+                                        <Tooltip 
+                                            contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }}
+                                            itemStyle={{ color: 'white' }}
+                                            formatter={(value: number) => [`${value} minutes`, 'Focus Time']}
+                                        />
+                                        <Legend wrapperStyle={{ bottom: 0 }} />
+                                    </PieChart>
+                                </ResponsiveContainer>
+                                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-[60%] text-center pointer-events-none">
+                                    <span className="text-4xl font-bold text-white">{totalFocusMinutesInRange}</span>
+                                    <span className="block text-sm text-white/70">Total Mins</span>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="flex items-center justify-center h-full text-white/60 bg-black/10 rounded-lg">
+                                No data to display.
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+
+            {/* --- Section 6: Category Timeline --- */}
+            <CategoryTimelineChart tasks={allTasks} history={timelinePomodoroHistory} />
+
+            {/* --- Section 7: Overall Stats --- */}
+            <div className="mt-8 space-y-6">
+                 <div>
+                    <h3 className="text-lg font-semibold text-white text-center mb-2">Overall Task Breakdown</h3>
+                    <div className="h-64">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                                <Pie data={aggregatedData.taskBreakdownData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} fill="#8884d8" label>
+                                    {aggregatedData.taskBreakdownData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS_TASKS[index % COLORS_TASKS.length]} />)}
+                                </Pie>
+                                <Tooltip contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }} itemStyle={{ color: 'white' }} />
+                                <Legend wrapperStyle={{fontSize: "12px"}}/>
+                            </PieChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
+                 <div>
+                    <h3 className="text-lg font-semibold text-white text-center mb-2">Overall Project Breakdown</h3>
+                    <div className="h-64">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                                <Pie data={aggregatedData.projectBreakdownData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} fill="#8884d8" label>
+                                    {aggregatedData.projectBreakdownData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS_PROJECTS[index % COLORS_PROJECTS.length]} />)}
+                                </Pie>
+                                <Tooltip contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }} itemStyle={{ color: 'white' }} />
+                                <Legend wrapperStyle={{fontSize: "12px"}}/>
+                            </PieChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
+            </div>
+
+            {/* --- Section 8: Detailed Drill-down --- */}
             <div className="mt-8">
                 <h3 className="text-lg font-semibold text-white text-center mb-2">Detailed Breakdown</h3>
-                <div className="flex justify-center gap-2 mb-4 bg-black/20 p-1 rounded-full">
+                <div className="flex justify-center gap-2 mb-4 bg-black/20 p-1 rounded-full max-w-lg mx-auto">
                     {(['day', 'week', 'month', 'all'] as const).map(type => (
                         <button 
                             key={type} 
@@ -525,12 +707,12 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                     ))}
                 </div>
                 {detailViewType === 'day' && (
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 max-w-sm mx-auto">
                       <input type="date" value={selectedDay} onChange={e => setSelectedDay(e.target.value)} className="bg-white/20 border border-white/30 rounded-lg p-2 text-white/80 w-full text-center" style={{colorScheme: 'dark'}} />
                   </div>
                 )}
                 {detailedViewData ? (
-                    <div className="bg-black/20 p-3 mt-3 rounded-lg text-white text-sm space-y-1">
+                    <div className="bg-black/20 p-3 mt-3 rounded-lg text-white text-sm space-y-1 max-w-lg mx-auto">
                         <p><strong>{detailedViewData.startDate === detailedViewData.endDate ? 'Date' : 'Period'}:</strong> {detailedViewData.title}</p>
                         <p><strong>Completed Tasks:</strong> {detailedViewData.completedTasksCount} / {detailedViewData.totalTasksCount}</p>
                         <p><strong>Task Completion:</strong> {detailedViewData.completionPercentage}%</p>
@@ -547,57 +729,12 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                         ) : <p className="text-white/60">No tasks were due in this period.</p>}
                     </div>
                 ) : (
-                    <div className="bg-black/20 p-3 mt-3 rounded-lg text-white/70 text-sm text-center">
+                    <div className="bg-black/20 p-3 mt-3 rounded-lg text-white/70 text-sm text-center max-w-lg mx-auto">
                          {detailViewType === 'day' ? 'Select a day to see details.' : 'Loading data...'}
                     </div>
                 )}
             </div>
 
-            <ConsistencyTracker logs={consistencyLogs} />
-
-            <div className="mt-8">
-                <div className="h-96">
-                    <h3 className="text-lg font-semibold text-white text-center mb-2">Focus Distribution (%)</h3>
-                     {pieChartData.length > 0 ? (
-                        <div className="w-full h-full relative">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <PieChart>
-                                    <Pie
-                                        data={pieChartData}
-                                        cx="50%"
-                                        cy="50%"
-                                        labelLine={false}
-                                        label={renderCustomizedLabel}
-                                        outerRadius={110}
-                                        innerRadius={70}
-                                        fill="#8884d8"
-                                        dataKey="value"
-                                        paddingAngle={2}
-                                    >
-                                        {pieChartData.map((entry, index) => (
-                                            <Cell key={`cell-${index}`} fill={COLORS_PIE[index % COLORS_PIE.length]} stroke="none" />
-                                        ))}
-                                    </Pie>
-                                    <Tooltip 
-                                        contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }}
-                                        itemStyle={{ color: 'white' }}
-                                        formatter={(value: number) => [`${value} minutes`, 'Focus Time']}
-                                    />
-                                    <Legend wrapperStyle={{ bottom: 0 }} />
-                                </PieChart>
-                            </ResponsiveContainer>
-                            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-[60%] text-center pointer-events-none">
-                                <span className="text-4xl font-bold text-white">{totalFocusMinutesInRange}</span>
-                                <span className="block text-sm text-white/70">Total Mins</span>
-                            </div>
-                        </div>
-                    ) : (
-                        <div className="flex items-center justify-center h-full text-white/60">
-                            No data to display.
-                        </div>
-                    )}
-                </div>
-            </div>
         </Panel>
     );
 };
