@@ -606,8 +606,10 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
     const [allHistory, setAllHistory] = useState<PomodoroHistory[]>([]);
     const [isLoadingStats, setIsLoadingStats] = useState(true);
 
-    // Project list filter
+    // Project list filters
     const [projectStatusFilter, setProjectStatusFilter] = useState<'active' | 'completed' | 'due'>('active');
+    const [projectDateFilter, setProjectDateFilter] = useState<'week' | 'month' | 'range' | 'all'>('all');
+    const [projectDateRange, setProjectDateRange] = useState({ start: '', end: '' });
 
     useEffect(() => {
         const fetchStatsData = async () => {
@@ -657,8 +659,70 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
     };
 
     const filteredProjects = useMemo(() => {
-        return projects.filter(p => p.status === projectStatusFilter);
-    }, [projects, projectStatusFilter]);
+        // Determine the date range based on the filter
+        let startDate: string | null = null;
+        let endDate: string | null = null;
+
+        if (projectDateFilter !== 'all') {
+            const today = new Date();
+            let start = new Date();
+            let end = new Date();
+
+            switch (projectDateFilter) {
+                case 'week': {
+                    const dayOfWeek = today.getDay(); // Sunday - 0, Monday - 1, ...
+                    start.setDate(today.getDate() - dayOfWeek);
+                    end = new Date(start);
+                    end.setDate(start.getDate() + 6);
+                    break;
+                }
+                case 'month':
+                    start = new Date(today.getFullYear(), today.getMonth(), 1);
+                    end = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+                    break;
+                case 'range':
+                    startDate = projectDateRange.start || null;
+                    endDate = projectDateRange.end || null;
+                    break;
+            }
+
+            if (projectDateFilter !== 'range') {
+                startDate = start.toISOString().split('T')[0];
+                endDate = end.toISOString().split('T')[0];
+            }
+        }
+
+        // Filter the projects
+        const timeFilteredProjects = projects.filter(p => {
+            // Always include 'active' projects
+            if (p.status === 'active') {
+                return true;
+            }
+
+            // If showing 'all time', include all non-active projects
+            if (projectDateFilter === 'all') {
+                return true;
+            }
+
+            // If a date range is set, filter 'completed' and 'due' projects
+            if (startDate && endDate) {
+                if (p.status === 'completed' && p.completed_at) {
+                    const completedDate = p.completed_at.split('T')[0];
+                    return completedDate >= startDate && completedDate <= endDate;
+                }
+                if (p.status === 'due' && p.deadline) {
+                    return p.deadline >= startDate && p.deadline <= endDate;
+                }
+            }
+            
+            // Exclude projects that don't match criteria
+            return false;
+        });
+
+        // Finally, apply the status filter to the time-filtered list
+        return timeFilteredProjects.filter(p => p.status === projectStatusFilter);
+
+    }, [projects, projectStatusFilter, projectDateFilter, projectDateRange]);
     
     const sortedTargets = useMemo(() => {
         const todayString = new Date().toISOString().split('T')[0];
@@ -795,6 +859,22 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
                      <button onClick={handleAddProject} className="w-full p-3 rounded-lg font-bold text-white transition hover:scale-105 bg-gradient-to-br from-purple-500 to-indigo-600">Add Project</button>
                 </div>
 
+                <div className="mb-4 space-y-2">
+                    <p className="text-white/80 text-center text-sm">Filter completed & due projects by date:</p>
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 text-sm">
+                        <button onClick={() => setProjectDateFilter('week')} className={`p-2 rounded-lg transition font-semibold ${projectDateFilter === 'week' ? 'bg-white/20 text-white' : 'bg-white/10 hover:bg-white/20 text-white/80'}`}>This Week</button>
+                        <button onClick={() => setProjectDateFilter('month')} className={`p-2 rounded-lg transition font-semibold ${projectDateFilter === 'month' ? 'bg-white/20 text-white' : 'bg-white/10 hover:bg-white/20 text-white/80'}`}>This Month</button>
+                        <button onClick={() => setProjectDateFilter('range')} className={`p-2 rounded-lg transition font-semibold ${projectDateFilter === 'range' ? 'bg-white/20 text-white' : 'bg-white/10 hover:bg-white/20 text-white/80'}`}>Date Range</button>
+                        <button onClick={() => setProjectDateFilter('all')} className={`p-2 rounded-lg transition font-semibold ${projectDateFilter === 'all' ? 'bg-white/20 text-white' : 'bg-white/10 hover:bg-white/20 text-white/80'}`}>All Time</button>
+                    </div>
+                    {projectDateFilter === 'range' && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 animate-fadeIn">
+                            <input type="date" value={projectDateRange.start} onChange={e => setProjectDateRange(p => ({...p, start: e.target.value}))} className="bg-white/20 border border-white/30 rounded-lg p-2 text-white/80 w-full text-center" style={{colorScheme: 'dark'}}/>
+                            <input type="date" value={projectDateRange.end} onChange={e => setProjectDateRange(p => ({...p, end: e.target.value}))} className="bg-white/20 border border-white/30 rounded-lg p-2 text-white/80 w-full text-center" style={{colorScheme: 'dark'}}/>
+                        </div>
+                    )}
+                </div>
+
                 <div className="flex justify-center gap-2 mb-4 bg-black/20 p-1 rounded-full">
                     {(['active', 'completed', 'due'] as const).map(status => (
                         <button key={status} onClick={() => setProjectStatusFilter(status)} className={`flex-1 p-2 text-sm rounded-full font-bold transition-colors ${projectStatusFilter === status ? 'bg-white/20 text-white' : 'text-white/60 hover:bg-white/10'}`}>
@@ -837,6 +917,8 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
                 50% { transform: scale(1.02); opacity: 0.95; }
               }
               .animate-pulse-slow { animation: pulse-slow 3s ease-in-out infinite; }
+              @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+              .animate-fadeIn { animation: fadeIn 0.3s ease-out; }
             `}</style>
         </div>
     );

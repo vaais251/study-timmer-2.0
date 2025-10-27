@@ -157,27 +157,93 @@ export const updateTaskOrder = async (tasksToUpdate: { id: string, task_order: n
 };
 
 
-export const deleteTask = async (id: string): Promise<Task[] | null> => {
-    // Step 1: Delete associated pomodoro history. This ensures focus time is also removed.
-    const { error: historyError } = await supabase
-        .from('pomodoro_history')
-        .delete()
-        .eq('task_id', id);
-
-    if (historyError) {
-        console.error("Error deleting pomodoro history for task:", JSON.stringify(historyError, null, 2));
-        // We will still attempt to delete the task itself.
+export const deleteTask = async (id: string): Promise<{ tasks: Task[] | null; projects: Project[] | null }> => {
+    // 1. Fetch the task to be deleted to get its details before it's gone.
+    const { data: taskToDelete, error: fetchError } = await supabase
+        .from('tasks')
+        .select('*')
+        .eq('id', id)
+        .single();
+    
+    if (fetchError || !taskToDelete) {
+        console.error("Error finding task to delete:", JSON.stringify(fetchError, null, 2));
+        return { tasks: null, projects: null };
     }
 
-    // Step 2: Delete the task itself.
+    // 2. If the task contributed to a project's progress, roll it back.
+    if (taskToDelete.project_id) {
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('*')
+            .eq('id', taskToDelete.project_id)
+            .single();
+
+        if (project && !projectError) {
+            let progressToDecrement = 0;
+            let shouldUpdateProject = false;
+            
+            // For 'task_count' projects, if the task was completed, we decrement by 1.
+            if (project.completion_criteria_type === 'task_count' && taskToDelete.completed_at) {
+                progressToDecrement = 1;
+                shouldUpdateProject = true;
+            } 
+            // For 'duration_minutes' projects, we sum up all pomodoros for that task.
+            else if (project.completion_criteria_type === 'duration_minutes') {
+                const { data: history, error: historyError } = await supabase
+                    .from('pomodoro_history')
+                    .select('duration_minutes')
+                    .eq('task_id', id);
+                
+                if (history && !historyError) {
+                    progressToDecrement = history.reduce((sum, item) => sum + (Number(item.duration_minutes) || 0), 0);
+                    if (progressToDecrement > 0) {
+                        shouldUpdateProject = true;
+                    }
+                }
+            }
+            
+            if (shouldUpdateProject) {
+                const newProgress = Math.max(0, project.progress_value - progressToDecrement);
+                
+                const updates: Partial<Project> = { progress_value: newProgress };
+                
+                // If project was previously completed, check if this change makes it incomplete again.
+                if (project.status === 'completed' && project.completion_criteria_value && newProgress < project.completion_criteria_value) {
+                    updates.status = 'active';
+                    updates.completed_at = null; // Reset completion date
+                }
+
+                const { error: updateProjectError } = await supabase
+                    .from('projects')
+                    .update(updates)
+                    .eq('id', project.id);
+                
+                if (updateProjectError) {
+                    console.error("Error rolling back project progress:", JSON.stringify(updateProjectError, null, 2));
+                    // Don't abort, just log. The task deletion is the primary goal.
+                }
+            }
+        }
+    }
+    
+    // 3. Delete associated pomodoro history. This is critical for accurate time tracking.
+    const { error: historyError } = await supabase.from('pomodoro_history').delete().eq('task_id', id);
+    if (historyError) {
+        console.error("Error deleting pomodoro history for task:", JSON.stringify(historyError, null, 2));
+    }
+
+    // 4. Delete the task itself.
     const { error: taskError } = await supabase.from('tasks').delete().eq('id', id);
     if (taskError) {
         console.error("Error deleting task:", JSON.stringify(taskError, null, 2));
-        return null;
+        const currentProjects = await getProjects();
+        // Return projects even if task deletion fails, but null for tasks to signal failure.
+        return { tasks: null, projects: currentProjects };
     }
 
-    // Step 3: Return the updated list of tasks. The calling component will handle state updates.
-    return getTasks();
+    // 5. On success, return fresh lists of tasks and projects to ensure UI consistency.
+    const [newTasks, newProjects] = await Promise.all([getTasks(), getProjects()]);
+    return { tasks: newTasks, projects: newProjects };
 };
 
 export const moveTask = async (id: string, action: 'postpone' | 'duplicate'): Promise<Task[] | null> => {
