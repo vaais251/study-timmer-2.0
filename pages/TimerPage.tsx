@@ -10,6 +10,7 @@ import AmbientSounds from '../components/AmbientSounds';
 import CategoryFocusChart from '../components/CategoryFocusChart';
 import CategoryFocusPieChart from '../components/CategoryFocusPieChart';
 import { TargetIcon } from '../components/common/Icons';
+import ModeIndicator from '../components/ModeIndicator';
 
 interface TimerPageProps {
     appState: AppState;
@@ -85,6 +86,8 @@ const TimerPage: React.FC<TimerPageProps> = (props) => {
                 <CurrentTaskDisplay task={currentTask} />
             </div>
             
+            <ModeIndicator mode={appState.mode} />
+            
             <TimerDisplay
                 timeRemaining={appState.timeRemaining}
                 totalTime={appState.sessionTotalTime}
@@ -97,6 +100,9 @@ const TimerPage: React.FC<TimerPageProps> = (props) => {
                 startTimer={startTimer}
                 stopTimer={stopTimer}
                 resetTimer={resetTimer}
+                timeRemaining={appState.timeRemaining}
+                sessionTotalTime={appState.sessionTotalTime}
+                mode={appState.mode}
             />
 
             <AmbientSounds />
