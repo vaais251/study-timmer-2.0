@@ -415,7 +415,7 @@ export const checkAndUpdateDueProjects = async (): Promise<Project[] | null> => 
 export const getGoals = async (): Promise<Goal[] | null> => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return null;
-    const { data, error } = await supabase.from('goals').select('id, text').eq('user_id', user.id);
+    const { data, error } = await supabase.from('goals').select('id, text, created_at').eq('user_id', user.id);
     return error ? null : data;
 }
 
@@ -423,6 +423,12 @@ export const addGoal = async (text: string): Promise<Goal[] | null> => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return null;
     const { error } = await supabase.from('goals').insert({ text, user_id: user.id });
+    return error ? null : await getGoals();
+}
+
+export const updateGoal = async (id: string, updates: Partial<Goal>): Promise<Goal[] | null> => {
+    const { error } = await supabase.from('goals').update(updates).eq('id', id);
+    if (error) console.error("Error updating goal:", JSON.stringify(error, null, 2));
     return error ? null : await getGoals();
 }
 
@@ -445,8 +451,9 @@ export const addTarget = async (text: string, deadline: string): Promise<Target[
     return error ? null : await getTargets();
 }
 
-export const updateTarget = async (id: string, completed: boolean): Promise<Target[] | null> => {
-    const { error } = await supabase.from('targets').update({ completed_at: completed ? new Date().toISOString() : null }).eq('id', id);
+export const updateTarget = async (id: string, updates: Partial<Target>): Promise<Target[] | null> => {
+    const { error } = await supabase.from('targets').update(updates).eq('id', id);
+    if (error) console.error("Error updating target:", JSON.stringify(error, null, 2));
     return error ? null : await getTargets();
 }
 

@@ -1,8 +1,8 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Task, Project, Settings } from '../types';
 import Panel from './common/Panel';
-import { PostponeIcon, DuplicateIcon, MoreVerticalIcon, UndoIcon } from './common/Icons';
+import { PostponeIcon, DuplicateIcon, MoreVerticalIcon, UndoIcon, EditIcon } from './common/Icons';
 
 interface TaskSettingsDropdownProps {
     task: Task;
@@ -63,15 +63,76 @@ interface TaskItemProps {
     onDelete: (id: string) => void;
     onMove?: (id: string, action: 'postpone' | 'duplicate') => void;
     onUpdateTaskTimers: (id: string, newTimers: { focus: number | null, break: number | null }) => void;
+    onUpdateTask: (id: string, newText: string, newTags: string[]) => void;
     onMarkTaskIncomplete?: (id: string) => void;
     dragProps?: object;
     ref?: React.Ref<HTMLLIElement>;
 }
 
-const TaskItem = React.forwardRef<HTMLLIElement, TaskItemProps>(({ task, isCompleted, settings, onDelete, onMove, onUpdateTaskTimers, onMarkTaskIncomplete, dragProps }, ref) => {
+const TaskItem = React.forwardRef<HTMLLIElement, TaskItemProps>(({ task, isCompleted, settings, onDelete, onMove, onUpdateTaskTimers, onUpdateTask, onMarkTaskIncomplete, dragProps }, ref) => {
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+    const [isEditing, setIsEditing] = useState(false);
+    const [editText, setEditText] = useState(task.text);
+    const [editTags, setEditTags] = useState(task.tags?.join(', ') || '');
     const isDraggable = !isCompleted && dragProps;
+
+    useEffect(() => {
+        setEditText(task.text);
+        setEditTags(task.tags?.join(', ') || '');
+    }, [task.text, task.tags]);
     
+    const handleSave = () => {
+        if (editText.trim() === '') {
+            alert("Task text cannot be empty.");
+            return;
+        }
+        const newTags = editTags.split(',').map(t => t.trim()).filter(Boolean);
+        onUpdateTask(task.id, editText.trim(), newTags);
+        setIsEditing(false);
+    };
+
+    const handleCancel = () => {
+        setEditText(task.text);
+        setEditTags(task.tags?.join(', ') || '');
+        setIsEditing(false);
+    };
+    
+    if (isEditing) {
+        return (
+            <li ref={ref} className="bg-white/20 p-3 rounded-lg mb-2 ring-2 ring-cyan-400 animate-pulse-once">
+                <div className="flex flex-col gap-2">
+                    <input
+                        type="text"
+                        value={editText}
+                        onChange={e => setEditText(e.target.value)}
+                        className="w-full bg-white/20 border border-white/30 rounded-lg p-2 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50"
+                        aria-label="Edit task text"
+                    />
+                    <input
+                        type="text"
+                        value={editTags}
+                        onChange={e => setEditTags(e.target.value)}
+                        placeholder="Tags (comma-separated)"
+                        className="w-full bg-white/20 border border-white/30 rounded-lg p-2 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50"
+                        aria-label="Edit task tags"
+                    />
+                    <div className="flex justify-end gap-2 text-sm mt-2">
+                        <button onClick={handleCancel} className="p-2 px-4 rounded-md font-bold text-white transition hover:scale-105 bg-gradient-to-br from-gray-500 to-gray-600">Cancel</button>
+                        <button onClick={handleSave} className="p-2 px-4 rounded-md font-bold text-white transition hover:scale-105 bg-gradient-to-br from-blue-500 to-cyan-600">Save</button>
+                    </div>
+                </div>
+                 <style>{`
+                  @keyframes pulse-once {
+                    0% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.4); }
+                    70% { box-shadow: 0 0 0 10px rgba(56, 189, 248, 0); }
+                    100% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0); }
+                  }
+                  .animate-pulse-once { animation: pulse-once 1s; }
+                `}</style>
+            </li>
+        )
+    }
+
     return (
     <li
         ref={ref}
@@ -110,7 +171,10 @@ const TaskItem = React.forwardRef<HTMLLIElement, TaskItemProps>(({ task, isCompl
                 </>
             )}
              {isDraggable && (
-                <button onClick={() => setIsSettingsOpen(o => !o)} className="p-1 text-cyan-300 hover:text-cyan-200 transition" title="Custom Timers"><MoreVerticalIcon /></button>
+                <>
+                    <button onClick={() => setIsEditing(true)} className="p-1 text-sky-300 hover:text-sky-200 transition" title="Edit Task"><EditIcon /></button>
+                    <button onClick={() => setIsSettingsOpen(o => !o)} className="p-1 text-cyan-300 hover:text-cyan-200 transition" title="Custom Timers"><MoreVerticalIcon /></button>
+                </>
             )}
             {isCompleted && onMarkTaskIncomplete && (
                 <button onClick={() => onMarkTaskIncomplete(task.id)} className="p-1 text-amber-300 hover:text-amber-200 transition" title="Mark as Incomplete">
@@ -232,10 +296,11 @@ interface TaskManagerProps {
     onMoveTask: (id: string, action: 'postpone' | 'duplicate') => void;
     onReorderTasks: (reorderedTasks: Task[]) => void;
     onUpdateTaskTimers: (id: string, newTimers: { focus: number | null, break: number | null }) => void;
+    onUpdateTask: (id: string, newText: string, newTags: string[]) => void;
     onMarkTaskIncomplete: (id: string) => void;
 }
 
-const TaskManager: React.FC<TaskManagerProps> = ({ tasksToday, tasksForTomorrow, completedToday, projects, settings, onAddTask, onAddProject, onDeleteTask, onMoveTask, onReorderTasks, onUpdateTaskTimers, onMarkTaskIncomplete }) => {
+const TaskManager: React.FC<TaskManagerProps> = ({ tasksToday, tasksForTomorrow, completedToday, projects, settings, onAddTask, onAddProject, onDeleteTask, onMoveTask, onReorderTasks, onUpdateTaskTimers, onUpdateTask, onMarkTaskIncomplete }) => {
     
     // Refs and handlers for Today's list
     const dragItemToday = React.useRef<number | null>(null);
@@ -308,6 +373,7 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasksToday, tasksForTomorrow,
                             onDelete={onDeleteTask} 
                             onMove={onMoveTask}
                             onUpdateTaskTimers={onUpdateTaskTimers}
+                            onUpdateTask={onUpdateTask}
                             dragProps={{ 
                                 draggable: true, 
                                 onDragStart: (e) => handleDragStartToday(e, index),
@@ -317,7 +383,7 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasksToday, tasksForTomorrow,
                         />
                     ))}
                     {completedToday.map(task => (
-                        <TaskItem key={task.id} task={task} isCompleted={true} settings={settings} onDelete={onDeleteTask} onUpdateTaskTimers={onUpdateTaskTimers} onMarkTaskIncomplete={onMarkTaskIncomplete} />
+                        <TaskItem key={task.id} task={task} isCompleted={true} settings={settings} onDelete={onDeleteTask} onUpdateTaskTimers={onUpdateTaskTimers} onUpdateTask={onUpdateTask} onMarkTaskIncomplete={onMarkTaskIncomplete} />
                     ))}
                     {tasksToday.length === 0 && completedToday.length === 0 && <p className="text-center text-white/60 p-4">All done! Add a new task to get started.</p>}
                 </ul>
@@ -341,6 +407,7 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasksToday, tasksForTomorrow,
                            settings={settings} 
                            onDelete={onDeleteTask} 
                            onUpdateTaskTimers={onUpdateTaskTimers}
+                           onUpdateTask={onUpdateTask}
                            dragProps={{
                                draggable: true,
                                onDragStart: (e) => handleDragStartTomorrow(e, index),

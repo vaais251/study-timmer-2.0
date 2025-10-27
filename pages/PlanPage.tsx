@@ -15,6 +15,7 @@ interface PlanPageProps {
     onMoveTask: (id: string, action: 'postpone' | 'duplicate') => void;
     onReorderTasks: (reorderedTasks: Task[]) => void;
     onUpdateTaskTimers: (id: string, newTimers: { focus: number | null, break: number | null }) => void;
+    onUpdateTask: (id: string, newText: string, newTags: string[]) => void;
     onMarkTaskIncomplete: (id: string) => void;
 }
 
@@ -33,6 +34,7 @@ const PlanPage: React.FC<PlanPageProps> = (props) => {
                 onMoveTask={props.onMoveTask}
                 onReorderTasks={props.onReorderTasks}
                 onUpdateTaskTimers={props.onUpdateTaskTimers}
+                onUpdateTask={props.onUpdateTask}
                 onMarkTaskIncomplete={props.onMarkTaskIncomplete}
             />
             <ExpertiseTracker />

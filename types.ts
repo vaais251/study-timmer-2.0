@@ -9,6 +9,7 @@ export type Page = 'timer' | 'plan' | 'stats' | 'ai' | 'settings' | 'goals';
 // Corresponds to the `projects` table
 export interface Project {
     id: string;
+    created_at: string;
     name: string;
     deadline: string | null;
     status: 'active' | 'completed' | 'due';
@@ -21,12 +22,14 @@ export interface Project {
 // Corresponds to the `goals` table
 export interface Goal {
     id: string;
+    created_at: string;
     text: string;
 }
 
 // Corresponds to the `targets` table
 export interface Target {
     id: string;
+    created_at: string;
     text: string;
     deadline: string;
     completed_at: string | null;

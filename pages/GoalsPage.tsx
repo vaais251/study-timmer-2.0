@@ -1,8 +1,9 @@
 
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { Goal, Target, Project, Task, PomodoroHistory } from '../types';
 import Panel from '../components/common/Panel';
-import { TrashIcon } from '../components/common/Icons';
+import { TrashIcon, EditIcon } from '../components/common/Icons';
 import * as dbService from '../services/dbService';
 import Spinner from '../components/common/Spinner';
 
@@ -11,6 +12,21 @@ const getDaysAgo = (days: number): string => {
     date.setDate(date.getDate() - days);
     return date.toISOString().split('T')[0];
 };
+
+const isOlderThanOrEqualToTwoDays = (dateString: string): boolean => {
+    if (!dateString) return false;
+    const itemDate = new Date(dateString);
+    const today = new Date();
+
+    itemDate.setHours(0, 0, 0, 0);
+    today.setHours(0, 0, 0, 0);
+
+    const diffTime = today.getTime() - itemDate.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    return diffDays >= 2;
+};
+
 
 const ProjectTimeAnalysisDashboard: React.FC<{
     allProjects: Project[];
@@ -129,12 +145,20 @@ interface ProjectItemProps {
 }
 
 const ProjectItem: React.FC<ProjectItemProps> = ({ project, onUpdateProject, onDeleteProject }) => {
-    const { progress, progressText, isComplete, isDue, isManual } = useMemo(() => {
+    const [isEditing, setIsEditing] = useState(false);
+    const [editName, setEditName] = useState(project.name);
+    const [editDeadline, setEditDeadline] = useState(project.deadline || '');
+    const [editCriteriaType, setEditCriteriaType] = useState(project.completion_criteria_type);
+    const [editCriteriaValue, setEditCriteriaValue] = useState(project.completion_criteria_value?.toString() || '');
+
+    const { progress, progressText, isComplete, isDue, isManual, isEditable } = useMemo(() => {
         const isComplete = project.status === 'completed';
         const isDue = project.status === 'due';
         const isManual = project.completion_criteria_type === 'manual';
-        
-        if (isManual) return { progress: isComplete ? 100 : 0, progressText: '', isComplete, isDue, isManual };
+        const isOld = isOlderThanOrEqualToTwoDays(project.created_at);
+        const isEditable = !isComplete && !isOld;
+
+        if (isManual) return { progress: isComplete ? 100 : 0, progressText: '', isComplete, isDue, isManual, isEditable };
         
         const value = project.progress_value;
         const target = project.completion_criteria_value || 1; // Avoid division by zero
@@ -147,7 +171,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({ project, onUpdateProject, onD
             progressText = `${value}/${target} min`;
         }
         
-        return { progress, progressText, isComplete, isDue, isManual };
+        return { progress, progressText, isComplete, isDue, isManual, isEditable };
     }, [project]);
 
     const handleManualCompleteToggle = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -158,8 +182,59 @@ const ProjectItem: React.FC<ProjectItemProps> = ({ project, onUpdateProject, onD
         });
     };
     
+    const handleSave = () => {
+        if (!editName.trim()) {
+            alert("Project name cannot be empty.");
+            return;
+        }
+        const value = editCriteriaType !== 'manual' && editCriteriaValue ? parseInt(editCriteriaValue, 10) : null;
+        if (editCriteriaType !== 'manual' && (!value || value <= 0)) {
+            alert("Please enter a valid, positive number for completion criteria.");
+            return;
+        }
+
+        const updates: Partial<Project> = {
+            name: editName.trim(),
+            deadline: editDeadline || null,
+            completion_criteria_type: editCriteriaType,
+            completion_criteria_value: value
+        };
+        onUpdateProject(project.id, updates);
+        setIsEditing(false);
+    };
+
+    const handleCancel = () => {
+        setEditName(project.name);
+        setEditDeadline(project.deadline || '');
+        setEditCriteriaType(project.completion_criteria_type);
+        setEditCriteriaValue(project.completion_criteria_value?.toString() || '');
+        setIsEditing(false);
+    };
+
+    if (isEditing) {
+        return (
+            <div className="bg-white/20 p-3 rounded-lg ring-2 ring-cyan-400 space-y-2">
+                <input type="text" value={editName} onChange={e => setEditName(e.target.value)} placeholder="Project Name" className="w-full bg-white/20 border border-white/30 rounded-lg p-2 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50" />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    <input type="date" value={editDeadline} onChange={e => setEditDeadline(e.target.value)} className="bg-white/20 border border-white/30 rounded-lg p-2 text-white/80 w-full text-center" style={{colorScheme: 'dark'}} />
+                    <select value={editCriteriaType} onChange={e => setEditCriteriaType(e.target.value as any)} className="bg-white/20 border border-white/30 rounded-lg p-2 text-white focus:outline-none focus:bg-white/30 focus:border-white/50 w-full">
+                        <option value="manual" className="bg-gray-800">Manual</option>
+                        <option value="task_count" className="bg-gray-800">Task Count</option>
+                        <option value="duration_minutes" className="bg-gray-800">Time Duration</option>
+                    </select>
+                </div>
+                {editCriteriaType !== 'manual' && (
+                    <input type="number" value={editCriteriaValue} onChange={e => setEditCriteriaValue(e.target.value)} placeholder={editCriteriaType === 'task_count' ? '# of tasks' : 'Minutes of focus'} className="w-full bg-white/20 border border-white/30 rounded-lg p-2 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50" />
+                )}
+                <div className="flex justify-end gap-2 text-sm mt-2">
+                    <button onClick={handleCancel} className="p-2 px-4 rounded-md font-bold text-white transition hover:scale-105 bg-gradient-to-br from-gray-500 to-gray-600">Cancel</button>
+                    <button onClick={handleSave} className="p-2 px-4 rounded-md font-bold text-white transition hover:scale-105 bg-gradient-to-br from-blue-500 to-cyan-600">Save</button>
+                </div>
+            </div>
+        );
+    }
+    
     const bgColor = isComplete ? 'bg-white/5 text-white/50' : isDue ? 'bg-red-900/40' : 'bg-white/10';
-    const isDisabled = isComplete || isDue;
 
     return (
         <div className={`p-3 rounded-lg ${bgColor} transition-all`}>
@@ -170,7 +245,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({ project, onUpdateProject, onD
                             type="checkbox" 
                             checked={isComplete} 
                             onChange={handleManualCompleteToggle} 
-                            disabled={isDisabled}
+                            disabled={!isEditable}
                             className="h-5 w-5 rounded bg-white/20 border-white/30 text-green-400 focus:ring-green-400 flex-shrink-0 cursor-pointer disabled:cursor-not-allowed" 
                             aria-label={`Mark project ${project.name} as complete`}
                         />
@@ -187,6 +262,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({ project, onUpdateProject, onD
                  <div className="flex items-center gap-2">
                     {isDue && !isComplete && <span className="text-xs bg-red-500/50 text-white px-2 py-1 rounded-full font-bold">DUE</span>}
                     {isComplete && <span className="text-xs bg-green-500/50 text-white px-2 py-1 rounded-full font-bold">COMPLETED</span>}
+                    <button onClick={() => setIsEditing(true)} disabled={!isEditable} className="p-1 text-sky-300 hover:text-sky-200 transition disabled:text-sky-300/30 disabled:cursor-not-allowed" title={!isEditable ? "Editing is disabled for completed or old projects" : "Edit Project"}><EditIcon /></button>
                     <button onClick={() => {
                         if (window.confirm(`Are you sure you want to delete "${project.name}"? This will unlink it from all tasks.`)) {
                             onDeleteProject(project.id)
@@ -214,16 +290,45 @@ const ProjectItem: React.FC<ProjectItemProps> = ({ project, onUpdateProject, onD
 
 const TargetItem: React.FC<{
     target: Target;
-    onUpdateTarget: (id: string, completed: boolean) => void;
+    onUpdateTarget: (id: string, updates: Partial<Target>) => void;
     onDeleteTarget: (id: string) => void;
 }> = ({ target, onUpdateTarget, onDeleteTarget }) => {
-    // Using string comparison is safer for YYYY-MM-DD format to avoid timezone issues.
+    const [isEditing, setIsEditing] = useState(false);
+    const [editText, setEditText] = useState(target.text);
+    const [editDeadline, setEditDeadline] = useState(target.deadline);
+    
     const todayString = new Date().toISOString().split('T')[0];
-
     const isCompleted = !!target.completed_at;
     const isDue = !isCompleted && target.deadline < todayString;
+    const isOld = isOlderThanOrEqualToTwoDays(target.created_at);
 
-    const isDisabled = isCompleted || isDue;
+    const handleSave = () => {
+        if (!editText.trim() || !editDeadline) {
+            alert("Target text and deadline cannot be empty.");
+            return;
+        }
+        onUpdateTarget(target.id, { text: editText.trim(), deadline: editDeadline });
+        setIsEditing(false);
+    };
+
+    const handleCancel = () => {
+        setEditText(target.text);
+        setEditDeadline(target.deadline);
+        setIsEditing(false);
+    };
+
+    if (isEditing) {
+        return (
+            <li className="bg-white/20 p-3 rounded-lg ring-2 ring-cyan-400 space-y-2">
+                <input type="text" value={editText} onChange={e => setEditText(e.target.value)} placeholder="Target description" className="w-full bg-white/20 border border-white/30 rounded-lg p-2 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50" />
+                <input type="date" value={editDeadline} onChange={e => setEditDeadline(e.target.value)} className="bg-white/20 border border-white/30 rounded-lg p-2 text-white/80 w-full text-center" style={{colorScheme: 'dark'}} />
+                <div className="flex justify-end gap-2 text-sm mt-2">
+                    <button onClick={handleCancel} className="p-2 px-4 rounded-md font-bold text-white transition hover:scale-105 bg-gradient-to-br from-gray-500 to-gray-600">Cancel</button>
+                    <button onClick={handleSave} className="p-2 px-4 rounded-md font-bold text-white transition hover:scale-105 bg-gradient-to-br from-blue-500 to-cyan-600">Save</button>
+                </div>
+            </li>
+        );
+    }
     
     let bgColor = 'bg-white/10';
     let textColor = 'text-white';
@@ -240,8 +345,8 @@ const TargetItem: React.FC<{
                 <input 
                     type="checkbox" 
                     checked={isCompleted} 
-                    onChange={(e) => onUpdateTarget(target.id, e.target.checked)} 
-                    disabled={isDisabled}
+                    onChange={(e) => onUpdateTarget(target.id, { completed_at: e.target.checked ? new Date().toISOString() : null })} 
+                    disabled={isCompleted || isDue || isOld}
                     className="h-5 w-5 rounded bg-white/20 border-white/30 text-green-400 focus:ring-green-400 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0" 
                 />
                 <span className={`${isCompleted ? 'line-through' : ''} ${textColor}`}>
@@ -249,7 +354,8 @@ const TargetItem: React.FC<{
                 </span>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
-                 {isDue && <span className="text-xs bg-red-500/50 text-white px-2 py-1 rounded-full font-bold">DUE</span>}
+                {isDue && <span className="text-xs bg-red-500/50 text-white px-2 py-1 rounded-full font-bold">DUE</span>}
+                {!isCompleted && !isOld && <button onClick={() => setIsEditing(true)} className="p-1 text-sky-300 hover:text-sky-200 transition" title="Edit Target"><EditIcon /></button>}
                 <span className="text-xs bg-black/20 px-2 py-1 rounded-full">{new Date(target.deadline + 'T00:00:00').toLocaleDateString()}</span>
                 <button onClick={() => onDeleteTarget(target.id)} className="text-red-400 hover:text-red-300 text-2xl font-bold leading-none p-1 transition" title="Delete target">&times;</button>
             </div>
@@ -257,21 +363,76 @@ const TargetItem: React.FC<{
     );
 };
 
+const GoalItem: React.FC<{
+    goal: Goal;
+    onUpdateGoal: (id: string, text: string) => void;
+    onDeleteGoal: (id: string) => void;
+}> = ({ goal, onUpdateGoal, onDeleteGoal }) => {
+    const [isEditing, setIsEditing] = useState(false);
+    const [editText, setEditText] = useState(goal.text);
+    const isOld = isOlderThanOrEqualToTwoDays(goal.created_at);
+
+    const handleSave = () => {
+        if (editText.trim() && editText.trim() !== goal.text) {
+            onUpdateGoal(goal.id, editText.trim());
+        }
+        setIsEditing(false);
+    };
+
+    const handleCancel = () => {
+        setEditText(goal.text);
+        setIsEditing(false);
+    };
+
+    if (isEditing) {
+        return (
+            <li className="bg-white/20 p-3 rounded-lg ring-2 ring-cyan-400">
+                <div className="flex flex-col gap-2">
+                    <input
+                        type="text"
+                        value={editText}
+                        onChange={e => setEditText(e.target.value)}
+                        className="w-full bg-white/20 border border-white/30 rounded-lg p-2 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50"
+                        aria-label="Edit goal text"
+                        onKeyPress={(e) => e.key === 'Enter' && handleSave()}
+                    />
+                    <div className="flex justify-end gap-2 text-sm mt-2">
+                        <button onClick={handleCancel} className="p-2 px-4 rounded-md font-bold text-white transition hover:scale-105 bg-gradient-to-br from-gray-500 to-gray-600">Cancel</button>
+                        <button onClick={handleSave} className="p-2 px-4 rounded-md font-bold text-white transition hover:scale-105 bg-gradient-to-br from-blue-500 to-cyan-600">Save</button>
+                    </div>
+                </div>
+            </li>
+        );
+    }
+    
+    return (
+        <li className="flex items-center justify-between bg-white/10 p-3 rounded-lg">
+            <span className="text-white">{goal.text}</span>
+            <div className="flex items-center gap-2">
+                <button onClick={() => setIsEditing(true)} disabled={isOld} className="p-1 text-sky-300 hover:text-sky-200 transition disabled:text-sky-300/30 disabled:cursor-not-allowed" title={isOld ? "Editing is disabled for old goals" : "Edit Goal"}><EditIcon /></button>
+                <button onClick={() => onDeleteGoal(goal.id)} className="text-red-400 hover:text-red-300 text-2xl font-bold leading-none p-1 transition">&times;</button>
+            </div>
+        </li>
+    );
+};
+
+
 interface GoalsPageProps {
     goals: Goal[];
     targets: Target[];
     projects: Project[];
     onAddGoal: (text: string) => void;
+    onUpdateGoal: (id: string, text: string) => void;
     onDeleteGoal: (id: string) => void;
     onAddTarget: (text: string, deadline: string) => void;
-    onUpdateTarget: (id: string, completed: boolean) => void;
+    onUpdateTarget: (id: string, updates: Partial<Target>) => void;
     onDeleteTarget: (id: string) => void;
     onAddProject: (name: string, deadline: string | null, criteria: {type: Project['completion_criteria_type'], value: number | null}) => Promise<string | null>;
     onUpdateProject: (id: string, updates: Partial<Project>) => void;
     onDeleteProject: (id: string) => void;
 }
 
-const GoalsPage: React.FC<GoalsPageProps> = ({ goals, targets, projects, onAddGoal, onDeleteGoal, onAddTarget, onUpdateTarget, onDeleteTarget, onAddProject, onUpdateProject, onDeleteProject }) => {
+const GoalsPage: React.FC<GoalsPageProps> = ({ goals, targets, projects, onAddGoal, onUpdateGoal, onDeleteGoal, onAddTarget, onUpdateTarget, onDeleteTarget, onAddProject, onUpdateProject, onDeleteProject }) => {
     const [newGoal, setNewGoal] = useState('');
     const [newTarget, setNewTarget] = useState('');
     const [newDeadline, setNewDeadline] = useState('');
@@ -397,10 +558,7 @@ const GoalsPage: React.FC<GoalsPageProps> = ({ goals, targets, projects, onAddGo
                 </div>
                 <ul className="space-y-2 max-h-48 overflow-y-auto pr-2">
                     {goals.map(goal => (
-                        <li key={goal.id} className="flex items-center justify-between bg-white/10 p-3 rounded-lg">
-                            <span className="text-white">{goal.text}</span>
-                            <button onClick={() => onDeleteGoal(goal.id)} className="text-red-400 hover:text-red-300 text-2xl font-bold leading-none p-1 transition">&times;</button>
-                        </li>
+                        <GoalItem key={goal.id} goal={goal} onUpdateGoal={onUpdateGoal} onDeleteGoal={onDeleteGoal} />
                     ))}
                     {goals.length === 0 && <p className="text-center text-white/60 p-4">No core goals defined yet.</p>}
                 </ul>

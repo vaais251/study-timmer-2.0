@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
@@ -485,6 +486,18 @@ const App: React.FC = () => {
         }
     };
 
+    const handleUpdateTask = async (id: string, newText: string, newTags: string[]) => {
+        const updates = {
+            text: newText,
+            tags: newTags,
+        };
+        const updatedTask = await dbService.updateTask(id, updates);
+    
+        if (updatedTask) {
+             setTasks(prevTasks => prevTasks.map(t => (t.id === id ? updatedTask : t)));
+        }
+    };
+
 
     const handleAddTask = async (text: string, poms: number, isTomorrow: boolean, projectId: string | null, tags: string[]) => {
         const newTasks = await dbService.addTask(text, poms, isTomorrow, projectId, tags);
@@ -578,6 +591,10 @@ const App: React.FC = () => {
         const newGoals = await dbService.addGoal(text);
         if (newGoals) setGoals(newGoals);
     };
+    const handleUpdateGoal = async (id: string, text: string) => {
+        const newGoals = await dbService.updateGoal(id, { text });
+        if (newGoals) setGoals(newGoals);
+    };
     const handleDeleteGoal = async (id: string) => {
         const newGoals = await dbService.deleteGoal(id);
         if (newGoals) setGoals(newGoals);
@@ -586,8 +603,8 @@ const App: React.FC = () => {
         const newTargets = await dbService.addTarget(text, deadline);
         if (newTargets) setTargets(newTargets);
     };
-    const handleUpdateTarget = async (id: string, completed: boolean) => {
-        const newTargets = await dbService.updateTarget(id, completed);
+    const handleUpdateTarget = async (id: string, updates: Partial<Target>) => {
+        const newTargets = await dbService.updateTarget(id, updates);
         if (newTargets) setTargets(newTargets);
     };
     const handleDeleteTarget = async (id: string) => {
@@ -665,6 +682,7 @@ const App: React.FC = () => {
                     onMoveTask={handleMoveTask}
                     onReorderTasks={handleReorderTasks}
                     onUpdateTaskTimers={handleUpdateTaskTimers}
+                    onUpdateTask={handleUpdateTask}
                     onMarkTaskIncomplete={handleMarkTaskIncomplete}
                  />;
             case 'goals':
@@ -673,6 +691,7 @@ const App: React.FC = () => {
                     targets={targets}
                     projects={projects}
                     onAddGoal={handleAddGoal}
+                    onUpdateGoal={handleUpdateGoal}
                     onDeleteGoal={handleDeleteGoal}
                     onAddTarget={handleAddTarget}
                     onUpdateTarget={handleUpdateTarget}
