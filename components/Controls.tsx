@@ -1,5 +1,6 @@
+
 import React from 'react';
-import { PlayIcon, PauseIcon, ResetIcon, SettingsIcon } from './common/Icons';
+import { PlayIcon, PauseIcon, ResetIcon } from './common/Icons';
 
 interface ControlButtonProps {
     onClick: () => void;
@@ -24,26 +25,30 @@ interface ControlsProps {
     startTimer: () => void;
     stopTimer: () => void;
     resetTimer: () => void;
-    navigateToSettings: () => void;
 }
 
-const Controls: React.FC<ControlsProps> = ({ isRunning, startTimer, stopTimer, resetTimer, navigateToSettings }) => {
+const Controls: React.FC<ControlsProps> = ({ isRunning, startTimer, stopTimer, resetTimer }) => {
+    if (!isRunning) {
+        return (
+            <div className="text-center my-6">
+                <button
+                    onClick={startTimer}
+                    className="bg-gradient-to-br from-red-500 to-pink-500 text-white font-bold py-3 px-12 rounded-full shadow-lg transition-transform transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-pink-400/50"
+                    aria-label="Start focus time"
+                >
+                    FOCUS TIME
+                </button>
+            </div>
+        );
+    }
+
     return (
-        <div className="flex justify-center gap-4 sm:gap-6 mb-6">
-            {!isRunning ? (
-                <ControlButton onClick={startTimer} label="Start" className="bg-gradient-to-br from-cyan-400 to-blue-600">
-                    <PlayIcon />
-                </ControlButton>
-            ) : (
-                <ControlButton onClick={stopTimer} label="Pause" className="bg-gradient-to-br from-pink-500 to-red-500">
-                    <PauseIcon />
-                </ControlButton>
-            )}
+        <div className="flex justify-center gap-4 sm:gap-6 my-6">
+            <ControlButton onClick={stopTimer} label="Pause" className="bg-gradient-to-br from-pink-500 to-red-500">
+                <PauseIcon />
+            </ControlButton>
             <ControlButton onClick={resetTimer} label="Reset" className="bg-gradient-to-br from-amber-400 to-orange-500">
                 <ResetIcon />
-            </ControlButton>
-            <ControlButton onClick={navigateToSettings} label="Settings" className="bg-gradient-to-br from-green-400 to-emerald-500">
-                <SettingsIcon />
             </ControlButton>
         </div>
     );

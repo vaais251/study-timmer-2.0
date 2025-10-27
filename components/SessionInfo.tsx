@@ -5,6 +5,7 @@ interface SessionInfoProps {
     completedTasksToday: number;
     totalTasksToday: number;
     remainingTasksToday: number;
+    focusLeft: string;
 }
 
 const InfoItem: React.FC<{ label: string, value: string | number }> = ({ label, value }) => (
@@ -14,11 +15,12 @@ const InfoItem: React.FC<{ label: string, value: string | number }> = ({ label, 
     </div>
 );
 
-const SessionInfo: React.FC<SessionInfoProps> = ({ completedTasksToday, totalTasksToday, remainingTasksToday }) => {
+const SessionInfo: React.FC<SessionInfoProps> = ({ completedTasksToday, totalTasksToday, remainingTasksToday, focusLeft }) => {
     return (
-        <div className="flex justify-around mb-6 p-4 bg-white/10 rounded-2xl">
+        <div className="grid grid-cols-3 gap-2">
             <InfoItem label="Tasks Done" value={`${completedTasksToday}/${totalTasksToday}`} />
             <InfoItem label="Remaining" value={remainingTasksToday} />
+            <InfoItem label="Focus Left" value={focusLeft} />
         </div>
     );
 };
