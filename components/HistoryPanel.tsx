@@ -173,7 +173,8 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                 lineChartData: [], 
                 taskBreakdownData: [{ name: 'Completed', value: 0 }, { name: 'Pending', value: 0 }],
                 projectBreakdownData: [{ name: 'Completed', value: 0 }, { name: 'Pending', value: 0 }],
-                tagAnalysisData: []
+                tagAnalysisData: [],
+                focusLineChartData: []
             };
         }
 
@@ -210,6 +211,30 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
         const lineChartData = Array.from(lineChartDataPoints.entries()).map(([dateString, data]) => ({
             date: new Date(dateString + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
             completion: data.total > 0 ? Math.round((data.completed / data.total) * 100) : 0,
+        }));
+        
+        const focusMinutesPerDay = new Map<string, number>();
+        if (historyRange.start && historyRange.end) {
+            let currentDate = new Date(historyRange.start + 'T00:00:00');
+            const endDate = new Date(historyRange.end + 'T00:00:00');
+            while(currentDate <= endDate) {
+                const dateString = currentDate.toISOString().split('T')[0];
+                focusMinutesPerDay.set(dateString, 0);
+                currentDate.setDate(currentDate.getDate() + 1);
+            }
+        }
+
+        pomodoroHistory.forEach(entry => {
+            const dateString = entry.ended_at.split('T')[0];
+            if (focusMinutesPerDay.has(dateString)) {
+                const currentMinutes = focusMinutesPerDay.get(dateString)!;
+                focusMinutesPerDay.set(dateString, currentMinutes + (Number(entry.duration_minutes) || 0));
+            }
+        });
+
+        const focusLineChartData = Array.from(focusMinutesPerDay.entries()).map(([dateString, minutes]) => ({
+            date: new Date(dateString + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+            focusMinutes: minutes,
         }));
 
         const totalCompletedTasks = allTasks.filter(t => t.completed_at).length;
@@ -264,7 +289,7 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
 
         return {
             totalFocus, completedCount, totalTasks, pomsDone, pomsEst, projectsCompleted, targetsCompleted,
-            lineChartData, taskBreakdownData, projectBreakdownData, tagAnalysisData
+            lineChartData, taskBreakdownData, projectBreakdownData, tagAnalysisData, focusLineChartData
         };
     }, [logs, tasks, allTasks, projects, allProjects, targets, historyRange, settings, pomodoroHistory]);
 
@@ -409,6 +434,20 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                         <Tooltip contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }} itemStyle={{ color: 'white' }} labelStyle={{ color: 'white', fontWeight: 'bold' }} />
                         <Legend wrapperStyle={{fontSize: "12px"}}/>
                         <Line type="monotone" dataKey="completion" name="Task Completion %" stroke="#f59e0b" activeDot={{ r: 8 }} />
+                    </LineChart>
+                </ResponsiveContainer>
+            </div>
+
+            <div className="h-64 mt-8">
+                 <h3 className="text-lg font-semibold text-white text-center mb-2">Daily Focus Minutes</h3>
+                 <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={aggregatedData.focusLineChartData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.2)" />
+                        <XAxis dataKey="date" stroke="rgba(255,255,255,0.7)" tick={{ fontSize: 10 }} />
+                        <YAxis stroke="rgba(255,255,255,0.7)" unit="m" />
+                        <Tooltip contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }} itemStyle={{ color: 'white' }} labelStyle={{ color: 'white', fontWeight: 'bold' }} />
+                        <Legend wrapperStyle={{fontSize: "12px"}}/>
+                        <Line type="monotone" dataKey="focusMinutes" name="Focus Minutes" stroke="#34D399" activeDot={{ r: 8 }} />
                     </LineChart>
                 </ResponsiveContainer>
             </div>
