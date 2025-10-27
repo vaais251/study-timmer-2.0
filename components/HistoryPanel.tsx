@@ -154,7 +154,16 @@ const ConsistencyTracker: React.FC<{ logs: DbDailyLog[] }> = ({ logs }) => {
 
 
 const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, projects, allProjects, targets, historyRange, setHistoryRange, settings, pomodoroHistory, consistencyLogs }) => {
-    const [selectedDay, setSelectedDay] = useState<string>('');
+    const [selectedDay, setSelectedDay] = useState<string>(getTodayDateString());
+    const [detailViewType, setDetailViewType] = useState<'day' | 'week' | 'month' | 'all'>('day');
+
+    const handleSetRange = (days: number) => {
+        const today = getTodayDateString();
+        const ago = new Date();
+        ago.setDate(ago.getDate() - (days - 1));
+        const startDate = getTodayDateString(ago);
+        setHistoryRange({ start: startDate, end: today });
+    };
     
     const aggregatedData = useMemo(() => {
         if (!logs || !tasks || !projects || !targets || !allTasks || !allProjects) {
@@ -259,25 +268,69 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
         };
     }, [logs, tasks, allTasks, projects, allProjects, targets, historyRange, settings, pomodoroHistory]);
 
-    const selectedDayData = useMemo(() => {
-        if (!selectedDay) return null;
+    const detailedViewData = useMemo(() => {
+        const today = getTodayDateString();
+        let startDate = '';
+        let endDate = '';
+        let title = '';
+    
+        switch (detailViewType) {
+            case 'day':
+                if (!selectedDay) return null;
+                startDate = selectedDay;
+                endDate = selectedDay;
+                title = new Date(selectedDay + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+                break;
+            case 'week': {
+                const weekAgo = new Date();
+                weekAgo.setDate(weekAgo.getDate() - 6);
+                startDate = getTodayDateString(weekAgo);
+                endDate = today;
+                title = `Last 7 Days (${startDate} to ${endDate})`;
+                break;
+            }
+            case 'month': {
+                const monthAgo = new Date();
+                monthAgo.setDate(monthAgo.getDate() - 29);
+                startDate = getTodayDateString(monthAgo);
+                endDate = today;
+                title = `Last 30 Days (${startDate} to ${endDate})`;
+                break;
+            }
+            case 'all': {
+                startDate = historyRange.start;
+                endDate = historyRange.end;
+                title = `Selected Range (${startDate} to ${endDate})`;
+                break;
+            }
+            default:
+                return null;
+        }
+        
+        if (!startDate || !endDate) return null;
 
-        const tasksForDay = tasks.filter(t => t.due_date === selectedDay);
-        const pomodoroHistoryForDay = pomodoroHistory.filter(p => p.ended_at.startsWith(selectedDay));
+        const tasksInRange = tasks.filter(t => t.due_date >= startDate && t.due_date <= endDate);
+        const pomodoroHistoryInRange = pomodoroHistory.filter(p => {
+            const pDate = p.ended_at.split('T')[0];
+            return pDate >= startDate && pDate <= endDate;
+        });
 
-        const completedTasksCount = tasksForDay.filter(t => t.completed_at).length;
-        const totalTasksCount = tasksForDay.length;
+        const completedTasksCount = tasksInRange.filter(t => t.completed_at).length;
+        const totalTasksCount = tasksInRange.length;
         const completionPercentage = totalTasksCount > 0 ? Math.round((completedTasksCount / totalTasksCount) * 100) : 0;
-        const totalFocusMinutes = pomodoroHistoryForDay.reduce((sum, record) => sum + (Number(record.duration_minutes) || 0), 0);
+        const totalFocusMinutes = pomodoroHistoryInRange.reduce((sum, record) => sum + (Number(record.duration_minutes) || 0), 0);
         
         return {
-            tasks: tasksForDay,
+            title,
+            startDate,
+            endDate,
+            tasks: tasksInRange,
             completedTasksCount,
             totalTasksCount,
             completionPercentage,
             totalFocusMinutes,
         };
-    }, [selectedDay, tasks, pomodoroHistory]);
+    }, [detailViewType, selectedDay, tasks, pomodoroHistory, historyRange]);
     
     const COLORS_TASKS = ['#34D399', '#F87171'];
     const COLORS_PROJECTS = ['#60A5FA', '#FBBF24'];
@@ -310,12 +363,16 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
 
     return (
         <Panel title="📜 History & Progress">
-            <div className="mb-6">
-                <h3 className="text-lg font-semibold text-white text-center mb-2">Select Date Range</h3>
+            <div className="mb-6 space-y-2">
+                <h3 className="text-lg font-semibold text-white text-center">Select Date Range</h3>
                 <div className="flex flex-col sm:flex-row items-center justify-center gap-2">
                     <input type="date" value={historyRange.start} onChange={e => setHistoryRange(p => ({...p, start: e.target.value}))} className="bg-white/20 border border-white/30 rounded-lg p-2 text-white/80 w-full text-center" style={{colorScheme: 'dark'}}/>
                     <span className="text-white">to</span>
                     <input type="date" value={historyRange.end} onChange={e => setHistoryRange(p => ({...p, end: e.target.value}))} className="bg-white/20 border border-white/30 rounded-lg p-2 text-white/80 w-full text-center" style={{colorScheme: 'dark'}}/>
+                </div>
+                <div className="flex justify-center gap-2">
+                    <button onClick={() => handleSetRange(7)} className="p-2 px-3 rounded-lg font-semibold text-white transition bg-white/10 hover:bg-white/20 text-xs sm:text-sm">Last 7 Days</button>
+                    <button onClick={() => handleSetRange(30)} className="p-2 px-3 rounded-lg font-semibold text-white transition bg-white/10 hover:bg-white/20 text-xs sm:text-sm">Last 30 Days</button>
                 </div>
             </div>
 
@@ -416,28 +473,43 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
             </div>
 
             <div className="mt-8">
-                <h3 className="text-lg font-semibold text-white text-center mb-2">View a Specific Day</h3>
-                <div className="flex gap-2">
-                    <input type="date" value={selectedDay} onChange={e => setSelectedDay(e.target.value)} className="bg-white/20 border border-white/30 rounded-lg p-2 text-white/80 w-full text-center" style={{colorScheme: 'dark'}} />
+                <h3 className="text-lg font-semibold text-white text-center mb-2">Detailed Breakdown</h3>
+                <div className="flex justify-center gap-2 mb-4 bg-black/20 p-1 rounded-full">
+                    {(['day', 'week', 'month', 'all'] as const).map(type => (
+                        <button 
+                            key={type} 
+                            onClick={() => setDetailViewType(type)} 
+                            className={`flex-1 p-2 text-sm rounded-full font-bold transition-colors ${detailViewType === type ? 'bg-white/20 text-white' : 'text-white/60 hover:bg-white/10'}`}
+                        >
+                            {type === 'day' ? 'Day' : type === 'week' ? 'Last 7 Days' : type === 'month' ? 'Last 30 Days' : 'Date Range'}
+                        </button>
+                    ))}
                 </div>
-                {selectedDayData ? (
+                {detailViewType === 'day' && (
+                  <div className="flex gap-2">
+                      <input type="date" value={selectedDay} onChange={e => setSelectedDay(e.target.value)} className="bg-white/20 border border-white/30 rounded-lg p-2 text-white/80 w-full text-center" style={{colorScheme: 'dark'}} />
+                  </div>
+                )}
+                {detailedViewData ? (
                     <div className="bg-black/20 p-3 mt-3 rounded-lg text-white text-sm space-y-1">
-                        <p><strong>Date:</strong> {selectedDay}</p>
-                        <p><strong>Completed Tasks:</strong> {selectedDayData.completedTasksCount} / {selectedDayData.totalTasksCount}</p>
-                        <p><strong>Task Completion:</strong> {selectedDayData.completionPercentage}%</p>
-                        <p><strong>Total Focus Minutes:</strong> {selectedDayData.totalFocusMinutes}</p>
-                        <h4 className="font-bold pt-2">Tasks for this day: ({selectedDayData.tasks.length})</h4>
-                         {selectedDayData.tasks.length > 0 ? (
-                            <ul className='list-disc list-inside'>
-                                {selectedDayData.tasks.map(t => (
-                                    <li key={t.id} className={t.completed_at ? 'text-green-400' : 'text-amber-400'}>{t.text} - {t.completed_at ? 'Completed' : 'Incomplete'}</li>
+                        <p><strong>{detailedViewData.startDate === detailedViewData.endDate ? 'Date' : 'Period'}:</strong> {detailedViewData.title}</p>
+                        <p><strong>Completed Tasks:</strong> {detailedViewData.completedTasksCount} / {detailedViewData.totalTasksCount}</p>
+                        <p><strong>Task Completion:</strong> {detailedViewData.completionPercentage}%</p>
+                        <p><strong>Total Focus Minutes:</strong> {detailedViewData.totalFocusMinutes}</p>
+                        <h4 className="font-bold pt-2">Tasks ({detailedViewData.tasks.length}):</h4>
+                         {detailedViewData.tasks.length > 0 ? (
+                            <ul className='list-disc list-inside max-h-48 overflow-y-auto pr-2 space-y-1'>
+                                {detailedViewData.tasks.sort((a,b) => a.due_date.localeCompare(b.due_date)).map(t => (
+                                    <li key={t.id} className={t.completed_at ? 'text-green-400' : 'text-amber-400'}>
+                                        <span className="font-mono text-xs">{t.due_date}:</span> {t.text} - {t.completed_at ? 'Completed' : 'Incomplete'}
+                                    </li>
                                 ))}
                             </ul>
-                        ) : <p className="text-white/60">No tasks were due on this day.</p>}
+                        ) : <p className="text-white/60">No tasks were due in this period.</p>}
                     </div>
-                ) : selectedDay && (
+                ) : (
                     <div className="bg-black/20 p-3 mt-3 rounded-lg text-white/70 text-sm text-center">
-                        No data found for {selectedDay}.
+                         {detailViewType === 'day' ? 'Select a day to see details.' : 'Loading data...'}
                     </div>
                 )}
             </div>
