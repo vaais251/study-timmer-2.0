@@ -26,6 +26,15 @@ export interface Goal {
     text: string;
 }
 
+// Corresponds to the `commitments` table
+export interface Commitment {
+    id: string;
+    created_at: string;
+    user_id: string;
+    text: string;
+    due_date: string | null;
+}
+
 // Corresponds to the `targets` table
 export interface Target {
     id: string;

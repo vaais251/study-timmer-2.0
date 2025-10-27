@@ -24,7 +24,9 @@ export const MoreVerticalIcon: React.FC = () => <svg {...iconWithStrokeProps}><c
 export const TrashIcon: React.FC = () => <svg {...iconWithStrokeProps}><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>;
 export const UndoIcon: React.FC = () => <svg {...iconWithStrokeProps}><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5v0a5.5 5.5 0 0 1-5.5 5.5H11"/></svg>;
 export const EditIcon: React.FC = () => <svg {...iconWithStrokeProps}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>;
-
+export const StarIcon: React.FC = () => <svg {...iconWithStrokeProps}><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>;
+export const LockIcon: React.FC = () => <svg {...iconWithStrokeProps}><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>;
+export const CheckIcon: React.FC = () => <svg {...iconWithStrokeProps}><polyline points="20 6 9 17 4 12"></polyline></svg>;
 
 // Navbar Icons
 export const TimerIcon: React.FC = () => <svg {...iconWithStrokeProps}><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>;

@@ -1,9 +1,10 @@
 
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
 import * as dbService from './services/dbService';
-import { Task, Settings, Mode, Page, DbDailyLog, Project, Goal, Target, AppState, PomodoroHistory } from './types';
+import { Task, Settings, Mode, Page, DbDailyLog, Project, Goal, Target, AppState, PomodoroHistory, Commitment } from './types';
 import { getTodayDateString } from './utils/date';
 import { playFocusStartSound, playFocusEndSound, playBreakStartSound, playBreakEndSound, playAlertLoop, resumeAudioContext } from './utils/audio';
 
@@ -73,6 +74,7 @@ const App: React.FC = () => {
     const [projects, setProjects] = useState<Project[]>([]);
     const [goals, setGoals] = useState<Goal[]>([]);
     const [targets, setTargets] = useState<Target[]>([]);
+    const [allCommitments, setAllCommitments] = useState<Commitment[]>([]);
     const [todaysHistory, setTodaysHistory] = useState<PomodoroHistory[]>([]);
     
     const [dailyLog, setDailyLog] = useState<DbDailyLog>({
@@ -95,6 +97,11 @@ const App: React.FC = () => {
     const tasksToday = tasks.filter(t => t.due_date === todayString && !t.completed_at);
     const tasksForTomorrow = tasks.filter(t => t.due_date > todayString && !t.completed_at);
     const completedToday = tasks.filter(t => !!t.completed_at && t.due_date === todayString);
+    
+    // Derived state for commitments: filter out expired ones
+    const activeCommitments = useMemo(() => {
+        return allCommitments.filter(c => !c.due_date || c.due_date >= todayString);
+    }, [allCommitments, todayString]);
 
 
     useEffect(() => {
@@ -113,14 +120,15 @@ const App: React.FC = () => {
         if (!session) return;
         setIsLoading(true);
         try {
-            const [userSettings, userTasks, userDailyLog, userProjects, userGoals, userTargets, fetchedTodaysHistory] = await Promise.all([
+            const [userSettings, userTasks, userDailyLog, userProjects, userGoals, userTargets, fetchedTodaysHistory, userCommitments] = await Promise.all([
                 dbService.getSettings(),
                 dbService.getTasks(),
                 dbService.getDailyLogForToday(),
                 dbService.getProjects(),
                 dbService.getGoals(),
                 dbService.getTargets(),
-                dbService.getTodaysPomodoroHistory()
+                dbService.getTodaysPomodoroHistory(),
+                dbService.getCommitments()
             ]);
             
             setTodaysHistory(fetchedTodaysHistory);
@@ -138,6 +146,7 @@ const App: React.FC = () => {
 
             if (userGoals) setGoals(userGoals);
             if (userTargets) setTargets(userTargets);
+            if (userCommitments) setAllCommitments(userCommitments);
             
             // Authoritative calculation for today's focus minutes from pomodoro_history
             const authoritativeFocusMinutes = fetchedTodaysHistory.reduce((sum, record) => sum + (Number(record.duration_minutes) || 0), 0);
@@ -629,6 +638,20 @@ const App: React.FC = () => {
             alert(`Failed to delete project. \n\nREASON: ${result.error}`);
         }
     };
+    
+    // Commitment Handlers
+    const handleAddCommitment = async (text: string, dueDate: string | null) => {
+        const newCommitments = await dbService.addCommitment(text, dueDate);
+        if (newCommitments) setAllCommitments(newCommitments);
+    };
+    const handleUpdateCommitment = async (id: string, updates: { text: string; dueDate: string | null; }) => {
+        const newCommitments = await dbService.updateCommitment(id, updates);
+        if (newCommitments) setAllCommitments(newCommitments);
+    };
+    const handleDeleteCommitment = async (id: string) => {
+        const newCommitments = await dbService.deleteCommitment(id);
+        if (newCommitments) setAllCommitments(newCommitments);
+    };
 
     const handleSaveSettings = async (newSettings: Settings) => {
         await dbService.updateSettings(newSettings);
@@ -644,6 +667,7 @@ const App: React.FC = () => {
         setProjects([]);
         setGoals([]);
         setTargets([]);
+        setAllCommitments([]);
         setTodaysHistory([]);
         setDidRestoreFromStorage(false); // Reset persistence flag on logout
         setDailyLog({ date: getTodayDateString(), completed_sessions: 0, total_focus_minutes: 0 });
@@ -690,6 +714,7 @@ const App: React.FC = () => {
                     goals={goals}
                     targets={targets}
                     projects={projects}
+                    commitments={activeCommitments}
                     onAddGoal={handleAddGoal}
                     onUpdateGoal={handleUpdateGoal}
                     onDeleteGoal={handleDeleteGoal}
@@ -699,6 +724,9 @@ const App: React.FC = () => {
                     onAddProject={handleAddProject}
                     onUpdateProject={handleUpdateProject}
                     onDeleteProject={handleDeleteProject}
+                    onAddCommitment={handleAddCommitment}
+                    onUpdateCommitment={handleUpdateCommitment}
+                    onDeleteCommitment={handleDeleteCommitment}
                 />;
             case 'stats':
                 return <StatsPage />;
@@ -707,6 +735,7 @@ const App: React.FC = () => {
                             goals={goals}
                             targets={targets}
                             projects={projects}
+                            allCommitments={allCommitments}
                        />;
             case 'settings':
                 return <SettingsPage 

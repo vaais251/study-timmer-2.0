@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient';
-import { Settings, Task, DbDailyLog, Project, Goal, Target, PomodoroHistory } from '../types';
+import { Settings, Task, DbDailyLog, Project, Goal, Target, PomodoroHistory, Commitment } from '../types';
 import { getTodayDateString } from '../utils/date';
 
 // --- Settings ---
@@ -460,6 +460,53 @@ export const updateTarget = async (id: string, updates: Partial<Target>): Promis
 export const deleteTarget = async (id: string): Promise<Target[] | null> => {
     const { error } = await supabase.from('targets').delete().eq('id', id);
     return error ? null : await getTargets();
+}
+
+
+// --- Commitments ---
+
+export const getCommitments = async (): Promise<Commitment[] | null> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+    const { data, error } = await supabase
+        .from('commitments')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+    if (error) {
+        console.error("Error fetching commitments:", JSON.stringify(error, null, 2));
+        return null;
+    }
+    return data;
+}
+
+export const addCommitment = async (text: string, dueDate: string | null): Promise<Commitment[] | null> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+    const { error } = await supabase.from('commitments').insert({ text, user_id: user.id, due_date: dueDate });
+    if (error) {
+        console.error("Error adding commitment:", JSON.stringify(error, null, 2));
+        return null;
+    }
+    return getCommitments();
+}
+
+export const updateCommitment = async (id: string, updates: { text: string; dueDate: string | null; }): Promise<Commitment[] | null> => {
+    const { error } = await supabase.from('commitments').update({ text: updates.text, due_date: updates.dueDate }).eq('id', id);
+    if (error) {
+        console.error("Error updating commitment:", JSON.stringify(error, null, 2));
+        return null;
+    }
+    return getCommitments();
+}
+
+export const deleteCommitment = async (id: string): Promise<Commitment[] | null> => {
+    const { error } = await supabase.from('commitments').delete().eq('id', id);
+    if (error) {
+        console.error("Error deleting commitment:", JSON.stringify(error, null, 2));
+        return null;
+    }
+    return getCommitments();
 }
 
 

@@ -1,6 +1,7 @@
 
+
 import React, { useState, useEffect } from 'react';
-import { Task, Goal, Target, Project, PomodoroHistory } from '../types';
+import { Task, Goal, Target, Project, PomodoroHistory, Commitment } from '../types';
 import { getTodayDateString } from '../utils/date';
 import { generateContent } from '../services/geminiService';
 import * as dbService from '../services/dbService';
@@ -24,6 +25,7 @@ interface AICoachPageProps {
     goals: Goal[];
     targets: Target[];
     projects: Project[];
+    allCommitments: Commitment[];
 }
 
 const getMonthAgoDateString = (): string => {
@@ -33,7 +35,7 @@ const getMonthAgoDateString = (): string => {
     return getTodayDateString(date);
 };
 
-const AICoachPage: React.FC<AICoachPageProps> = ({ goals, targets, projects }) => {
+const AICoachPage: React.FC<AICoachPageProps> = ({ goals, targets, projects, allCommitments }) => {
     const [insightsState, setInsightsState] = useState({ content: "Get AI-powered insights on your study habits based on your selected performance.", isLoading: false });
     const [mentorState, setMentorState] = useState({ content: "Get personalized advice, content suggestions, and consistency tips.", isLoading: false });
     const [analystState, setAnalystState] = useState({ content: "Ask me anything about your productivity data. For example: 'Which day last week did I focus the most?' or 'List all my incomplete tasks related to my 'History Essay' project.'", isLoading: false });
@@ -232,6 +234,7 @@ const AICoachPage: React.FC<AICoachPageProps> = ({ goals, targets, projects }) =
         const projectsForPrompt = projects;
         const goalsForPrompt = goals;
         const targetsForPrompt = targets;
+        const commitmentsForPrompt = allCommitments.map(({ user_id, ...rest }) => rest);
 
         const prompt = `
             You are a sophisticated data analyst AI integrated into a Pomodoro study application. Your role is to answer user questions by analyzing their productivity data with high accuracy.
@@ -259,13 +262,21 @@ const AICoachPage: React.FC<AICoachPageProps> = ({ goals, targets, projects }) =
             - **projects**: A list of user-defined projects. Each project has a unique \`id\`.
               - \`id\`: The unique identifier for a project. **This is the primary key.**
               - \`name\`: The project's name.
-              - \`deadline\`: The project's due date (YYYY-MM-DD).
+              - \`deadline\`: The project's due date (YYYY-MM-DD), or null if none.
               - \`status\`: Can be 'active', 'completed', or 'due'.
               - \`completed_at\`: Timestamp of completion, or null.
+              - \`completion_criteria_type\`: How completion is measured. Can be 'manual', 'task_count', or 'duration_minutes'.
+              - \`completion_criteria_value\`: The target value for 'task_count' or 'duration_minutes'. E.g., 10 tasks or 600 minutes.
+              - \`progress_value\`: The current progress towards 'completion_criteria_value'.
 
             **Supporting Tables:**
             - **goals**: The user's high-level, long-term goals.
             - **targets**: Specific, measurable objectives with deadlines.
+            - **commitments**: A list of daily or dated commitments made by the user.
+              - \`id\`: Unique identifier.
+              - \`created_at\`: Timestamp of when the commitment was made.
+              - \`text\`: The content of the commitment (e.g., "I will study for 2 hours").
+              - \`due_date\`: An optional date for when the commitment is for (YYYY-MM-DD). Null if it's a general commitment.
 
             **Crucial Calculation Logic & Rules:**
             To answer questions about time spent on a specific topic (like a tag, project, or task), you MUST follow these steps precisely:
@@ -292,7 +303,8 @@ const AICoachPage: React.FC<AICoachPageProps> = ({ goals, targets, projects }) =
               "pomodoro_history": ${JSON.stringify(historyForPrompt)},
               "projects": ${JSON.stringify(projectsForPrompt)},
               "goals": ${JSON.stringify(goalsForPrompt)},
-              "targets": ${JSON.stringify(targetsForPrompt)}
+              "targets": ${JSON.stringify(targetsForPrompt)},
+              "commitments": ${JSON.stringify(commitmentsForPrompt)}
             }
             \`\`\`
 
