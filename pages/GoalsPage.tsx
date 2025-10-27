@@ -1,8 +1,261 @@
 
-import React, { useState, useMemo } from 'react';
-import { Goal, Target, Project } from '../types';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Goal, Target, Project, Task, PomodoroHistory } from '../types';
 import Panel from '../components/common/Panel';
 import { TrashIcon } from '../components/common/Icons';
+import * as dbService from '../services/dbService';
+import Spinner from '../components/common/Spinner';
+
+const getDaysAgo = (days: number): string => {
+    const date = new Date();
+    date.setDate(date.getDate() - days);
+    return date.toISOString().split('T')[0];
+};
+
+const ProjectTimeAnalysisDashboard: React.FC<{
+    allProjects: Project[];
+    allTasks: Task[];
+    allHistory: PomodoroHistory[];
+}> = ({ allProjects, allTasks, allHistory }) => {
+    const [dateRange, setDateRange] = useState({ start: getDaysAgo(30), end: new Date().toISOString().split('T')[0] });
+    const [statusFilter, setStatusFilter] = useState<'active' | 'completed' | 'due'>('active');
+
+    const projectTimeData = useMemo(() => {
+        const isAllTime = !dateRange.start || !dateRange.end;
+
+        const filteredHistory = isAllTime 
+            ? allHistory 
+            : allHistory.filter(h => {
+                const hDate = h.ended_at.split('T')[0];
+                return hDate >= dateRange.start && hDate <= dateRange.end;
+            });
+
+        const taskProjectMap = new Map<string, string>();
+        allTasks.forEach(task => {
+            if (task.project_id) {
+                taskProjectMap.set(task.id, task.project_id);
+            }
+        });
+
+        const timePerProject = new Map<string, number>();
+        filteredHistory.forEach(h => {
+            if (h.task_id) {
+                const projectId = taskProjectMap.get(h.task_id);
+                if (projectId) {
+                    timePerProject.set(projectId, (timePerProject.get(projectId) || 0) + (Number(h.duration_minutes) || 0));
+                }
+            }
+        });
+
+        return allProjects.map(p => ({
+            ...p,
+            timeSpent: timePerProject.get(p.id) || 0,
+            targetTime: p.completion_criteria_type === 'duration_minutes' ? p.completion_criteria_value : null
+        }));
+    }, [allProjects, allTasks, allHistory, dateRange]);
+    
+    const filteredProjectData = useMemo(() => {
+        return projectTimeData.filter(p => p.status === statusFilter);
+    }, [projectTimeData, statusFilter]);
+
+    const handleSetRange = (days: number | null) => {
+        if (days === null) {
+            setDateRange({ start: '', end: '' });
+        } else {
+            setDateRange({ start: getDaysAgo(days), end: new Date().toISOString().split('T')[0] });
+        }
+    };
+    
+    const ProjectTimeBar: React.FC<{project: typeof projectTimeData[0]}> = ({ project }) => {
+        const progress = (project.targetTime && project.targetTime > 0)
+            ? Math.min(100, (project.timeSpent / project.targetTime) * 100)
+            : -1;
+        
+        return (
+             <div className="bg-black/20 p-3 rounded-lg">
+                <div className="flex justify-between items-center text-sm mb-1">
+                    <span className="font-bold text-white truncate pr-2">{project.name}</span>
+                    <span className="text-white/80 whitespace-nowrap">
+                        {project.timeSpent}m
+                        {progress !== -1 && ` / ${project.targetTime}m`}
+                    </span>
+                </div>
+                {progress !== -1 ? (
+                    <div className="w-full bg-black/30 rounded-full h-2.5 shadow-inner">
+                        <div className="bg-gradient-to-r from-cyan-400 to-blue-500 h-2.5 rounded-full" style={{width: `${progress}%`}}></div>
+                    </div>
+                ) : null}
+            </div>
+        )
+    };
+
+    return (
+        <Panel title="📊 Project Time Analysis">
+            <div className="mb-4 space-y-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                     <input type="date" value={dateRange.start} onChange={e => setDateRange(p => ({...p, start: e.target.value}))} className="bg-white/20 border border-white/30 rounded-lg p-2 text-white/80 w-full text-center" style={{colorScheme: 'dark'}}/>
+                     <input type="date" value={dateRange.end} onChange={e => setDateRange(p => ({...p, end: e.target.value}))} className="bg-white/20 border border-white/30 rounded-lg p-2 text-white/80 w-full text-center" style={{colorScheme: 'dark'}}/>
+                </div>
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 text-sm">
+                    <button onClick={() => handleSetRange(7)} className="p-2 rounded-lg bg-white/10 hover:bg-white/20 transition text-white">Last 7 Days</button>
+                    <button onClick={() => handleSetRange(30)} className="p-2 rounded-lg bg-white/10 hover:bg-white/20 transition text-white">Last 30 Days</button>
+                    <button onClick={() => handleSetRange(new Date().getDate() - 1)} className="p-2 rounded-lg bg-white/10 hover:bg-white/20 transition text-white">This Month</button>
+                    <button onClick={() => handleSetRange(null)} className="p-2 rounded-lg bg-white/10 hover:bg-white/20 transition text-white">All Time</button>
+                </div>
+            </div>
+             <div className="flex justify-center gap-2 mb-4 bg-black/20 p-1 rounded-full">
+                {(['active', 'completed', 'due'] as const).map(status => (
+                    <button key={status} onClick={() => setStatusFilter(status)} className={`flex-1 p-2 text-sm rounded-full font-bold transition-colors ${statusFilter === status ? 'bg-white/20 text-white' : 'text-white/60 hover:bg-white/10'}`}>
+                        {status.charAt(0).toUpperCase() + status.slice(1)}
+                    </button>
+                ))}
+            </div>
+            <div className="space-y-2 max-h-60 overflow-y-auto pr-2">
+                {filteredProjectData.length > 0 ? (
+                    filteredProjectData.map(p => <ProjectTimeBar key={p.id} project={p} />)
+                ) : (
+                    <p className="text-center text-sm text-white/60 py-4">No projects with tracked time found for this status and date range.</p>
+                )}
+            </div>
+        </Panel>
+    );
+};
+
+
+interface ProjectItemProps {
+    project: Project;
+    onUpdateProject: (id: string, updates: Partial<Project>) => void;
+    onDeleteProject: (id: string) => void;
+}
+
+const ProjectItem: React.FC<ProjectItemProps> = ({ project, onUpdateProject, onDeleteProject }) => {
+    const { progress, progressText, isComplete, isDue, isManual } = useMemo(() => {
+        const isComplete = project.status === 'completed';
+        const isDue = project.status === 'due';
+        const isManual = project.completion_criteria_type === 'manual';
+        
+        if (isManual) return { progress: isComplete ? 100 : 0, progressText: '', isComplete, isDue, isManual };
+        
+        const value = project.progress_value;
+        const target = project.completion_criteria_value || 1; // Avoid division by zero
+        const progress = Math.min(100, (value / target) * 100);
+
+        let progressText = '';
+        if (project.completion_criteria_type === 'task_count') {
+            progressText = `${value}/${target} tasks`;
+        } else if (project.completion_criteria_type === 'duration_minutes') {
+            progressText = `${value}/${target} min`;
+        }
+        
+        return { progress, progressText, isComplete, isDue, isManual };
+    }, [project]);
+
+    const handleManualCompleteToggle = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const newStatus = e.target.checked ? 'completed' : 'active';
+        onUpdateProject(project.id, { 
+            status: newStatus,
+            completed_at: e.target.checked ? new Date().toISOString() : null,
+        });
+    };
+    
+    const bgColor = isComplete ? 'bg-white/5 text-white/50' : isDue ? 'bg-red-900/40' : 'bg-white/10';
+    const isDisabled = isComplete || isDue;
+
+    return (
+        <div className={`p-3 rounded-lg ${bgColor} transition-all`}>
+            <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3 flex-grow min-w-0">
+                    {isManual && (
+                        <input 
+                            type="checkbox" 
+                            checked={isComplete} 
+                            onChange={handleManualCompleteToggle} 
+                            disabled={isDisabled}
+                            className="h-5 w-5 rounded bg-white/20 border-white/30 text-green-400 focus:ring-green-400 flex-shrink-0 cursor-pointer disabled:cursor-not-allowed" 
+                            aria-label={`Mark project ${project.name} as complete`}
+                        />
+                    )}
+                    <div className="flex-grow min-w-0">
+                        <span className={`text-white ${isComplete ? 'line-through' : ''}`}>{project.name}</span>
+                        {project.deadline && (
+                            <span className={`block text-xs mt-1 ${isDue && !isComplete ? 'text-red-400 font-bold' : 'text-amber-300/80'}`}>
+                                Due: {new Date(project.deadline + 'T00:00:00').toLocaleDateString()}
+                            </span>
+                        )}
+                    </div>
+                </div>
+                 <div className="flex items-center gap-2">
+                    {isDue && !isComplete && <span className="text-xs bg-red-500/50 text-white px-2 py-1 rounded-full font-bold">DUE</span>}
+                    {isComplete && <span className="text-xs bg-green-500/50 text-white px-2 py-1 rounded-full font-bold">COMPLETED</span>}
+                    <button onClick={() => {
+                        if (window.confirm(`Are you sure you want to delete "${project.name}"? This will unlink it from all tasks.`)) {
+                            onDeleteProject(project.id)
+                        }
+                    }} className="p-1 text-red-400 hover:text-red-300 transition" title="Delete Project"><TrashIcon /></button>
+                 </div>
+            </div>
+            {!isManual && (
+                <div className="mt-2 pl-2">
+                    <div className="flex justify-between items-center mb-1 text-xs text-white/80">
+                        <span>Progress</span>
+                        <span>{progressText}</span>
+                    </div>
+                    <div className="w-full bg-black/30 rounded-full h-2.5 shadow-inner">
+                        <div
+                            className={`h-2.5 rounded-full transition-all duration-500 ${isComplete ? 'bg-green-500' : 'bg-gradient-to-r from-cyan-400 to-blue-500'}`}
+                            style={{ width: `${progress}%` }}
+                        ></div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
+const TargetItem: React.FC<{
+    target: Target;
+    onUpdateTarget: (id: string, completed: boolean) => void;
+    onDeleteTarget: (id: string) => void;
+}> = ({ target, onUpdateTarget, onDeleteTarget }) => {
+    // Using string comparison is safer for YYYY-MM-DD format to avoid timezone issues.
+    const todayString = new Date().toISOString().split('T')[0];
+
+    const isCompleted = !!target.completed_at;
+    const isDue = !isCompleted && target.deadline < todayString;
+
+    const isDisabled = isCompleted || isDue;
+    
+    let bgColor = 'bg-white/10';
+    let textColor = 'text-white';
+    if (isCompleted) {
+        bgColor = 'bg-white/5 text-white/50';
+    } else if (isDue) {
+        bgColor = 'bg-red-900/40';
+        textColor = 'text-red-300';
+    }
+
+    return (
+        <li className={`flex items-center justify-between p-3 rounded-lg transition-all ${bgColor}`}>
+            <div className="flex items-center gap-3 flex-grow min-w-0">
+                <input 
+                    type="checkbox" 
+                    checked={isCompleted} 
+                    onChange={(e) => onUpdateTarget(target.id, e.target.checked)} 
+                    disabled={isDisabled}
+                    className="h-5 w-5 rounded bg-white/20 border-white/30 text-green-400 focus:ring-green-400 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0" 
+                />
+                <span className={`${isCompleted ? 'line-through' : ''} ${textColor}`}>
+                    {target.text}
+                </span>
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
+                 {isDue && <span className="text-xs bg-red-500/50 text-white px-2 py-1 rounded-full font-bold">DUE</span>}
+                <span className="text-xs bg-black/20 px-2 py-1 rounded-full">{new Date(target.deadline + 'T00:00:00').toLocaleDateString()}</span>
+                <button onClick={() => onDeleteTarget(target.id)} className="text-red-400 hover:text-red-300 text-2xl font-bold leading-none p-1 transition" title="Delete target">&times;</button>
+            </div>
+        </li>
+    );
+};
 
 interface GoalsPageProps {
     goals: Goal[];
@@ -13,8 +266,8 @@ interface GoalsPageProps {
     onAddTarget: (text: string, deadline: string) => void;
     onUpdateTarget: (id: string, completed: boolean) => void;
     onDeleteTarget: (id: string) => void;
-    onAddProject: (name: string, deadline: string | null) => Promise<string | null>;
-    onUpdateProject: (id: string, completed: boolean) => void;
+    onAddProject: (name: string, deadline: string | null, criteria: {type: Project['completion_criteria_type'], value: number | null}) => Promise<string | null>;
+    onUpdateProject: (id: string, updates: Partial<Project>) => void;
     onDeleteProject: (id: string) => void;
 }
 
@@ -22,20 +275,52 @@ const GoalsPage: React.FC<GoalsPageProps> = ({ goals, targets, projects, onAddGo
     const [newGoal, setNewGoal] = useState('');
     const [newTarget, setNewTarget] = useState('');
     const [newDeadline, setNewDeadline] = useState('');
-    const [newProject, setNewProject] = useState('');
+    
+    // Project form state
+    const [newProjectName, setNewProjectName] = useState('');
     const [newProjectDeadline, setNewProjectDeadline] = useState('');
+    const [criteriaType, setCriteriaType] = useState<Project['completion_criteria_type']>('manual');
+    const [criteriaValue, setCriteriaValue] = useState('');
+    
+    // Data for stats dashboard
+    const [allTasks, setAllTasks] = useState<Task[]>([]);
+    const [allHistory, setAllHistory] = useState<PomodoroHistory[]>([]);
+    const [isLoadingStats, setIsLoadingStats] = useState(true);
 
-    const upcomingDeadlines = useMemo(() => {
-        const tomorrow = new Date();
-        tomorrow.setDate(tomorrow.getDate() + 1);
-        const tomorrowString = tomorrow.toISOString().split('T')[0];
+    // Project list filter
+    const [projectStatusFilter, setProjectStatusFilter] = useState<'active' | 'completed' | 'due'>('active');
 
-        const projectsDue = projects.filter(p => !p.completed_at && p.deadline === tomorrowString);
-        const targetsDue = targets.filter(t => !t.completed_at && t.deadline === tomorrowString);
+    useEffect(() => {
+        const fetchStatsData = async () => {
+            setIsLoadingStats(true);
+            const [tasks, history] = await Promise.all([
+                dbService.getAllTasksForStats(),
+                dbService.getAllPomodoroHistory()
+            ]);
+            setAllTasks(tasks || []);
+            setAllHistory(history || []);
+            setIsLoadingStats(false);
+        };
+        fetchStatsData();
+    }, []);
 
-        return [...projectsDue, ...targetsDue];
-    }, [projects, targets]);
+    const handleAddProject = () => {
+        if (newProjectName.trim()) {
+            const value = criteriaType !== 'manual' && criteriaValue ? parseInt(criteriaValue, 10) : null;
+            if (criteriaType !== 'manual' && (!value || value <= 0)) {
+                alert('Please enter a valid, positive number for the completion criteria.');
+                return;
+            }
 
+            onAddProject(newProjectName.trim(), newProjectDeadline || null, { type: criteriaType, value });
+            
+            // Reset form
+            setNewProjectName('');
+            setNewProjectDeadline('');
+            setCriteriaType('manual');
+            setCriteriaValue('');
+        }
+    };
 
     const handleAddGoal = () => {
         if (newGoal.trim()) {
@@ -52,28 +337,41 @@ const GoalsPage: React.FC<GoalsPageProps> = ({ goals, targets, projects, onAddGo
         }
     };
 
-    const handleAddNewProject = () => {
-        if (newProject.trim()) {
-            onAddProject(newProject.trim(), newProjectDeadline || null);
-            setNewProject('');
-            setNewProjectDeadline('');
-        }
-    }
+    const filteredProjects = useMemo(() => {
+        return projects.filter(p => p.status === projectStatusFilter);
+    }, [projects, projectStatusFilter]);
+    
+    const sortedTargets = useMemo(() => {
+        const todayString = new Date().toISOString().split('T')[0];
+        return [...targets].sort((a, b) => {
+            const aIsCompleted = !!a.completed_at;
+            const bIsCompleted = !!b.completed_at;
+            const aIsDue = !aIsCompleted && a.deadline < todayString;
+            const bIsDue = !bIsCompleted && b.deadline < todayString;
 
-    const { activeProjects, completedProjects } = useMemo(() => ({
-        activeProjects: projects.filter(p => !p.completed_at),
-        completedProjects: projects.filter(p => p.completed_at),
-    }), [projects]);
+            // Group by status: active -> due -> completed
+            if (aIsCompleted !== bIsCompleted) return aIsCompleted ? 1 : -1;
+            if (!aIsCompleted && aIsDue !== bIsDue) return aIsDue ? 1 : -1;
+            
+            // Within each group, sort by deadline
+            return new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
+        });
+    }, [targets]);
 
-    const sortedTargets = [...targets].sort((a, b) => {
-        if (a.completed_at && !b.completed_at) return 1;
-        if (!a.completed_at && b.completed_at) return -1;
-        return new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
-    });
+    const upcomingDeadlines = useMemo(() => {
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        const tomorrowString = tomorrow.toISOString().split('T')[0];
+
+        const projectsDue = projects.filter(p => p.status === 'active' && p.deadline === tomorrowString);
+        const targetsDue = targets.filter(t => !t.completed_at && t.deadline === tomorrowString);
+
+        return [...projectsDue, ...targetsDue];
+    }, [projects, targets]);
 
     return (
         <div>
-            {upcomingDeadlines.length > 0 && (
+             {upcomingDeadlines.length > 0 && (
                 <div className="bg-amber-500/30 border border-amber-500 text-amber-200 p-4 rounded-2xl mb-4 animate-pulse-slow">
                     <h3 className="font-bold text-lg text-center mb-2">🔥 Heads Up! Due Tomorrow:</h3>
                     <ul className="list-disc list-inside text-sm text-center">
@@ -84,58 +382,6 @@ const GoalsPage: React.FC<GoalsPageProps> = ({ goals, targets, projects, onAddGo
                 </div>
             )}
 
-            <Panel title="📂 Project Status">
-                <p className="text-white/80 text-center text-sm mb-4">A high-level overview of all your ongoing and completed projects.</p>
-                <div className="flex flex-col sm:flex-row gap-2 mb-4">
-                    <input
-                        type="text"
-                        value={newProject}
-                        onChange={(e) => setNewProject(e.target.value)}
-                        placeholder="Add a new project..."
-                        className="flex-grow bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50"
-                    />
-                    <input
-                        type="date"
-                        value={newProjectDeadline}
-                        onChange={(e) => setNewProjectDeadline(e.target.value)}
-                        className="bg-white/20 border border-white/30 rounded-lg p-3 text-white/80 w-full sm:w-auto text-center"
-                        style={{colorScheme: 'dark'}}
-                        title="Optional deadline"
-                    />
-                    <button onClick={handleAddNewProject} className="p-3 sm:px-4 rounded-lg font-bold text-white transition hover:scale-105 bg-gradient-to-br from-purple-500 to-indigo-600">Add Project</button>
-                </div>
-                 <div className="space-y-3 max-h-60 overflow-y-auto pr-2">
-                    <h3 className="text-white font-bold text-md">Active Projects</h3>
-                    {activeProjects.map(project => (
-                        <div key={project.id} className="flex items-center bg-white/10 p-3 rounded-lg">
-                            <input type="checkbox" checked={false} onChange={(e) => onUpdateProject(project.id, e.target.checked)} className="h-5 w-5 rounded bg-white/20 border-white/30 text-green-400 focus:ring-green-400 mr-3 flex-shrink-0" />
-                            <div className="flex-grow min-w-0">
-                                <span className="text-white">{project.name}</span>
-                                {project.deadline && (
-                                    <span className="block text-xs text-amber-300/80 mt-1">
-                                        Due: {new Date(project.deadline + 'T00:00:00').toLocaleDateString()}
-                                    </span>
-                                )}
-                            </div>
-                             <button onClick={() => {
-                                if (window.confirm(`Are you sure you want to delete "${project.name}"? This will unlink it from all tasks.`)) {
-                                    onDeleteProject(project.id)
-                                }
-                            }} className="p-1 text-red-400 hover:text-red-300 transition" title="Delete Project"><TrashIcon /></button>
-                        </div>
-                    ))}
-                    {activeProjects.length === 0 && <p className="text-center text-sm text-white/60 py-2">No active projects.</p>}
-                    
-                    {completedProjects.length > 0 && <h3 className="text-white font-bold text-md pt-2">Completed Projects</h3>}
-                    {completedProjects.map(project => (
-                         <div key={project.id} className="flex items-center bg-white/5 p-3 rounded-lg text-white/60">
-                            <input type="checkbox" checked={true} onChange={(e) => onUpdateProject(project.id, e.target.checked)} className="h-5 w-5 rounded bg-white/20 border-white/30 text-green-400 focus:ring-green-400 mr-3" />
-                            <span className="line-through">{project.name}</span>
-                        </div>
-                    ))}
-                </div>
-            </Panel>
-            
             <Panel title="🎯 My Core Goals">
                 <p className="text-white/80 text-center text-sm mb-4">Your long-term affirmations. Review these daily to stay motivated.</p>
                 <div className="flex flex-col sm:flex-row gap-2 mb-4">
@@ -181,20 +427,82 @@ const GoalsPage: React.FC<GoalsPageProps> = ({ goals, targets, projects, onAddGo
                 </div>
                  <ul className="space-y-2 max-h-64 overflow-y-auto pr-2">
                     {sortedTargets.map(target => (
-                        <li key={target.id} className={`flex items-center justify-between p-3 rounded-lg transition-all ${target.completed_at ? 'bg-white/5 text-white/50' : 'bg-white/10'}`}>
-                            <div className="flex items-center gap-3">
-                                <input type="checkbox" checked={!!target.completed_at} onChange={(e) => onUpdateTarget(target.id, e.target.checked)} className="h-5 w-5 rounded bg-white/20 border-white/30 text-green-400 focus:ring-green-400" />
-                                <span className={target.completed_at ? 'line-through' : ''}>{target.text}</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <span className="text-xs bg-black/20 px-2 py-1 rounded-full">{new Date(target.deadline + 'T00:00:00').toLocaleDateString()}</span>
-                                <button onClick={() => onDeleteTarget(target.id)} className="text-red-400 hover:text-red-300 text-2xl font-bold leading-none p-1 transition">&times;</button>
-                            </div>
-                        </li>
+                        <TargetItem 
+                            key={target.id}
+                            target={target}
+                            onUpdateTarget={onUpdateTarget}
+                            onDeleteTarget={onDeleteTarget}
+                        />
                     ))}
                     {targets.length === 0 && <p className="text-center text-white/60 p-4">No key targets defined yet.</p>}
                 </ul>
             </Panel>
+
+            <Panel title="📂 Project Management">
+                <div className="bg-black/20 p-4 rounded-xl mb-4">
+                    <input
+                        type="text"
+                        value={newProjectName}
+                        onChange={(e) => setNewProjectName(e.target.value)}
+                        placeholder="Add a new project..."
+                        className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50 mb-2"
+                    />
+                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">
+                        <input
+                            type="date"
+                            value={newProjectDeadline}
+                            onChange={(e) => setNewProjectDeadline(e.target.value)}
+                            className="bg-white/20 border border-white/30 rounded-lg p-3 text-white/80 w-full text-center"
+                            style={{colorScheme: 'dark'}}
+                            title="Optional deadline"
+                        />
+                         <select value={criteriaType} onChange={e => setCriteriaType(e.target.value as any)} className="bg-white/20 border border-white/30 rounded-lg p-3 text-white focus:outline-none focus:bg-white/30 focus:border-white/50 w-full">
+                            <option value="manual" className="bg-gray-800">Manual Completion</option>
+                            <option value="task_count" className="bg-gray-800">By Task Count</option>
+                            <option value="duration_minutes" className="bg-gray-800">By Time Duration</option>
+                        </select>
+                    </div>
+                     {criteriaType !== 'manual' && (
+                         <input
+                            type="number"
+                            value={criteriaValue}
+                            onChange={(e) => setCriteriaValue(e.target.value)}
+                            placeholder={criteriaType === 'task_count' ? 'Number of tasks to complete' : 'Minutes of focus to complete'}
+                            className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50 mb-2"
+                        />
+                     )}
+                     <button onClick={handleAddProject} className="w-full p-3 rounded-lg font-bold text-white transition hover:scale-105 bg-gradient-to-br from-purple-500 to-indigo-600">Add Project</button>
+                </div>
+
+                <div className="flex justify-center gap-2 mb-4 bg-black/20 p-1 rounded-full">
+                    {(['active', 'completed', 'due'] as const).map(status => (
+                        <button key={status} onClick={() => setProjectStatusFilter(status)} className={`flex-1 p-2 text-sm rounded-full font-bold transition-colors ${projectStatusFilter === status ? 'bg-white/20 text-white' : 'text-white/60 hover:bg-white/10'}`}>
+                            {status.charAt(0).toUpperCase() + status.slice(1)} ({projects.filter(p => p.status === status).length})
+                        </button>
+                    ))}
+                </div>
+
+                 <div className="space-y-3 max-h-60 overflow-y-auto pr-2">
+                    {filteredProjects.map(project => (
+                        <ProjectItem
+                            key={project.id}
+                            project={project}
+                            onUpdateProject={onUpdateProject}
+                            onDeleteProject={onDeleteProject}
+                        />
+                    ))}
+                    {filteredProjects.length === 0 && <p className="text-center text-sm text-white/60 py-2">No {projectStatusFilter} projects.</p>}
+                </div>
+            </Panel>
+            
+            {isLoadingStats ? <Spinner /> : 
+                <ProjectTimeAnalysisDashboard 
+                    allProjects={projects} 
+                    allTasks={allTasks} 
+                    allHistory={allHistory} 
+                />
+            }
+            
              <style>{`
               @keyframes pulse-slow {
                 0%, 100% { transform: scale(1); opacity: 1; }

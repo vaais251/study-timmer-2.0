@@ -1,8 +1,4 @@
 
-
-
-
-
 import React, { useState, useEffect } from 'react';
 import { Task, Goal, Target, Project, PomodoroHistory } from '../types';
 import { getTodayDateString } from '../utils/date';
@@ -135,8 +131,8 @@ const AICoachPage: React.FC<AICoachPageProps> = ({ goals, targets, projects }) =
             My Core Goals (for long-term motivation):
             ${goals.map(g => `- ${g.text}`).join('\n') || "None"}
 
-            My Current Projects (with deadlines):
-            ${projects.filter(p => !p.completed_at && p.deadline).map(p => `- "${p.name}" (Deadline: ${p.deadline})`).join('\n') || "None"}
+            My Current Active Projects (with deadlines):
+            ${projects.filter(p => p.status === 'active' && p.deadline).map(p => `- "${p.name}" (Deadline: ${p.deadline})`).join('\n') || "None"}
 
             My Current Targets (with deadlines):
             ${targets.filter(t => !t.completed_at).map(t => `- "${t.text}" (Deadline: ${t.deadline})`).join('\n') || "None"}
@@ -195,8 +191,8 @@ const AICoachPage: React.FC<AICoachPageProps> = ({ goals, targets, projects }) =
             My Core Goals (for long-term motivation):
             ${goals.map(g => `- ${g.text}`).join('\n') || "None"}
 
-            My Current Projects (with deadlines):
-            ${projects.filter(p => !p.completed_at && p.deadline).map(p => `- "${p.name}" (Deadline: ${p.deadline})`).join('\n') || "None"}
+            My Current Active Projects (with deadlines):
+            ${projects.filter(p => p.status === 'active' && p.deadline).map(p => `- "${p.name}" (Deadline: ${p.deadline})`).join('\n') || "None"}
 
             My Current Targets (with deadlines):
             ${targets.filter(t => !t.completed_at).map(t => `- "${t.text}" (Deadline: ${t.deadline})`).join('\n') || "None"}
@@ -264,6 +260,7 @@ const AICoachPage: React.FC<AICoachPageProps> = ({ goals, targets, projects }) =
               - \`id\`: The unique identifier for a project. **This is the primary key.**
               - \`name\`: The project's name.
               - \`deadline\`: The project's due date (YYYY-MM-DD).
+              - \`status\`: Can be 'active', 'completed', or 'due'.
               - \`completed_at\`: Timestamp of completion, or null.
 
             **Supporting Tables:**

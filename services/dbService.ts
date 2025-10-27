@@ -1,6 +1,3 @@
-
-
-
 import { supabase } from './supabaseClient';
 import { Settings, Task, DbDailyLog, Project, Goal, Target, PomodoroHistory } from '../types';
 import { getTodayDateString } from '../utils/date';
@@ -279,48 +276,139 @@ export const getProjects = async (): Promise<Project[] | null> => {
         .select('*')
         .eq('user_id', user.id)
         .order('name', { ascending: true });
+    if (error) console.error("Error fetching projects:", JSON.stringify(error, null, 2));
     return error ? null : data;
 }
 
-export const addProject = async (name: string, deadline: string | null): Promise<Project | null> => {
+export const addProject = async (
+    name: string, 
+    deadline: string | null, 
+    criteriaType: Project['completion_criteria_type'],
+    criteriaValue: number | null
+): Promise<Project | null> => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return null;
     const { data: newProject, error } = await supabase
         .from('projects')
-        .insert({ name, user_id: user.id, deadline })
+        .insert({ 
+            name, 
+            user_id: user.id, 
+            deadline,
+            completion_criteria_type: criteriaType,
+            completion_criteria_value: criteriaValue,
+            status: 'active',
+            progress_value: 0
+        })
         .select()
         .single();
+    if (error) {
+      console.error("Error adding project:", JSON.stringify(error, null, 2));
+    }
     return error ? null : newProject;
 }
 
-export const updateProjectStatus = async (id: string, completed: boolean): Promise<Project[] | null> => {
+export const updateProject = async (id: string, updates: Partial<Project>): Promise<Project[] | null> => {
     const { error } = await supabase
         .from('projects')
-        .update({ completed_at: completed ? new Date().toISOString() : null })
+        .update(updates)
         .eq('id', id);
     
+    if (error) {
+      console.error("Error updating project:", JSON.stringify(error, null, 2));
+    }
     return error ? null : await getProjects();
 }
 
-export const deleteProject = async (id: string): Promise<Project[] | null> => {
+export const deleteProject = async (id: string): Promise<{ success: boolean; data: { projects: Project[], tasks: Task[] } | null; error: string | null }> => {
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return null;
+    if (!user) return { success: false, data: null, error: "User not authenticated." };
 
-    // 1. Unlink tasks
-    await supabase
+    // STEP 1: Manually unlink all tasks associated with this project.
+    // This bypasses reliance on the ON DELETE SET NULL constraint and makes RLS issues more explicit.
+    const { error: unlinkError } = await supabase
         .from('tasks')
         .update({ project_id: null })
-        .eq('user_id', user.id)
         .eq('project_id', id);
 
-    // 2. Delete project
-    const { error } = await supabase
+    if (unlinkError) {
+        console.error("Error unlinking tasks from project:", JSON.stringify(unlinkError, null, 2));
+        let userFriendlyError = `Failed at step 1: Unlinking tasks. Reason: ${unlinkError.message}.`;
+        if (unlinkError.message.includes('permission denied')) {
+            userFriendlyError += " This almost certainly means your Row Level Security (RLS) policy on the 'tasks' table is missing or incorrect. It needs to allow the UPDATE operation for authenticated users on their own tasks.";
+        }
+        return { success: false, data: null, error: userFriendlyError };
+    }
+
+    // STEP 2: Delete the project now that it has no dependencies.
+    const { error: deleteError } = await supabase
         .from('projects')
         .delete()
         .eq('id', id);
 
-    return error ? null : await getProjects();
+    if (deleteError) {
+        console.error("Error deleting project:", JSON.stringify(deleteError, null, 2));
+        let userFriendlyError = `Failed at step 2: Deleting project. Reason: ${deleteError.message}.`;
+        if (deleteError.message.includes('permission denied')) {
+             userFriendlyError += " This almost certainly means your Row Level Security (RLS) policy on the 'projects' table is missing or incorrect. It needs to allow the DELETE operation for authenticated users on their own projects.";
+        }
+        return { success: false, data: null, error: userFriendlyError };
+    }
+
+    // STEP 3: On success, refetch both projects and tasks to ensure the UI is in a consistent state.
+    const [newProjects, newTasks] = await Promise.all([
+        getProjects(),
+        getTasks()
+    ]);
+
+    if (newProjects === null || newTasks === null) {
+        return { success: false, data: null, error: "Project deleted, but failed to refetch updated data." };
+    }
+
+    return { success: true, data: { projects: newProjects, tasks: newTasks }, error: null };
 }
+
+
+export const checkAndUpdateDueProjects = async (): Promise<Project[] | null> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+    const today = getTodayDateString();
+
+    // Find projects that are active, have a deadline, and the deadline has passed.
+    const { data: dueProjects, error } = await supabase
+        .from('projects')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('status', 'active')
+        .not('deadline', 'is', null)
+        .lt('deadline', today);
+
+    if (error) {
+        console.error("Error fetching due projects:", JSON.stringify(error, null, 2));
+        // Return null on error so the caller knows something went wrong
+        return null;
+    }
+    
+    if (!dueProjects || dueProjects.length === 0) {
+        // No projects to update, just return the current full list
+        return getProjects();
+    }
+    
+    const dueProjectIds = dueProjects.map(p => p.id);
+
+    const { error: updateError } = await supabase
+      .from('projects')
+      .update({ status: 'due' })
+      .in('id', dueProjectIds);
+      
+    if (updateError) {
+        console.error("Error updating due projects:", JSON.stringify(updateError, null, 2));
+        return null;
+    }
+
+    // Return the fresh list of all projects after the update
+    return getProjects();
+};
+
 
 // --- Goals & Targets ---
 
@@ -392,16 +480,57 @@ export const getDailyLogForToday = async (): Promise<DbDailyLog | null> => {
 export const upsertDailyLog = async (log: DbDailyLog): Promise<void> => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
-    
-    const { error } = await supabase.from('daily_logs').upsert({
+
+    // The 'upsert' with 'onConflict' requires a UNIQUE constraint on (user_id, date) in the database.
+    // The error "there is no unique or exclusion constraint matching the ON CONFLICT specification"
+    // indicates this constraint is missing.
+    // To fix this without altering the database schema, we perform a manual upsert:
+    // 1. Check if a log for the user and date exists.
+    // 2. If it exists, update it.
+    // 3. If it does not exist, insert it.
+
+    const logData = {
         user_id: user.id,
         date: log.date,
         completed_sessions: log.completed_sessions,
         total_focus_minutes: log.total_focus_minutes,
-    }, { onConflict: 'user_id, date' });
+    };
 
-    if (error) {
-        console.error("Error upserting daily log:", JSON.stringify(error, null, 2));
+    // Step 1: Check for an existing log
+    const { data: existingLog, error: selectError } = await supabase
+        .from('daily_logs')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('date', log.date)
+        .maybeSingle(); // Use maybeSingle to avoid an error if no row is found. It returns null instead.
+
+    if (selectError) {
+        console.error("Error checking for existing daily log:", JSON.stringify(selectError, null, 2));
+        return;
+    }
+    
+    if (existingLog) {
+        // Step 2: Log exists, so we update it.
+        const { error: updateError } = await supabase
+            .from('daily_logs')
+            .update({ // Only update the fields that can change
+                completed_sessions: logData.completed_sessions,
+                total_focus_minutes: logData.total_focus_minutes,
+            })
+            .eq('id', existingLog.id);
+        
+        if (updateError) {
+            console.error("Error updating daily log:", JSON.stringify(updateError, null, 2));
+        }
+    } else {
+        // Step 3: Log does not exist, so we insert it.
+        const { error: insertError } = await supabase
+            .from('daily_logs')
+            .insert(logData);
+            
+        if (insertError) {
+            console.error("Error inserting daily log:", JSON.stringify(insertError, null, 2));
+        }
     }
 };
 
@@ -463,7 +592,8 @@ export const getHistoricalProjects = async (startDate: string, endDate: string):
         .from('projects')
         .select('*')
         .eq('user_id', user.id)
-        .gte('completed_at', startDate)
+        .eq('status', 'completed')
+        .gte('completed_at', `${startDate}T00:00:00Z`)
         .lte('completed_at', `${endDate}T23:59:59Z`);
     
     if (error) {

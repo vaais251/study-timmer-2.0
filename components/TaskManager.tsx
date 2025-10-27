@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Task, Project, Settings } from '../types';
 import Panel from './common/Panel';
@@ -143,7 +144,7 @@ const TaskInputGroup: React.FC<TaskInputGroupProps> = ({ onAddTask, placeholder,
     const [selectedProject, setSelectedProject] = useState<string>('none');
     const [tags, setTags] = useState('');
     
-    const activeProjects = projects.filter(p => !p.completed_at);
+    const activeProjects = projects.filter(p => p.status === 'active');
 
     const handleAdd = () => {
         if (text.trim() && parseInt(poms) > 0) {
@@ -153,12 +154,17 @@ const TaskInputGroup: React.FC<TaskInputGroupProps> = ({ onAddTask, placeholder,
             setText('');
             setPoms('1');
             setTags('');
+            // Optional: reset project selection after adding a task
+            // setSelectedProject('none');
         }
     };
     
     const handleProjectChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
         if (e.target.value === 'new') {
             const currentSelection = selectedProject;
+            // Temporarily set dropdown to current selection to avoid it showing "Create New"
+            setSelectedProject(currentSelection);
+            
             const newProjectName = prompt("Enter new project name:");
 
             if (newProjectName && newProjectName.trim()) {
@@ -167,10 +173,7 @@ const TaskInputGroup: React.FC<TaskInputGroupProps> = ({ onAddTask, placeholder,
                     setSelectedProject(newProjectId);
                 } else {
                     alert("Failed to create the project.");
-                    setSelectedProject(currentSelection);
                 }
-            } else {
-                setSelectedProject(currentSelection);
             }
         } else {
             setSelectedProject(e.target.value);

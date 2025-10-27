@@ -1,7 +1,3 @@
-
-
-
-
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
@@ -130,7 +126,15 @@ const App: React.FC = () => {
 
             if (userSettings) setSettings(userSettings);
             if (userTasks) setTasks(userTasks);
-            if (userProjects) setProjects(userProjects);
+            
+            // Check for and update due projects on initial load
+            const updatedProjects = await dbService.checkAndUpdateDueProjects();
+            if (updatedProjects) {
+                setProjects(updatedProjects);
+            } else if (userProjects) {
+                setProjects(userProjects);
+            }
+
             if (userGoals) setGoals(userGoals);
             if (userTargets) setTargets(userTargets);
             
@@ -239,6 +243,25 @@ const App: React.FC = () => {
          if (appState.mode === 'focus') playFocusStartSound(); else playBreakStartSound();
     }, [appState.mode]);
 
+    // Check project completion after a focus session
+    const checkProjectDurationCompletion = async (taskId: string, durationAdded: number) => {
+        const task = tasks.find(t => t.id === taskId);
+        if (!task || !task.project_id) return;
+
+        const project = projects.find(p => p.id === task.project_id);
+        if (!project || project.status !== 'active' || project.completion_criteria_type !== 'duration_minutes') return;
+        
+        const newProgress = project.progress_value + durationAdded;
+        let updates: Partial<Project> = { progress_value: newProgress };
+        
+        if (project.completion_criteria_value && newProgress >= project.completion_criteria_value) {
+            updates.status = 'completed';
+            updates.completed_at = new Date().toISOString();
+        }
+        
+        const updatedProjects = await dbService.updateProject(project.id, updates);
+        if (updatedProjects) setProjects(updatedProjects);
+    };
 
     // Phase Completion Logic
     const completePhase = useCallback(async () => {
@@ -261,6 +284,11 @@ const App: React.FC = () => {
             
             // Log the individual pomodoro session for authoritative tracking
             await dbService.addPomodoroHistory(currentTask?.id || null, focusDuration);
+
+            // Check for project completion by duration
+            if (currentTask?.id) {
+                await checkProjectDurationCompletion(currentTask.id, focusDuration);
+            }
             
             // Optimistically update history for immediate UI feedback
             if (session) {
@@ -291,7 +319,7 @@ const App: React.FC = () => {
             setModalContent({ title: '⏰ Break Over!', message: nextTaskMessage, nextMode: 'focus', showCommentBox: false });
         }
         setIsModalVisible(true);
-    }, [appState, settings, stopTimer, tasksToday, dailyLog, session]);
+    }, [appState, settings, stopTimer, tasksToday, dailyLog, session, tasks, projects]);
     
     useEffect(() => {
         if (appState.isRunning && appState.timeRemaining <= 0) {
@@ -366,13 +394,31 @@ const App: React.FC = () => {
             completed_poms: currentTask.completed_poms + 1,
             comments: comment ? [...(currentTask.comments || []), comment] : currentTask.comments,
         };
-
+        
+        let taskIsNowComplete = false;
         if (updatedFields.completed_poms >= currentTask.total_poms) {
             updatedFields.completed_at = new Date().toISOString();
+            taskIsNowComplete = true;
         }
         
-        // Return the updated task from the DB, but do not set state here.
-        return await dbService.updateTask(currentTask.id, updatedFields);
+        const updatedTask = await dbService.updateTask(currentTask.id, updatedFields);
+
+        // Check for project completion by task count if task was just completed
+        if (taskIsNowComplete && updatedTask && updatedTask.project_id) {
+            const project = projects.find(p => p.id === updatedTask.project_id);
+            if (project && project.status === 'active' && project.completion_criteria_type === 'task_count') {
+                const newProgress = project.progress_value + 1;
+                let projectUpdates: Partial<Project> = { progress_value: newProgress };
+                if (project.completion_criteria_value && newProgress >= project.completion_criteria_value) {
+                    projectUpdates.status = 'completed';
+                    projectUpdates.completed_at = new Date().toISOString();
+                }
+                const updatedProjects = await dbService.updateProject(project.id, projectUpdates);
+                if (updatedProjects) setProjects(updatedProjects);
+            }
+        }
+        
+        return updatedTask;
     };
 
     // Modal Continue Handler
@@ -447,8 +493,15 @@ const App: React.FC = () => {
         }
     };
 
-    const handleAddProject = async (name: string, deadline: string | null): Promise<string | null> => {
-        const newProject = await dbService.addProject(name, deadline);
+    const handleAddProject = async (
+        name: string,
+        deadline: string | null,
+        criteria?: { type: Project['completion_criteria_type'], value: number | null }
+    ): Promise<string | null> => {
+        const criteriaType = criteria?.type || 'manual';
+        const criteriaValue = criteria?.value || null;
+
+        const newProject = await dbService.addProject(name, deadline, criteriaType, criteriaValue);
         if (newProject) {
             setProjects(prev => [...prev, newProject].sort((a, b) => a.name.localeCompare(b.name)));
             return newProject.id;
@@ -541,21 +594,22 @@ const App: React.FC = () => {
         const newTargets = await dbService.deleteTarget(id);
         if (newTargets) setTargets(newTargets);
     };
-    const handleUpdateProjectStatus = async (id: string, completed: boolean) => {
-        const newProjects = await dbService.updateProjectStatus(id, completed);
+    
+    const handleUpdateProject = async (id: string, updates: Partial<Project>) => {
+        const newProjects = await dbService.updateProject(id, updates);
         if (newProjects) setProjects(newProjects);
     };
-     const handleDeleteProject = async (id: string) => {
-        const newProjects = await dbService.deleteProject(id);
-        if (newProjects) {
-            setProjects(newProjects);
-            // Manually update tasks in state to remove project association
-            setTasks(prevTasks => prevTasks.map(t => {
-                if (t.project_id === id) {
-                    return { ...t, project_id: null, projects: null };
-                }
-                return t;
-            }));
+
+    const handleDeleteProject = async (id: string) => {
+        const result = await dbService.deleteProject(id);
+        
+        if (result.success && result.data) {
+            // The service now returns all the fresh data we need.
+            setProjects(result.data.projects);
+            setTasks(result.data.tasks);
+        } else {
+            // This will now show the super-detailed error message from our new dbService function.
+            alert(`Failed to delete project. \n\nREASON: ${result.error}`);
         }
     };
 
@@ -606,7 +660,7 @@ const App: React.FC = () => {
                     projects={projects}
                     settings={settings}
                     onAddTask={handleAddTask}
-                    onAddProject={handleAddProject}
+                    onAddProject={(name) => handleAddProject(name, null)}
                     onDeleteTask={handleDeleteTask}
                     onMoveTask={handleMoveTask}
                     onReorderTasks={handleReorderTasks}
@@ -624,7 +678,7 @@ const App: React.FC = () => {
                     onUpdateTarget={handleUpdateTarget}
                     onDeleteTarget={handleDeleteTarget}
                     onAddProject={handleAddProject}
-                    onUpdateProject={handleUpdateProjectStatus}
+                    onUpdateProject={handleUpdateProject}
                     onDeleteProject={handleDeleteProject}
                 />;
             case 'stats':

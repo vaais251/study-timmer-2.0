@@ -10,8 +10,12 @@ export type Page = 'timer' | 'plan' | 'stats' | 'ai' | 'settings' | 'goals';
 export interface Project {
     id: string;
     name: string;
-    completed_at: string | null;
     deadline: string | null;
+    status: 'active' | 'completed' | 'due';
+    completed_at: string | null; // Set when status becomes 'completed'
+    completion_criteria_type: 'manual' | 'task_count' | 'duration_minutes';
+    completion_criteria_value: number | null;
+    progress_value: number; // stores completed tasks or minutes
 }
 
 // Corresponds to the `goals` table
