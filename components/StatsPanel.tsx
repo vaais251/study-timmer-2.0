@@ -1,12 +1,15 @@
+
 import React, { useMemo } from 'react';
 import Panel from './common/Panel';
-import { Task } from '../types';
+import { Task, DbDailyLog } from '../types';
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend } from 'recharts';
+import { getTodayDateString } from '../utils/date';
 
 interface StatsPanelProps {
     completedToday: Task[];
     tasksToday: Task[];
     totalFocusMinutes: number;
+    historicalLogs: DbDailyLog[];
 }
 
 const StatItem: React.FC<{ label: string, value: string | number }> = ({ label, value }) => (
@@ -16,7 +19,7 @@ const StatItem: React.FC<{ label: string, value: string | number }> = ({ label, 
     </div>
 );
 
-const StatsPanel: React.FC<StatsPanelProps> = ({ completedToday, tasksToday, totalFocusMinutes }) => {
+const StatsPanel: React.FC<StatsPanelProps> = ({ completedToday, tasksToday, totalFocusMinutes, historicalLogs }) => {
     const stats = useMemo(() => {
         const totalTasks = completedToday.length + tasksToday.length;
         const completionPercentage = totalTasks === 0 ? 0 : Math.round((completedToday.length / totalTasks) * 100);
@@ -32,6 +35,39 @@ const StatsPanel: React.FC<StatsPanelProps> = ({ completedToday, tasksToday, tot
         };
     }, [completedToday, tasksToday]);
 
+    const { vsYesterdayDisplay, sevenDayAverage } = useMemo(() => {
+        const todayString = getTodayDateString();
+
+        const yesterdayDate = new Date();
+        yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+        const yesterdayString = getTodayDateString(yesterdayDate);
+
+        const yesterdayLog = historicalLogs.find(log => log.date === yesterdayString);
+        const yesterdayFocus = yesterdayLog?.total_focus_minutes ?? 0;
+        
+        const focusDifference = totalFocusMinutes - yesterdayFocus;
+
+        const sevenDaysAgoDate = new Date();
+        sevenDaysAgoDate.setDate(sevenDaysAgoDate.getDate() - 7);
+        const sevenDaysAgoString = getTodayDateString(sevenDaysAgoDate);
+        
+        const logsForAverage = historicalLogs.filter(log => {
+            return log.date < todayString && log.date >= sevenDaysAgoString;
+        });
+
+        const totalFocusForAverage = logsForAverage.reduce((sum, log) => sum + log.total_focus_minutes, 0);
+        const sevenDayAverage = Math.round(totalFocusForAverage / 7);
+        
+        const colorClass = focusDifference > 0 ? 'text-green-400' : focusDifference < 0 ? 'text-red-400' : 'text-white';
+        const symbol = focusDifference > 0 ? '▲' : '▼';
+        const text = focusDifference === 0 ? '-' : `${symbol} ${Math.abs(focusDifference)}m`;
+
+        const vsYesterdayDisplay = <div className={`text-2xl font-semibold ${colorClass}`}>{text}</div>;
+
+        return { vsYesterdayDisplay, sevenDayAverage };
+    }, [totalFocusMinutes, historicalLogs]);
+
+
     const chartData = [
         { name: 'Completed', value: completedToday.length },
         { name: 'Incomplete', value: tasksToday.length },
@@ -42,9 +78,14 @@ const StatsPanel: React.FC<StatsPanelProps> = ({ completedToday, tasksToday, tot
         <Panel title="📊 Today's Progress">
             <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                 <StatItem label="Focus Time" value={`${totalFocusMinutes}m`} />
-                <StatItem label="Tasks Done" value={completedToday.length} />
+
+                <div className="bg-white/10 p-3 rounded-lg text-center">
+                    <div className="text-xs text-white/80 mb-1">vs Yesterday</div>
+                    {vsYesterdayDisplay}
+                </div>
+                
+                <StatItem label="7-Day Avg" value={`${sevenDayAverage}m`} />
                 <StatItem label="Completion %" value={`${stats.completionPercentage}%`} />
-                <StatItem label="Total Tasks" value={stats.totalTasks} />
                 <StatItem label="Poms Done" value={stats.pomsDone} />
                 <StatItem label="Poms Estimated" value={stats.pomsEst} />
             </div>

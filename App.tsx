@@ -76,6 +76,7 @@ const App: React.FC = () => {
     const [targets, setTargets] = useState<Target[]>([]);
     const [allCommitments, setAllCommitments] = useState<Commitment[]>([]);
     const [todaysHistory, setTodaysHistory] = useState<PomodoroHistory[]>([]);
+    const [historicalLogs, setHistoricalLogs] = useState<DbDailyLog[]>([]);
     
     const [dailyLog, setDailyLog] = useState<DbDailyLog>({
         date: getTodayDateString(),
@@ -120,23 +121,61 @@ const App: React.FC = () => {
         if (!session) return;
         setIsLoading(true);
         try {
-            const [userSettings, userTasks, userDailyLog, userProjects, userGoals, userTargets, fetchedTodaysHistory, userCommitments] = await Promise.all([
+            const today = getTodayDateString();
+            const nineDaysAgo = new Date();
+            nineDaysAgo.setDate(nineDaysAgo.getDate() - 8);
+            const startDate = getTodayDateString(nineDaysAgo);
+
+            // Fetch raw data sources first
+            const [userSettings, userTasks, userProjects, userGoals, userTargets, userCommitments, allPomodoroHistoryForRange] = await Promise.all([
                 dbService.getSettings(),
                 dbService.getTasks(),
-                dbService.getDailyLogForToday(),
                 dbService.getProjects(),
                 dbService.getGoals(),
                 dbService.getTargets(),
-                dbService.getTodaysPomodoroHistory(),
-                dbService.getCommitments()
+                dbService.getCommitments(),
+                dbService.getPomodoroHistory(startDate, today) // Fetch raw history as the source of truth
             ]);
-            
-            setTodaysHistory(fetchedTodaysHistory);
 
+            // --- Process Pomodoro History to generate authoritative logs ---
+            const logsByDate = new Map<string, DbDailyLog>();
+            
+            // Initialize map for all days in range to handle days with no activity
+            const loopDate = new Date(nineDaysAgo);
+            const todayDate = new Date();
+            todayDate.setHours(23, 59, 59, 999); // Ensure today is included
+            while (loopDate <= todayDate) {
+                const dateStr = getTodayDateString(loopDate);
+                logsByDate.set(dateStr, {
+                    date: dateStr,
+                    completed_sessions: 0,
+                    total_focus_minutes: 0,
+                });
+                loopDate.setDate(loopDate.getDate() + 1);
+            }
+            
+            allPomodoroHistoryForRange.forEach(p => {
+                const date = p.ended_at.split('T')[0];
+                if (logsByDate.has(date)) {
+                    const log = logsByDate.get(date)!;
+                    log.completed_sessions += 1;
+                    log.total_focus_minutes += Number(p.duration_minutes) || 0;
+                }
+            });
+
+            const authoritativeHistoricalLogs = Array.from(logsByDate.values()).sort((a, b) => a.date.localeCompare(b.date));
+            const freshTodaysHistory = allPomodoroHistoryForRange.filter(p => p.ended_at.startsWith(today));
+            const freshTodayLog = logsByDate.get(today) || { date: today, completed_sessions: 0, total_focus_minutes: 0 };
+            
+            // --- Set React state with fresh, calculated data ---
+            setTodaysHistory(freshTodaysHistory);
+            setHistoricalLogs(authoritativeHistoricalLogs);
+            setDailyLog(freshTodayLog);
+
+            // Set other state from fetched data
             if (userSettings) setSettings(userSettings);
             if (userTasks) setTasks(userTasks);
             
-            // Check for and update due projects on initial load
             const updatedProjects = await dbService.checkAndUpdateDueProjects();
             if (updatedProjects) {
                 setProjects(updatedProjects);
@@ -148,16 +187,6 @@ const App: React.FC = () => {
             if (userTargets) setTargets(userTargets);
             if (userCommitments) setAllCommitments(userCommitments);
             
-            // Authoritative calculation for today's focus minutes from pomodoro_history
-            const authoritativeFocusMinutes = fetchedTodaysHistory.reduce((sum, record) => sum + (Number(record.duration_minutes) || 0), 0);
-
-            if (userDailyLog) {
-                // Overwrite the potentially stale value from the DB with the fresh calculation
-                setDailyLog({ ...userDailyLog, total_focus_minutes: authoritativeFocusMinutes });
-            }
-            
-            // Only set the initial time if state was NOT restored from localStorage.
-            // This prevents overwriting the timer when the tab is reloaded.
             if (!didRestoreFromStorage) {
                 const firstTask = userTasks?.filter(t => t.due_date === getTodayDateString() && !t.completed_at)[0];
                 const initialFocusTime = firstTask?.custom_focus_duration || userSettings?.focusDuration || 25;
@@ -310,6 +339,17 @@ const App: React.FC = () => {
                     duration_minutes: focusDuration,
                 };
                 setTodaysHistory(prev => [...prev, newHistoryRecord]);
+                // Also update the historical logs state for live updates to charts
+                setHistoricalLogs(prevLogs => {
+                    const newLogs = [...prevLogs];
+                    const todayLogIndex = newLogs.findIndex(l => l.date === todayString);
+                    if (todayLogIndex > -1) {
+                        newLogs[todayLogIndex] = newLog;
+                    } else {
+                        newLogs.push(newLog);
+                    }
+                    return newLogs;
+                });
             }
             
             // Also update the daily log in the DB (mainly for session count)
@@ -329,7 +369,7 @@ const App: React.FC = () => {
             setModalContent({ title: '⏰ Break Over!', message: nextTaskMessage, nextMode: 'focus', showCommentBox: false });
         }
         setIsModalVisible(true);
-    }, [appState, settings, stopTimer, tasksToday, dailyLog, session, tasks, projects]);
+    }, [appState, settings, stopTimer, tasksToday, dailyLog, session, todayString]);
     
     useEffect(() => {
         if (appState.isRunning && appState.timeRemaining <= 0) {
@@ -542,23 +582,10 @@ const App: React.FC = () => {
             setProjects(result.projects);
         }
         
-        // If the deletion was successful (result.tasks is not null), we must recalculate daily stats.
         if (result.tasks !== null) {
-            const fetchedTodaysHistory = await dbService.getTodaysPomodoroHistory();
-            setTodaysHistory(fetchedTodaysHistory);
-            
-            // Recalculate stats for today from the authoritative history source
-            const authoritativeFocusMinutes = fetchedTodaysHistory.reduce((sum, record) => sum + (Number(record.duration_minutes) || 0), 0);
-            const newCompletedSessions = fetchedTodaysHistory.length;
-            
-            const newLog = {
-                ...dailyLog,
-                completed_sessions: newCompletedSessions,
-                total_focus_minutes: authoritativeFocusMinutes
-            };
-
-            setDailyLog(newLog);
-            await dbService.upsertDailyLog(newLog);
+            // After a task affecting time is deleted, we need to refetch the history
+            // to ensure our authoritative logs are up to date.
+            fetchData();
         }
     };
 
@@ -674,6 +701,7 @@ const App: React.FC = () => {
         setTargets([]);
         setAllCommitments([]);
         setTodaysHistory([]);
+        setHistoricalLogs([]);
         setDidRestoreFromStorage(false); // Reset persistence flag on logout
         setDailyLog({ date: getTodayDateString(), completed_sessions: 0, total_focus_minutes: 0 });
         setPage('timer');
@@ -697,6 +725,7 @@ const App: React.FC = () => {
                     resetTimer={resetTimer}
                     navigateToSettings={() => setPage('settings')}
                     todaysHistory={todaysHistory}
+                    historicalLogs={historicalLogs}
                 />;
             case 'plan':
                  return <PlanPage 
@@ -760,6 +789,7 @@ const App: React.FC = () => {
                     resetTimer={resetTimer}
                     navigateToSettings={() => setPage('settings')}
                     todaysHistory={todaysHistory}
+                    historicalLogs={historicalLogs}
                 />;
         }
     };

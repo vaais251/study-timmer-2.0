@@ -1,6 +1,7 @@
 
 
 
+
 import React, { useMemo } from 'react';
 import { AppState, Settings, Task, DbDailyLog, Mode, PomodoroHistory } from '../types';
 import Header from '../components/Header';
@@ -25,6 +26,7 @@ interface TimerPageProps {
     navigateToSettings: () => void;
     currentTask?: Task;
     todaysHistory: PomodoroHistory[];
+    historicalLogs: DbDailyLog[];
 }
 
 const CurrentTaskDisplay: React.FC<{ task?: Task }> = ({ task }) => {
@@ -45,7 +47,7 @@ const CurrentTaskDisplay: React.FC<{ task?: Task }> = ({ task }) => {
 };
 
 const TimerPage: React.FC<TimerPageProps> = (props) => {
-    const { appState, settings, tasksToday, completedToday, dailyLog, startTimer, stopTimer, resetTimer, navigateToSettings, currentTask, todaysHistory } = props;
+    const { appState, settings, tasksToday, completedToday, dailyLog, startTimer, stopTimer, resetTimer, navigateToSettings, currentTask, todaysHistory, historicalLogs } = props;
     
     const allTodaysTasks = useMemo(() => [...tasksToday, ...completedToday], [tasksToday, completedToday]);
 
@@ -53,9 +55,9 @@ const TimerPage: React.FC<TimerPageProps> = (props) => {
         <>
             <Header />
             <SessionInfo
-                currentSession={appState.currentSession}
-                sessionsPerCycle={settings.sessionsPerCycle}
-                completedSessions={dailyLog.completed_sessions}
+                completedTasksToday={completedToday.length}
+                totalTasksToday={tasksToday.length + completedToday.length}
+                remainingTasksToday={tasksToday.length}
             />
             <ModeIndicator mode={appState.mode} />
             <CurrentTaskDisplay task={currentTask} />
@@ -77,6 +79,7 @@ const TimerPage: React.FC<TimerPageProps> = (props) => {
                 completedToday={completedToday}
                 tasksToday={tasksToday}
                 totalFocusMinutes={dailyLog.total_focus_minutes}
+                historicalLogs={historicalLogs}
             />
             <CategoryFocusChart
                 tasks={allTodaysTasks}

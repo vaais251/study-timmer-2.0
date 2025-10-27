@@ -2,9 +2,9 @@
 import React from 'react';
 
 interface SessionInfoProps {
-    currentSession: number;
-    sessionsPerCycle: number;
-    completedSessions: number;
+    completedTasksToday: number;
+    totalTasksToday: number;
+    remainingTasksToday: number;
 }
 
 const InfoItem: React.FC<{ label: string, value: string | number }> = ({ label, value }) => (
@@ -14,11 +14,11 @@ const InfoItem: React.FC<{ label: string, value: string | number }> = ({ label, 
     </div>
 );
 
-const SessionInfo: React.FC<SessionInfoProps> = ({ currentSession, sessionsPerCycle, completedSessions }) => {
+const SessionInfo: React.FC<SessionInfoProps> = ({ completedTasksToday, totalTasksToday, remainingTasksToday }) => {
     return (
         <div className="flex justify-around mb-6 p-4 bg-white/10 rounded-2xl">
-            <InfoItem label="Sessions" value={`${currentSession}/${sessionsPerCycle}`} />
-            <InfoItem label="Completed" value={completedSessions} />
+            <InfoItem label="Tasks Done" value={`${completedTasksToday}/${totalTasksToday}`} />
+            <InfoItem label="Remaining" value={remainingTasksToday} />
         </div>
     );
 };
