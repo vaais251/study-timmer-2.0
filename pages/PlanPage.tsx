@@ -15,7 +15,7 @@ interface PlanPageProps {
     onMoveTask: (id: string, action: 'postpone' | 'duplicate') => void;
     onReorderTasks: (reorderedTasks: Task[]) => void;
     onUpdateTaskTimers: (id: string, newTimers: { focus: number | null, break: number | null }) => void;
-    onUpdateTask: (id: string, newText: string, newTags: string[]) => void;
+    onUpdateTask: (id: string, newText: string, newTags: string[], newPoms: number) => void;
     onMarkTaskIncomplete: (id: string) => void;
 }
 

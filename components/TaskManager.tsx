@@ -64,7 +64,7 @@ interface TaskItemProps {
     onDelete: (id: string) => void;
     onMove?: (id: string, action: 'postpone' | 'duplicate') => void;
     onUpdateTaskTimers: (id: string, newTimers: { focus: number | null, break: number | null }) => void;
-    onUpdateTask: (id: string, newText: string, newTags: string[]) => void;
+    onUpdateTask: (id: string, newText: string, newTags: string[], newPoms: number) => void;
     onMarkTaskIncomplete?: (id: string) => void;
     dragProps?: object;
     ref?: React.Ref<HTMLLIElement>;
@@ -75,26 +75,35 @@ const TaskItem = React.forwardRef<HTMLLIElement, TaskItemProps>(({ task, isCompl
     const [isEditing, setIsEditing] = useState(false);
     const [editText, setEditText] = useState(task.text);
     const [editTags, setEditTags] = useState(task.tags?.join(', ') || '');
+    const [editPoms, setEditPoms] = useState(task.total_poms.toString());
     const isDraggable = !isCompleted && dragProps;
 
     useEffect(() => {
         setEditText(task.text);
         setEditTags(task.tags?.join(', ') || '');
-    }, [task.text, task.tags]);
+        setEditPoms(task.total_poms.toString());
+    }, [task.text, task.tags, task.total_poms]);
     
     const handleSave = () => {
         if (editText.trim() === '') {
             alert("Task text cannot be empty.");
             return;
         }
+        const newPoms = parseInt(editPoms, 10);
+        if (isNaN(newPoms) || newPoms < 1) {
+            alert("Pomodoros must be a number greater than 0.");
+            return;
+        }
+
         const newTags = editTags.split(',').map(t => t.trim()).filter(Boolean);
-        onUpdateTask(task.id, editText.trim(), newTags);
+        onUpdateTask(task.id, editText.trim(), newTags, newPoms);
         setIsEditing(false);
     };
 
     const handleCancel = () => {
         setEditText(task.text);
         setEditTags(task.tags?.join(', ') || '');
+        setEditPoms(task.total_poms.toString());
         setIsEditing(false);
     };
     
@@ -117,9 +126,23 @@ const TaskItem = React.forwardRef<HTMLLIElement, TaskItemProps>(({ task, isCompl
                         className="w-full bg-white/20 border border-white/30 rounded-lg p-2 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50"
                         aria-label="Edit task tags"
                     />
-                    <div className="flex justify-end gap-2 text-sm mt-2">
-                        <button onClick={handleCancel} className="p-2 px-4 rounded-md font-bold text-white transition hover:scale-105 bg-gradient-to-br from-gray-500 to-gray-600">Cancel</button>
-                        <button onClick={handleSave} className="p-2 px-4 rounded-md font-bold text-white transition hover:scale-105 bg-gradient-to-br from-blue-500 to-cyan-600">Save</button>
+                     <div className="flex justify-between items-center gap-2 text-sm mt-2">
+                        <div className="flex items-center gap-2">
+                            <label htmlFor={`edit-poms-${task.id}`} className="text-white/70">Poms:</label>
+                            <input
+                                id={`edit-poms-${task.id}`}
+                                type="number"
+                                min="1"
+                                value={editPoms}
+                                onChange={e => setEditPoms(e.target.value)}
+                                className="w-20 text-center bg-white/20 border border-white/30 rounded-lg p-2 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50"
+                                aria-label="Edit pomodoros"
+                            />
+                        </div>
+                        <div className="flex justify-end gap-2">
+                            <button onClick={handleCancel} className="p-2 px-4 rounded-md font-bold text-white transition hover:scale-105 bg-gradient-to-br from-gray-500 to-gray-600">Cancel</button>
+                            <button onClick={handleSave} className="p-2 px-4 rounded-md font-bold text-white transition hover:scale-105 bg-gradient-to-br from-blue-500 to-cyan-600">Save</button>
+                        </div>
                     </div>
                 </div>
                  <style>{`
@@ -297,7 +320,7 @@ interface TaskManagerProps {
     onMoveTask: (id: string, action: 'postpone' | 'duplicate') => void;
     onReorderTasks: (reorderedTasks: Task[]) => void;
     onUpdateTaskTimers: (id: string, newTimers: { focus: number | null, break: number | null }) => void;
-    onUpdateTask: (id: string, newText: string, newTags: string[]) => void;
+    onUpdateTask: (id: string, newText: string, newTags: string[], newPoms: number) => void;
     onMarkTaskIncomplete: (id: string) => void;
 }
 

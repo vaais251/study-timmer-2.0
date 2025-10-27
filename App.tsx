@@ -495,10 +495,11 @@ const App: React.FC = () => {
         }
     };
 
-    const handleUpdateTask = async (id: string, newText: string, newTags: string[]) => {
+    const handleUpdateTask = async (id: string, newText: string, newTags: string[], newPoms: number) => {
         const updates = {
             text: newText,
             tags: newTags,
+            total_poms: newPoms,
         };
         const updatedTask = await dbService.updateTask(id, updates);
     
