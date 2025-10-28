@@ -1,6 +1,7 @@
 
 
 
+
 import React, { useState, useEffect } from 'react';
 import { Task, Project, Settings } from '../types';
 import Panel from './common/Panel';
@@ -297,7 +298,7 @@ const TaskInputGroup: React.FC<TaskInputGroupProps> = ({ onAddTask, placeholder,
 
     return (
         <div className="flex flex-col gap-2 mb-4">
-            <div className="flex flex-col sm:flex-row gap-2">
+            <div className="flex flex-col sm:flex-row flex-wrap gap-2">
                 <input 
                     type="text" 
                     value={text}
@@ -316,7 +317,7 @@ const TaskInputGroup: React.FC<TaskInputGroupProps> = ({ onAddTask, placeholder,
                     className="w-full sm:w-20 text-center bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50"
                 />
             </div>
-            <div className="flex flex-col sm:flex-row gap-2">
+            <div className="flex flex-col sm:flex-row flex-wrap gap-2">
                  <select value={selectedProject} onChange={handleProjectChange} className="flex-grow bg-white/20 border border-white/30 rounded-lg p-3 text-white focus:outline-none focus:bg-white/30 focus:border-white/50">
                     <option value="none" className="bg-gray-800">No Project</option>
                     {activeProjects.map(p => <option key={p.id} value={p.id} className="bg-gray-800">{p.name}</option>)}
