@@ -1,5 +1,6 @@
 
 
+
 import { Session, User } from '@supabase/supabase-js';
 
 export type Mode = 'focus' | 'break';
@@ -11,6 +12,7 @@ export interface Project {
     id: string;
     created_at: string;
     name: string;
+    description: string | null;
     deadline: string | null;
     status: 'active' | 'completed' | 'due';
     completed_at: string | null; // Set when status becomes 'completed'
@@ -18,6 +20,19 @@ export interface Project {
     completion_criteria_value: number | null;
     progress_value: number; // stores completed tasks or minutes
 }
+
+// Corresponds to the `project_updates` table
+export interface ProjectUpdate {
+    id: string;
+    created_at: string;
+    user_id: string;
+    project_id: string;
+    task_id: string | null;
+    update_date: string; // YYYY-MM-DD
+    description: string;
+    tasks?: { text: string } | null; // For joined data
+}
+
 
 // Corresponds to the `goals` table
 export interface Goal {

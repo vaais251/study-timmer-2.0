@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient';
-import { Settings, Task, DbDailyLog, Project, Goal, Target, PomodoroHistory, Commitment } from '../types';
+import { Settings, Task, DbDailyLog, Project, Goal, Target, PomodoroHistory, Commitment, ProjectUpdate } from '../types';
 import { getTodayDateString } from '../utils/date';
 
 // --- Settings ---
@@ -74,7 +74,7 @@ export const addTask = async (text: string, poms: number, dueDate: string, proje
         return null;
     }
 
-    const { data: maxOrderData } = await supabase
+    const { data: maxOrderData, error: maxOrderError } = await supabase
         .from('tasks')
         .select('task_order')
         .eq('user_id', user.id)
@@ -82,7 +82,12 @@ export const addTask = async (text: string, poms: number, dueDate: string, proje
         .not('task_order', 'is', null) // Ensure we only get tasks with an order
         .order('task_order', { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle(); // Use maybeSingle to prevent error on no rows
+        
+    if (maxOrderError) {
+        console.error("Error fetching max task order:", JSON.stringify(maxOrderError, null, 2));
+        // Do not block, but log the error. The fallback logic is safe.
+    }
         
     const newOrder = (maxOrderData?.task_order ?? -1) + 1;
 
@@ -98,10 +103,10 @@ export const addTask = async (text: string, poms: number, dueDate: string, proje
         task_order: newOrder,
     };
     
+    // Pass an array to insert, and remove the unnecessary .select()
     const { error } = await supabase
         .from('tasks')
-        .insert(taskToInsert)
-        .select();
+        .insert([taskToInsert]);
     
     if (error) {
         console.error("Error adding task:", JSON.stringify(error, null, 2));
@@ -376,6 +381,7 @@ export const getProjects = async (): Promise<Project[] | null> => {
 
 export const addProject = async (
     name: string, 
+    description: string | null,
     deadline: string | null, 
     criteriaType: Project['completion_criteria_type'],
     criteriaValue: number | null
@@ -386,6 +392,7 @@ export const addProject = async (
         .from('projects')
         .insert({ 
             name, 
+            description,
             user_id: user.id, 
             deadline,
             completion_criteria_type: criteriaType,
@@ -502,6 +509,54 @@ export const checkAndUpdateDueProjects = async (): Promise<Project[] | null> => 
     // Return the fresh list of all projects after the update
     return getProjects();
 };
+
+// --- Project Updates ---
+
+export const getProjectUpdates = async (projectId: string): Promise<ProjectUpdate[] | null> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+    const { data, error } = await supabase
+        .from('project_updates')
+        .select('*, tasks(text)')
+        .eq('project_id', projectId)
+        .order('update_date', { ascending: false });
+    if (error) {
+        console.error("Error fetching project updates:", JSON.stringify(error, null, 2));
+        return null;
+    }
+    return data;
+}
+
+export const addProjectUpdate = async (projectId: string, updateDate: string, description: string, taskId: string | null): Promise<ProjectUpdate[] | null> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+    const { error } = await supabase
+        .from('project_updates')
+        .insert({
+            project_id: projectId,
+            user_id: user.id,
+            update_date: updateDate,
+            description: description,
+            task_id: taskId
+        });
+    if (error) {
+        console.error("Error adding project update:", JSON.stringify(error, null, 2));
+        return null;
+    }
+    return getProjectUpdates(projectId);
+}
+
+export const deleteProjectUpdate = async (updateId: string, projectId: string): Promise<ProjectUpdate[] | null> => {
+    const { error } = await supabase
+        .from('project_updates')
+        .delete()
+        .eq('id', updateId);
+    if (error) {
+        console.error("Error deleting project update:", JSON.stringify(error, null, 2));
+        return null;
+    }
+    return getProjectUpdates(projectId);
+}
 
 
 // --- Goals & Targets ---

@@ -1,5 +1,6 @@
 
 
+
 import React, { useState, useEffect } from 'react';
 import { Task, Project, Settings } from '../types';
 import Panel from './common/Panel';
@@ -238,7 +239,7 @@ const TaskItem = React.forwardRef<HTMLLIElement, TaskItemProps>(({ task, isCompl
 
 
 interface TaskInputGroupProps {
-    onAddTask: (text: string, poms: number, projectId: string | null, tags: string[], dueDate: string) => void;
+    onAddTask: (text: string, poms: number, dueDate: string, projectId: string | null, tags: string[]) => void;
     placeholder: string;
     buttonText: string;
     buttonClass: string;
@@ -267,7 +268,7 @@ const TaskInputGroup: React.FC<TaskInputGroupProps> = ({ onAddTask, placeholder,
             const projectId = selectedProject === 'none' ? null : selectedProject;
             const tagList = tags.split(',').map(t => t.trim()).filter(Boolean);
             const dateToAdd = isPlanning ? dueDate : getTodayDateString();
-            onAddTask(text.trim(), parseInt(poms), projectId, tagList, dateToAdd);
+            onAddTask(text.trim(), parseInt(poms), dateToAdd, projectId, tagList);
             setText('');
             setPoms('1');
             setTags('');

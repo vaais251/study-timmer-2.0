@@ -462,6 +462,14 @@ const App: React.FC = () => {
 
         // Check for project completion by task count if task was just completed
         if (taskIsNowComplete && updatedTask && updatedTask.project_id) {
+            // Automatically log an update for the project
+            await dbService.addProjectUpdate(
+                updatedTask.project_id,
+                getTodayDateString(),
+                `Completed task: "${updatedTask.text}"`,
+                updatedTask.id
+            );
+
             const project = projects.find(p => p.id === updatedTask.project_id);
             if (project && project.status === 'active' && project.completion_criteria_type === 'task_count') {
                 const newProgress = project.progress_value + 1;
@@ -566,13 +574,14 @@ const App: React.FC = () => {
 
     const handleAddProject = async (
         name: string,
+        description: string | null,
         deadline: string | null,
         criteria?: { type: Project['completion_criteria_type'], value: number | null }
     ): Promise<string | null> => {
         const criteriaType = criteria?.type || 'manual';
         const criteriaValue = criteria?.value || null;
 
-        const newProject = await dbService.addProject(name, deadline, criteriaType, criteriaValue);
+        const newProject = await dbService.addProject(name, description, deadline, criteriaType, criteriaValue);
         if (newProject) {
             setProjects(prev => [...prev, newProject].sort((a, b) => a.name.localeCompare(b.name)));
             return newProject.id;
@@ -749,7 +758,8 @@ const App: React.FC = () => {
                     projects={projects}
                     settings={settings}
                     onAddTask={handleAddTask}
-                    onAddProject={(name) => handleAddProject(name, null)}
+                    // FIX: Pass null for description and deadline when creating a project from the plan page.
+                    onAddProject={(name) => handleAddProject(name, null, null)}
                     onDeleteTask={handleDeleteTask}
                     onMoveTask={handleMoveTask}
                     onBringTaskForward={handleBringTaskForward}

@@ -1,11 +1,12 @@
 
 
-import React, { useState, useMemo, useEffect } from 'react';
-import { Goal, Target, Project, Task, PomodoroHistory, Commitment } from '../types';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { Goal, Target, Project, Task, PomodoroHistory, Commitment, ProjectUpdate } from '../types';
 import Panel from '../components/common/Panel';
-import { TrashIcon, EditIcon, StarIcon, LockIcon, CheckIcon } from '../components/common/Icons';
+import { TrashIcon, EditIcon, StarIcon, LockIcon, CheckIcon, CalendarIcon } from '../components/common/Icons';
 import * as dbService from '../services/dbService';
 import Spinner from '../components/common/Spinner';
+import { getTodayDateString } from '../utils/date';
 
 const getDaysAgo = (days: number): string => {
     const date = new Date();
@@ -137,19 +138,102 @@ const ProjectTimeAnalysisDashboard: React.FC<{
     );
 };
 
+const ActivityLog: React.FC<{ projectId: string, tasks: Task[] }> = ({ projectId, tasks }) => {
+    const [updates, setUpdates] = useState<ProjectUpdate[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [newUpdateDesc, setNewUpdateDesc] = useState('');
+    const [newUpdateDate, setNewUpdateDate] = useState(getTodayDateString());
+    const [linkedTaskId, setLinkedTaskId] = useState<string>('none');
+    
+    const fetchUpdates = useCallback(async () => {
+        setIsLoading(true);
+        const fetchedUpdates = await dbService.getProjectUpdates(projectId);
+        setUpdates(fetchedUpdates || []);
+        setIsLoading(false);
+    }, [projectId]);
+
+    useEffect(() => {
+        fetchUpdates();
+    }, [fetchUpdates]);
+
+    const handleAddUpdate = async () => {
+        if (!newUpdateDesc.trim() || !newUpdateDate) {
+            alert("Please provide a date and description for the update.");
+            return;
+        }
+        const taskId = linkedTaskId === 'none' ? null : linkedTaskId;
+        const newUpdates = await dbService.addProjectUpdate(projectId, newUpdateDate, newUpdateDesc.trim(), taskId);
+        if (newUpdates) {
+            setUpdates(newUpdates);
+            setNewUpdateDesc('');
+            setLinkedTaskId('none');
+        }
+    };
+    
+    const handleDeleteUpdate = async (updateId: string) => {
+        if (window.confirm("Are you sure you want to delete this log entry?")) {
+            const newUpdates = await dbService.deleteProjectUpdate(updateId, projectId);
+            if (newUpdates) setUpdates(newUpdates);
+        }
+    }
+
+    return (
+        <div className="mt-3 pt-3 border-t border-white/10 space-y-3 animate-fadeIn">
+            <h4 className="text-md font-bold text-white/90">Activity Log</h4>
+            <div className="space-y-2 bg-black/20 p-3 rounded-lg">
+                <textarea
+                    value={newUpdateDesc}
+                    onChange={e => setNewUpdateDesc(e.target.value)}
+                    placeholder="Log an update for this project..."
+                    className="w-full bg-white/20 border border-white/30 rounded-lg p-2 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50"
+                    rows={2}
+                />
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <input type="date" value={newUpdateDate} onChange={e => setNewUpdateDate(e.target.value)} className="bg-white/20 border border-white/30 rounded-lg p-2 text-white/80 w-full text-center" style={{colorScheme: 'dark'}}/>
+                    <select value={linkedTaskId} onChange={e => setLinkedTaskId(e.target.value)} className="bg-white/20 border border-white/30 rounded-lg p-2 text-white focus:outline-none focus:bg-white/30 focus:border-white/50 w-full sm:col-span-2">
+                        <option value="none" className="bg-gray-800">No linked task</option>
+                        {tasks.map(t => <option key={t.id} value={t.id} className="bg-gray-800">{t.text}</option>)}
+                    </select>
+                </div>
+                <button onClick={handleAddUpdate} className="w-full p-2 rounded-lg font-bold text-white transition hover:scale-105 bg-gradient-to-br from-cyan-500 to-sky-600">Add Log Entry</button>
+            </div>
+            
+            {isLoading ? <Spinner/> : (
+                <ul className="space-y-2 max-h-48 overflow-y-auto pr-2">
+                    {updates.map(update => (
+                        <li key={update.id} className="bg-black/20 p-2 rounded-md text-sm group relative">
+                            <div className="flex justify-between items-start">
+                                <div>
+                                    <p className="text-white/90">{update.description}</p>
+                                    <p className="text-xs text-white/60 mt-1">{new Date(update.update_date + 'T00:00:00').toLocaleDateString()}{update.tasks ? ` - Ref: ${update.tasks.text}`:''}</p>
+                                </div>
+                                <button onClick={() => handleDeleteUpdate(update.id)} className="p-1 text-red-400 hover:text-red-300 transition opacity-0 group-hover:opacity-100 flex-shrink-0" title="Delete Log Entry"><TrashIcon /></button>
+                            </div>
+                        </li>
+                    ))}
+                    {updates.length === 0 && <p className="text-center text-xs text-white/60 py-2">No activity logged yet.</p>}
+                </ul>
+            )}
+        </div>
+    );
+};
+
 
 interface ProjectItemProps {
     project: Project;
+    tasks: Task[];
     onUpdateProject: (id: string, updates: Partial<Project>) => void;
     onDeleteProject: (id: string) => void;
 }
 
-const ProjectItem: React.FC<ProjectItemProps> = ({ project, onUpdateProject, onDeleteProject }) => {
+const ProjectItem: React.FC<ProjectItemProps> = ({ project, tasks, onUpdateProject, onDeleteProject }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [editName, setEditName] = useState(project.name);
+    const [editDescription, setEditDescription] = useState(project.description || '');
     const [editDeadline, setEditDeadline] = useState(project.deadline || '');
     const [editCriteriaType, setEditCriteriaType] = useState(project.completion_criteria_type);
     const [editCriteriaValue, setEditCriteriaValue] = useState(project.completion_criteria_value?.toString() || '');
+    const [isLogVisible, setIsLogVisible] = useState(false);
 
     const { progress, progressText, isComplete, isDue, isManual, isEditable } = useMemo(() => {
         const isComplete = project.status === 'completed';
@@ -195,6 +279,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({ project, onUpdateProject, onD
 
         const updates: Partial<Project> = {
             name: editName.trim(),
+            description: editDescription.trim() || null,
             deadline: editDeadline || null,
             completion_criteria_type: editCriteriaType,
             completion_criteria_value: value
@@ -205,6 +290,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({ project, onUpdateProject, onD
 
     const handleCancel = () => {
         setEditName(project.name);
+        setEditDescription(project.description || '');
         setEditDeadline(project.deadline || '');
         setEditCriteriaType(project.completion_criteria_type);
         setEditCriteriaValue(project.completion_criteria_value?.toString() || '');
@@ -215,6 +301,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({ project, onUpdateProject, onD
         return (
             <div className="bg-white/20 p-3 rounded-lg ring-2 ring-cyan-400 space-y-2">
                 <input type="text" value={editName} onChange={e => setEditName(e.target.value)} placeholder="Project Name" className="w-full bg-white/20 border border-white/30 rounded-lg p-2 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50" />
+                <textarea value={editDescription} onChange={e => setEditDescription(e.target.value)} placeholder="Project Description (Optional)" className="w-full bg-white/20 border border-white/30 rounded-lg p-2 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50" rows={2}></textarea>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                     <input type="date" value={editDeadline} onChange={e => setEditDeadline(e.target.value)} className="bg-white/20 border border-white/30 rounded-lg p-2 text-white/80 w-full text-center" style={{colorScheme: 'dark'}} />
                     <select value={editCriteriaType} onChange={e => setEditCriteriaType(e.target.value as any)} className="bg-white/20 border border-white/30 rounded-lg p-2 text-white focus:outline-none focus:bg-white/30 focus:border-white/50 w-full">
@@ -239,24 +326,25 @@ const ProjectItem: React.FC<ProjectItemProps> = ({ project, onUpdateProject, onD
     return (
         <div className={`p-3 rounded-lg ${bgColor} transition-all`}>
             <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3 flex-grow min-w-0">
+                <div className="flex items-start gap-3 flex-grow min-w-0">
                     {isManual && (
                         <input 
                             type="checkbox" 
                             checked={isComplete} 
                             onChange={handleManualCompleteToggle} 
                             disabled={!isEditable}
-                            className="h-5 w-5 rounded bg-white/20 border-white/30 text-green-400 focus:ring-green-400 flex-shrink-0 cursor-pointer disabled:cursor-not-allowed" 
+                            className="h-5 w-5 rounded bg-white/20 border-white/30 text-green-400 focus:ring-green-400 flex-shrink-0 cursor-pointer disabled:cursor-not-allowed mt-1" 
                             aria-label={`Mark project ${project.name} as complete`}
                         />
                     )}
                     <div className="flex-grow min-w-0">
-                        <span className={`text-white ${isComplete ? 'line-through' : ''}`}>{project.name}</span>
+                        <span className={`text-white font-bold ${isComplete ? 'line-through' : ''}`}>{project.name}</span>
                         {project.deadline && (
                             <span className={`block text-xs mt-1 ${isDue && !isComplete ? 'text-red-400 font-bold' : 'text-amber-300/80'}`}>
                                 Due: {new Date(project.deadline + 'T00:00:00').toLocaleDateString()}
                             </span>
                         )}
+                         {project.description && <p className="text-sm text-white/70 mt-1 italic">{project.description}</p>}
                     </div>
                 </div>
                  <div className="flex items-center gap-2">
@@ -284,6 +372,12 @@ const ProjectItem: React.FC<ProjectItemProps> = ({ project, onUpdateProject, onD
                     </div>
                 </div>
             )}
+            <div className="mt-2 text-center">
+                <button onClick={() => setIsLogVisible(v => !v)} className="text-xs text-cyan-300 hover:text-cyan-200 font-semibold px-3 py-1 rounded-full hover:bg-white/10 transition">
+                    {isLogVisible ? '▼ Hide Activity Log' : '► Show Activity Log'}
+                </button>
+            </div>
+            {isLogVisible && <ActivityLog projectId={project.id} tasks={tasks} />}
         </div>
     );
 };
@@ -580,7 +674,7 @@ interface GoalsPageProps {
     onAddTarget: (text: string, deadline: string) => void;
     onUpdateTarget: (id: string, updates: Partial<Target>) => void;
     onDeleteTarget: (id: string) => void;
-    onAddProject: (name: string, deadline: string | null, criteria: {type: Project['completion_criteria_type'], value: number | null}) => Promise<string | null>;
+    onAddProject: (name: string, description: string | null, deadline: string | null, criteria: {type: Project['completion_criteria_type'], value: number | null}) => Promise<string | null>;
     onUpdateProject: (id: string, updates: Partial<Project>) => void;
     onDeleteProject: (id: string) => void;
     onAddCommitment: (text: string, dueDate: string | null) => void;
@@ -597,6 +691,7 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
     
     // Project form state
     const [newProjectName, setNewProjectName] = useState('');
+    const [newProjectDescription, setNewProjectDescription] = useState('');
     const [newProjectDeadline, setNewProjectDeadline] = useState('');
     const [criteriaType, setCriteriaType] = useState<Project['completion_criteria_type']>('manual');
     const [criteriaValue, setCriteriaValue] = useState('');
@@ -633,10 +728,11 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
                 return;
             }
 
-            onAddProject(newProjectName.trim(), newProjectDeadline || null, { type: criteriaType, value });
+            onAddProject(newProjectName.trim(), newProjectDescription.trim() || null, newProjectDeadline || null, { type: criteriaType, value });
             
             // Reset form
             setNewProjectName('');
+            setNewProjectDescription('');
             setNewProjectDeadline('');
             setCriteriaType('manual');
             setCriteriaValue('');
@@ -824,15 +920,22 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
             </Panel>
 
             <Panel title="📂 Project Management">
-                <div className="bg-black/20 p-4 rounded-xl mb-4">
+                <div className="bg-black/20 p-4 rounded-xl mb-4 space-y-2">
                     <input
                         type="text"
                         value={newProjectName}
                         onChange={(e) => setNewProjectName(e.target.value)}
                         placeholder="Add a new project..."
-                        className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50 mb-2"
+                        className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50"
                     />
-                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">
+                    <textarea
+                        value={newProjectDescription}
+                        onChange={e => setNewProjectDescription(e.target.value)}
+                        placeholder="Optional: What is this project about?"
+                        rows={2}
+                        className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50"
+                    />
+                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                         <input
                             type="date"
                             value={newProjectDeadline}
@@ -853,7 +956,7 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
                             value={criteriaValue}
                             onChange={(e) => setCriteriaValue(e.target.value)}
                             placeholder={criteriaType === 'task_count' ? 'Number of tasks to complete' : 'Minutes of focus to complete'}
-                            className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50 mb-2"
+                            className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50"
                         />
                      )}
                      <button onClick={handleAddProject} className="w-full p-3 rounded-lg font-bold text-white transition hover:scale-105 bg-gradient-to-br from-purple-500 to-indigo-600">Add Project</button>
@@ -888,6 +991,7 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
                         <ProjectItem
                             key={project.id}
                             project={project}
+                            tasks={allTasks.filter(t => t.project_id === project.id)}
                             onUpdateProject={onUpdateProject}
                             onDeleteProject={onDeleteProject}
                         />
