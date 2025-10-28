@@ -21,6 +21,18 @@ interface HistoryPanelProps {
     timelinePomodoroHistory: PomodoroHistory[];
 }
 
+const formatMinutesToHours = (minutes: number) => {
+    if (minutes < 60) {
+        return `${minutes}m`;
+    }
+    const hours = Math.floor(minutes / 60);
+    const remainingMinutes = minutes % 60;
+    if (remainingMinutes === 0) {
+        return `${hours}h`;
+    }
+    return `${hours}h ${remainingMinutes}m`;
+};
+
 const StatItem: React.FC<{ label: string, value: string | number }> = ({ label, value }) => (
     <div className="text-center">
         <div className="text-sm text-white/80 mb-1">{label}</div>
@@ -522,8 +534,8 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-white">
                 <StatCard title="Time & Tasks">
                     <div className="flex justify-around items-center h-full">
-                        <StatItem label="Focus Time" value={`${aggregatedData.totalFocus}m`} />
-                        <StatItem label="Tasks Done" value={aggregatedData.completedCount} />
+                        <StatItem label="Focus Time" value={formatMinutesToHours(aggregatedData.totalFocus)} />
+                        <StatItem label="Tasks Done" value={`${aggregatedData.completedCount} / ${aggregatedData.totalTasks}`} />
                     </div>
                 </StatCard>
                 <StatCard title="Task Progress">

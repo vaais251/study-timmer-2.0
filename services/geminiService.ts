@@ -3,9 +3,7 @@ import { Goal, Target, Project, Commitment, Task } from '../types';
 
 export async function generateContent(prompt: string): Promise<string> {
     try {
-        const apiKey = "AIzaSyDAQmRyN9dNOxCoLneDXPETYC0hAKFvmLw";
-        
-        const ai = new GoogleGenAI({ apiKey });
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
@@ -47,8 +45,7 @@ export async function runAgent(
     tools: FunctionDeclaration[],
     context: AgentContext
 ): Promise<GenerateContentResponse> {
-    const apiKey = "AIzaSyDAQmRyN9dNOxCoLneDXPETYC0hAKFvmLw";
-    const ai = new GoogleGenAI({ apiKey });
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
     const systemInstruction = `You are PomoAI, an expert productivity coach and data analyst integrated into a Pomodoro study application. You have complete read-only access to the user's planning and performance data, which is provided below in structured format. Your primary role is to help the user understand their data, find insights, plan their work, and take action on their behalf using your available tools (like adding tasks or projects). You are conversational, encouraging, and highly analytical.
 
@@ -98,7 +95,7 @@ Based on this detailed data and schema, answer the user's questions and execute 
         model: 'gemini-2.5-flash',
         contents: history,
         config: {
-            systemInstruction: { parts: [{text: systemInstruction }] },
+            systemInstruction: { parts: [{ text: systemInstruction }] },
             tools: [{ functionDeclarations: tools }],
         }
     });

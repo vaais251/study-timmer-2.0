@@ -23,17 +23,17 @@ const TimerDisplay: React.FC<TimerDisplayProps> = ({ timeRemaining, totalTime, i
 
     const isFocus = mode === 'focus';
     const theme = {
-        bgCircle: 'text-white/20',
-        progressCircle: 'text-white',
-        text: isFocus ? 'text-white' : 'text-gray-900',
-        textShadow: isFocus ? '0 0 15px rgba(255, 255, 255, 0.3)' : 'none',
-        glowColor: 'rgba(255, 255, 255, 0.5)'
+        bgCircle: 'text-slate-700/50',
+        progressCircle: isFocus ? 'text-teal-400' : 'text-purple-400',
+        text: 'text-slate-100',
+        textShadow: isFocus ? '0 0 20px rgba(45, 212, 191, 0.4)' : '0 0 20px rgba(167, 139, 250, 0.4)',
+        glowColor: isFocus ? 'rgba(45, 212, 191, 0.5)' : 'rgba(167, 139, 250, 0.5)',
     };
 
     return (
-        <div className="relative h-48 sm:h-56 flex items-center justify-center mb-6">
+        <div className="relative h-52 sm:h-64 flex items-center justify-center mb-6">
             <svg
-                className={`absolute w-48 h-48 sm:w-56 sm:h-56 ${isRunning ? 'timer-running' : ''}`}
+                className={`absolute w-52 h-52 sm:w-64 sm:h-64 transition-transform duration-500 ${isRunning ? 'timer-running scale-105' : 'scale-100'}`}
                 viewBox="0 0 180 180"
                 style={{ '--glow-color': theme.glowColor } as React.CSSProperties}
             >
@@ -41,7 +41,7 @@ const TimerDisplay: React.FC<TimerDisplayProps> = ({ timeRemaining, totalTime, i
                 <circle
                     className={theme.bgCircle}
                     stroke="currentColor"
-                    strokeWidth="8"
+                    strokeWidth="10"
                     fill="transparent"
                     r={radius}
                     cx="90"
@@ -51,7 +51,7 @@ const TimerDisplay: React.FC<TimerDisplayProps> = ({ timeRemaining, totalTime, i
                 <circle
                     className={theme.progressCircle}
                     stroke="currentColor"
-                    strokeWidth="8"
+                    strokeWidth="10"
                     strokeDasharray={circumference}
                     strokeDashoffset={offset}
                     strokeLinecap="round"
@@ -62,21 +62,21 @@ const TimerDisplay: React.FC<TimerDisplayProps> = ({ timeRemaining, totalTime, i
                     style={{
                         transform: 'rotate(-90deg)',
                         transformOrigin: '50% 50%',
-                        transition: 'stroke-dashoffset 0.35s cubic-bezier(0.4, 0, 0.2, 1)'
+                        transition: 'stroke-dashoffset 0.35s linear'
                     }}
                 />
             </svg>
-            <div className={`text-7xl sm:text-8xl font-thin ${theme.text} tracking-wider`} style={{ fontVariantNumeric: 'tabular-nums', textShadow: theme.textShadow }}>
+            <div className={`text-7xl sm:text-8xl font-light ${theme.text} tracking-wider`} style={{ fontVariantNumeric: 'tabular-nums', textShadow: theme.textShadow }}>
                 {minutes}:{seconds}
             </div>
             {/* Style tag for dynamic animation class */}
             <style>{`
                 @keyframes pulse-glow {
                     0%, 100% {
-                        filter: drop-shadow(0 0 10px var(--glow-color, rgba(255, 255, 255, 0.3)));
+                        filter: drop-shadow(0 0 8px var(--glow-color, transparent));
                     }
                     50% {
-                        filter: drop-shadow(0 0 20px var(--glow-color, rgba(255, 255, 255, 0.5)));
+                        filter: drop-shadow(0 0 16px var(--glow-color, transparent));
                     }
                 }
                 .timer-running {

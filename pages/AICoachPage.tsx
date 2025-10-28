@@ -152,6 +152,14 @@ const AICoachPage: React.FC<AICoachPageProps> = (props) => {
             parts: [{ text: msg.text }]
         }));
         
+        // The API requires conversations to start with a 'user' role.
+        // The initial greeting message is from the 'model' for UI purposes.
+        // We remove it from the history sent to the API to ensure a valid conversation sequence.
+        const historyToSend = [...historyForApi];
+        if (historyToSend.length > 0 && historyToSend[0].role === 'model') {
+            historyToSend.shift();
+        }
+
         const dailyLogsMap = new Map<string, { date: string, total_focus_minutes: number, completed_sessions: number }>();
 
         // Aggregate focus time and sessions from pomodoro history
@@ -204,7 +212,7 @@ const AICoachPage: React.FC<AICoachPageProps> = (props) => {
 
 
         try {
-            const response = await runAgent(historyForApi, toolDeclarations, agentContext);
+            const response = await runAgent(historyToSend, toolDeclarations, agentContext);
             
             const functionCalls = response.functionCalls;
 
@@ -233,7 +241,7 @@ const AICoachPage: React.FC<AICoachPageProps> = (props) => {
                     functionResultPayload = { success: false, message: `Error executing function ${name}: ${toolError instanceof Error ? toolError.message : String(toolError)}` };
                 }
 
-                const historyWithFunctionCall = [...historyForApi, { role: 'model' as const, parts: [{ functionCall: call }] }];
+                const historyWithFunctionCall = [...historyToSend, { role: 'model' as const, parts: [{ functionCall: call }] }];
                 const historyWithFunctionResponse = [...historyWithFunctionCall, {
                     role: 'function' as const,
                     parts: [{ functionResponse: { name, response: functionResultPayload } }]

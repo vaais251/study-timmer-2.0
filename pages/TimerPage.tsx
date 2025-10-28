@@ -11,7 +11,6 @@ import AmbientSounds from '../components/AmbientSounds';
 import CategoryFocusChart from '../components/CategoryFocusChart';
 import CategoryFocusPieChart from '../components/CategoryFocusPieChart';
 import { TargetIcon } from '../components/common/Icons';
-import ModeIndicator from '../components/ModeIndicator';
 
 interface TimerPageProps {
     appState: AppState;
@@ -44,14 +43,14 @@ const formatMinutes = (minutes: number): string => {
 
 const CurrentTaskDisplay: React.FC<{ task?: Task }> = ({ task }) => {
     return (
-        <div className="text-center min-h-[3rem] flex items-center justify-center px-2 pt-2">
+        <div className="text-center min-h-[3rem] flex items-center justify-center px-2 pt-4 mt-4 border-t border-slate-700">
             {task ? (
-                <div className="bg-black/20 text-white/90 px-4 py-3 rounded-xl shadow-inner inline-flex items-center gap-3 max-w-full">
+                <div className="bg-black/20 text-slate-300 px-4 py-2 rounded-lg shadow-inner inline-flex items-center gap-3 max-w-full">
                     <TargetIcon />
                     <span className="italic break-words">{task.text}</span>
                 </div>
             ) : (
-                <div className="bg-black/20 text-white/60 px-4 py-3 rounded-xl shadow-inner italic">
+                <div className="bg-black/20 text-slate-400 px-4 py-2 rounded-lg shadow-inner italic">
                    No task for today. Add one in the Plan tab!
                 </div>
             )}
@@ -74,10 +73,12 @@ const TimerPage: React.FC<TimerPageProps> = (props) => {
         }, 0);
     }, [tasksToday, settings.focusDuration]);
 
+    const isFocus = appState.mode === 'focus';
+
     return (
-        <>
+        <div className="space-y-6">
             <Header />
-            <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-4 sm:p-6 mb-6 border border-white/20">
+            <div className="bg-slate-800/60 backdrop-blur-sm rounded-xl p-4 sm:p-6 border border-slate-700/80">
                 <SessionInfo
                     completedTasksToday={completedToday.length}
                     totalTasksToday={tasksToday.length + completedToday.length}
@@ -87,25 +88,31 @@ const TimerPage: React.FC<TimerPageProps> = (props) => {
                 <CurrentTaskDisplay task={currentTask} />
             </div>
             
-            <ModeIndicator mode={appState.mode} />
+            <div className="bg-slate-800/60 rounded-xl p-4 sm:p-6 border border-slate-700/80">
+                <div className="text-center mb-4">
+                    <h2 className={`text-lg font-semibold uppercase tracking-wider ${isFocus ? 'text-teal-400' : 'text-purple-400'}`}>
+                        {isFocus ? 'Focus Session' : 'Break Time'}
+                    </h2>
+                </div>
+                
+                <TimerDisplay
+                    timeRemaining={appState.timeRemaining}
+                    totalTime={appState.sessionTotalTime}
+                    isRunning={appState.isRunning}
+                    mode={appState.mode}
+                />
+
+                <Controls
+                    isRunning={appState.isRunning}
+                    startTimer={startTimer}
+                    stopTimer={stopTimer}
+                    resetTimer={resetTimer}
+                    timeRemaining={appState.timeRemaining}
+                    sessionTotalTime={appState.sessionTotalTime}
+                    mode={appState.mode}
+                />
+            </div>
             
-            <TimerDisplay
-                timeRemaining={appState.timeRemaining}
-                totalTime={appState.sessionTotalTime}
-                isRunning={appState.isRunning}
-                mode={appState.mode}
-            />
-
-            <Controls
-                isRunning={appState.isRunning}
-                startTimer={startTimer}
-                stopTimer={stopTimer}
-                resetTimer={resetTimer}
-                timeRemaining={appState.timeRemaining}
-                sessionTotalTime={appState.sessionTotalTime}
-                mode={appState.mode}
-            />
-
             <AmbientSounds />
             <StatsPanel
                 completedToday={completedToday}
@@ -121,7 +128,7 @@ const TimerPage: React.FC<TimerPageProps> = (props) => {
                 tasks={allTodaysTasks}
                 todaysHistory={todaysHistory}
             />
-        </>
+        </div>
     );
 };
 

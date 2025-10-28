@@ -1,12 +1,14 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AI Pomodoro Study Timer</title>
+    <title>FocusFlow - AI Pomodoro Timer</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27><circle cx=%2750%27 cy=%2750%27 r=%2745%27 fill=%27%23f5576c%27/><circle cx=%2750%27 cy=%2750%27 r=%2730%27 fill=%27white%27/><circle cx=%2750%27 cy=%2750%27 r=%2715%27 fill=%27%23f5576c%27/></svg>">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27><path fill=%27%232dd4bf%27 d=%27M50,5A45,45,0,1,1,5,50,45,45,0,0,1,50,5m0-5A50,50,0,1,0,100,50,50,50,0,0,0,50,0Z%27/><path fill=%27%232dd4bf%27 d=%27M50,25A25,25,0,1,1,25,50,25,25,0,0,1,50,25m0-5A30,30,0,1,0,80,50,30,30,0,0,0,50,20Z%27/></svg>">
 <script type="importmap">
 {
   "imports": {
@@ -19,8 +21,13 @@
   }
 }
 </script>
+<style>
+  body {
+    background-color: #111827; /* A dark slate/blue */
+  }
+</style>
 </head>
-<body class="transition-colors duration-1000 ease-in-out">
+<body class="transition-colors duration-500 ease-in-out">
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
 </body>

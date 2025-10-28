@@ -9,8 +9,8 @@ interface PanelProps {
 
 const Panel: React.FC<PanelProps> = ({ title, children, className = '' }) => {
     return (
-        <div className={`bg-white/10 rounded-2xl p-4 sm:p-6 mt-5 ${className}`}>
-            <h2 className="text-white text-xl font-bold mb-4 text-center">{title}</h2>
+        <div className={`bg-slate-800/50 rounded-xl p-4 sm:p-6 mt-6 border border-slate-700/80 ${className}`}>
+            <h2 className="text-white text-xl font-semibold mb-4 text-center tracking-tight">{title}</h2>
             {children}
         </div>
     );

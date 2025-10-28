@@ -750,9 +750,10 @@ export const getHistoricalLogs = async (startDate: string, endDate: string): Pro
         .lte('date', endDate);
 
     if (error) {
+        console.error("Error fetching historical logs:", JSON.stringify(error, null, 2));
         return [];
     }
-    return data;
+    return data || [];
 };
 
 export const getHistoricalTasks = async (startDate: string, endDate: string): Promise<Task[]> => {
@@ -767,9 +768,10 @@ export const getHistoricalTasks = async (startDate: string, endDate: string): Pr
         .lte('due_date', endDate);
     
     if (error) {
+        console.error("Error fetching historical tasks:", JSON.stringify(error, null, 2));
         return [];
     }
-    return data;
+    return data || [];
 };
 
 export const getAllTasksForStats = async (): Promise<Task[]> => {
@@ -782,9 +784,10 @@ export const getAllTasksForStats = async (): Promise<Task[]> => {
         .eq('user_id', user.id);
     
     if (error) {
+        console.error("Error fetching all tasks for stats:", JSON.stringify(error, null, 2));
         return [];
     }
-    return data;
+    return data || [];
 };
 
 export const getHistoricalProjects = async (startDate: string, endDate: string): Promise<Project[]> => {
@@ -800,9 +803,10 @@ export const getHistoricalProjects = async (startDate: string, endDate: string):
         .lte('completed_at', `${endDate}T23:59:59Z`);
     
     if (error) {
+        console.error("Error fetching historical projects:", JSON.stringify(error, null, 2));
         return [];
     }
-    return data;
+    return data || [];
 };
 
 export const getHistoricalTargets = async (startDate: string, endDate:string): Promise<Target[]> => {
@@ -813,13 +817,14 @@ export const getHistoricalTargets = async (startDate: string, endDate:string): P
         .from('targets')
         .select('*')
         .eq('user_id', user.id)
-        .gte('completed_at', startDate)
+        .gte('completed_at', `${startDate}T00:00:00Z`)
         .lte('completed_at', `${endDate}T23:59:59Z`);
 
     if (error) {
+        console.error("Error fetching historical targets:", JSON.stringify(error, null, 2));
         return [];
     }
-    return data;
+    return data || [];
 };
 
 // --- Pomodoro History (for Heatmap) ---
@@ -879,7 +884,7 @@ export const getPomodoroHistory = async (startDate: string, endDate: string): Pr
         console.error("Error fetching pomodoro history:", JSON.stringify(error, null, 2));
         return [];
     }
-    return data;
+    return data || [];
 };
 
 export const getAllPomodoroHistory = async (): Promise<PomodoroHistory[]> => {
@@ -896,7 +901,7 @@ export const getAllPomodoroHistory = async (): Promise<PomodoroHistory[]> => {
         console.error("Error fetching all pomodoro history:", JSON.stringify(error, null, 2));
         return [];
     }
-    return data;
+    return data || [];
 };
 
 export const getConsistencyLogs = async (days = 180): Promise<DbDailyLog[]> => {
@@ -906,13 +911,15 @@ export const getConsistencyLogs = async (days = 180): Promise<DbDailyLog[]> => {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
     const startDateString = getTodayDateString(startDate);
+    const todayString = getTodayDateString();
 
     // Fetch all tasks due within the date range to get total and completed counts.
     const { data, error } = await supabase
         .from('tasks')
         .select('due_date, completed_at')
         .eq('user_id', user.id)
-        .gte('due_date', startDateString);
+        .gte('due_date', startDateString)
+        .lte('due_date', todayString);
 
     if (error) {
         console.error("Error fetching tasks for consistency logs:", JSON.stringify(error, null, 2));

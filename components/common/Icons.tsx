@@ -38,3 +38,9 @@ export const StatsIcon: React.FC = () => <svg {...iconWithStrokeProps}><path d="
 export const AIIcon: React.FC = () => <svg {...iconWithStrokeProps}><path d="M12 8V4H8" /><rect x="4" y="12" width="8" height="8" rx="2" /><path d="M20 12h-4" /><path d="M16 6h4" /><path d="M12 12v-2" /><path d="m16 16-1.5-1.5" /><path d="m8 16 1.5-1.5" /></svg>;
 export const TargetIcon: React.FC = () => <svg {...iconWithStrokeProps}><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="6"></circle><circle cx="12" cy="12" r="2"></circle></svg>;
 export const LogoutIcon: React.FC = () => <svg {...iconWithStrokeProps}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>;
+
+// New Filled Icons for Navbar
+export const CircleIcon: React.FC = () => <svg {...commonProps}><circle cx="12" cy="12" r="10" /></svg>;
+export const PlanIconFilled: React.FC = () => <svg {...commonProps}><path d="M17 12h-5v5h5v-5zM16 1v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2h-1V1h-2zm3 18H5V8h14v11z"/></svg>;
+export const StatsIconFilled: React.FC = () => <svg {...commonProps}><path d="M10 20h4V4h-4v16zm-6 0h4v-8H4v8zM16 9v11h4V9h-4z"/></svg>;
+export const AIIconFilled: React.FC = () => <svg {...commonProps}><path d="M20,11.5C20,12.33 19.33,13 18.5,13H17.22C16.89,14.16 16.2,15.17 15.25,15.89L16.2,17.84L15.3,18.3L14.35,16.35C13.56,16.76 12.72,17 11.83,17H11.75C11.5,17 11.25,17 11,17C7.69,17 5,14.31 5,11V6C5,3.79 6.79,2 9,2H15C17.21,2 19,3.79 19,6V11.5H20M17,11.5V6C17,4.9 16.1,4 15,4H9C7.9,4 7,4.9 7,6V11C7,13.21 8.79,15 11,15C11.19,15 11.37,15 11.55,14.95L11,16.29L11.95,16.7L12.5,15.41C13.62,14.65 14.43,13.43 14.8,12H15.5C16.33,12 17,11.33 17,10.5V9.5H19V11.5Z" /></svg>;

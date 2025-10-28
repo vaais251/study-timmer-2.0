@@ -1,7 +1,5 @@
 
 
-
-
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
@@ -20,7 +18,6 @@ import CompletionModal from './components/CompletionModal';
 import AuthPage from './pages/AuthPage';
 import LoadingAnimation from './components/common/LoadingAnimation';
 import GoalsPage from './pages/GoalsPage';
-import AIChatFab from './components/common/AIChatFab';
 
 // Reads from localStorage to initialize the timer state synchronously.
 const getInitialAppState = (): { initialState: AppState; initialPhaseEndTime: number | null; wasRestored: boolean } => {
@@ -390,7 +387,7 @@ const App: React.FC = () => {
         if (appState.isRunning && appState.timeRemaining <= 0) {
             completePhase();
         }
-        document.title = `${Math.floor(appState.timeRemaining / 60).toString().padStart(2, '0')}:${(appState.timeRemaining % 60).toString().padStart(2, '0')} - ${appState.mode === 'focus' ? 'Focus' : 'Break'}`;
+        document.title = `${Math.floor(appState.timeRemaining / 60).toString().padStart(2, '0')}:${(appState.timeRemaining % 60).toString().padStart(2, '0')} - ${appState.mode === 'focus' ? 'Focus' : 'Break'} | FocusFlow`;
     }, [appState.timeRemaining, appState.isRunning, appState.mode, completePhase]);
     
     // --- STATE PERSISTENCE LOGIC ---
@@ -566,12 +563,10 @@ const App: React.FC = () => {
             project_id: projectId,
         };
         const updatedTask = await dbService.updateTask(id, updates);
-    
         if (updatedTask) {
              setTasks(prevTasks => prevTasks.map(t => (t.id === id ? updatedTask : t)));
         }
     };
-
 
     const handleAddTask = async (text: string, poms: number, dueDate: string, projectId: string | null, tags: string[]) => {
         const newTasks = await dbService.addTask(text, poms, dueDate, projectId, tags);
@@ -580,44 +575,11 @@ const App: React.FC = () => {
         }
     };
 
-    const handleAddProject = async (
-        name: string,
-        description: string | null,
-        deadline: string | null,
-        criteria?: { type: Project['completion_criteria_type'], value: number | null }
-    ): Promise<string | null> => {
-        const criteriaType = criteria?.type || 'manual';
-        const criteriaValue = criteria?.value || null;
-
-        const newProject = await dbService.addProject(name, description, deadline, criteriaType, criteriaValue);
-        if (newProject) {
-            setProjects(prev => [...prev, newProject].sort((a, b) => a.name.localeCompare(b.name)));
-            return newProject.id;
-        }
-        return null;
-    };
-    
     const handleDeleteTask = async (id: string) => {
-        const result = await dbService.deleteTask(id);
-
-        if (result.tasks) {
-            setTasks(result.tasks);
-        }
-        if (result.projects) {
-            setProjects(result.projects);
-        }
-        
-        if (result.tasks !== null) {
-            // After a task affecting time is deleted, we need to refetch the history
-            // to ensure our authoritative logs are up to date.
-            fetchData();
-        }
-    };
-
-    const handleMarkTaskIncomplete = async (id: string) => {
-        const newTasks = await dbService.markTaskIncomplete(id);
-        if (newTasks) {
-            setTasks(newTasks);
+        if (window.confirm("Are you sure you want to delete this task? This cannot be undone.")) {
+            const result = await dbService.deleteTask(id);
+            if (result.tasks) setTasks(result.tasks);
+            if (result.projects) setProjects(result.projects); // Also update projects if progress was rolled back
         }
     };
 
@@ -625,140 +587,163 @@ const App: React.FC = () => {
         const newTasks = await dbService.moveTask(id, action);
         if (newTasks) setTasks(newTasks);
     };
-
+    
     const handleBringTaskForward = async (id: string) => {
         const newTasks = await dbService.bringTaskForward(id);
         if (newTasks) setTasks(newTasks);
     };
-    
-    const handleReorderTasks = async (reorderedDayTasks: Task[]) => {
-        if (!reorderedDayTasks.length) return;
 
-        // Optimistic UI update: Replace the old items with the newly ordered ones.
-        const reorderedIds = new Set(reorderedDayTasks.map(t => t.id));
-        const otherTasks = tasks.filter(t => !reorderedIds.has(t.id));
-        setTasks([...reorderedDayTasks, ...otherTasks]);
+    const handleReorderTasks = async (reorderedTasks: Task[]) => {
+        // Optimistically update UI to feel snappy
+        setTasks(currentTasks => {
+            const reorderedIds = new Set(reorderedTasks.map(t => t.id));
+            const otherTasks = currentTasks.filter(t => !reorderedIds.has(t.id));
+            const newTaskList = [...otherTasks, ...reorderedTasks].sort((a,b) => {
+                if (a.due_date < b.due_date) return -1;
+                if (a.due_date > b.due_date) return 1;
+                return (a.task_order ?? Infinity) - (b.task_order ?? Infinity);
+            });
+            return newTaskList;
+        });
 
-        // Prepare the data for the database update by assigning the new order index.
-        const tasksToUpdate = reorderedDayTasks.map((task, index) => ({
+        // Prepare data for DB update
+        const tasksToUpdate = reorderedTasks.map((task, index) => ({
             id: task.id,
             task_order: index,
         }));
 
-        // Call the service to persist the new order.
-        const updatedTasksFromDB = await dbService.updateTaskOrder(tasksToUpdate);
-        
-        // On success or failure, resync with the authoritative list from the DB.
-        if (updatedTasksFromDB) {
-            setTasks(updatedTasksFromDB);
-        } else {
-            console.error("Failed to save new task order. Reverting.");
-            fetchData();
+        // Update DB and fetch definitive state
+        const finalTasks = await dbService.updateTaskOrder(tasksToUpdate);
+        if (finalTasks) {
+            setTasks(finalTasks);
         }
     };
 
-    // Goal, Target, & Project Handlers
-    const handleAddGoal = async (text: string) => {
-        const newGoals = await dbService.addGoal(text);
-        if (newGoals) setGoals(newGoals);
+    const handleMarkTaskIncomplete = async (id: string) => {
+        const newTasks = await dbService.markTaskIncomplete(id);
+        if (newTasks) setTasks(newTasks);
     };
-    const handleUpdateGoal = async (id: string, text: string) => {
-        const newGoals = await dbService.updateGoal(id, { text });
-        if (newGoals) setGoals(newGoals);
-    };
-    const handleDeleteGoal = async (id: string) => {
-        const newGoals = await dbService.deleteGoal(id);
-        if (newGoals) setGoals(newGoals);
-    };
-    const handleAddTarget = async (text: string, deadline: string) => {
-        const newTargets = await dbService.addTarget(text, deadline);
-        if (newTargets) setTargets(newTargets);
-    };
-    const handleUpdateTarget = async (id: string, updates: Partial<Target>) => {
-        const newTargets = await dbService.updateTarget(id, updates);
-        if (newTargets) setTargets(newTargets);
-    };
-    const handleDeleteTarget = async (id: string) => {
-        const newTargets = await dbService.deleteTarget(id);
-        if (newTargets) setTargets(newTargets);
+
+    // --- Project Handlers ---
+    const handleAddProject = async (name: string, description: string | null = null, deadline: string | null = null, criteria: {type: Project['completion_criteria_type'], value: number | null} = {type: 'manual', value: null}): Promise<string | null> => {
+        const newProject = await dbService.addProject(name, description, deadline, criteria.type, criteria.value);
+        if (newProject) {
+            setProjects(prev => [...prev, newProject].sort((a, b) => a.name.localeCompare(b.name)));
+            return newProject.id;
+        }
+        return null;
     };
     
     const handleUpdateProject = async (id: string, updates: Partial<Project>) => {
-        const newProjects = await dbService.updateProject(id, updates);
-        if (newProjects) setProjects(newProjects);
+        const updatedProjects = await dbService.updateProject(id, updates);
+        if (updatedProjects) setProjects(updatedProjects);
     };
 
     const handleDeleteProject = async (id: string) => {
         const result = await dbService.deleteProject(id);
-        
         if (result.success && result.data) {
-            // The service now returns all the fresh data we need.
             setProjects(result.data.projects);
-            setTasks(result.data.tasks);
-        } else {
-            // This will now show the super-detailed error message from our new dbService function.
-            alert(`Failed to delete project. \n\nREASON: ${result.error}`);
+            setTasks(result.data.tasks); // Tasks might be unlinked, so we need to refresh them.
+        } else if (result.error) {
+            alert(`Error: ${result.error}`);
         }
     };
     
-    // Commitment Handlers
+    // --- Goal Handlers ---
+    const handleAddGoal = async (text: string) => {
+        const newGoals = await dbService.addGoal(text);
+        if (newGoals) setGoals(newGoals);
+    };
+    
+    const handleUpdateGoal = async (id: string, text: string) => {
+        const newGoals = await dbService.updateGoal(id, { text });
+        if (newGoals) setGoals(newGoals);
+    };
+
+    const handleDeleteGoal = async (id: string) => {
+        if (window.confirm("Delete this goal?")) {
+            const newGoals = await dbService.deleteGoal(id);
+            if (newGoals) setGoals(newGoals);
+        }
+    };
+    
+    // --- Target Handlers ---
+    const handleAddTarget = async (text: string, deadline: string) => {
+        const newTargets = await dbService.addTarget(text, deadline);
+        if (newTargets) setTargets(newTargets);
+    };
+    
+    const handleUpdateTarget = async (id: string, updates: Partial<Target>) => {
+        const newTargets = await dbService.updateTarget(id, updates);
+        if (newTargets) setTargets(newTargets);
+    };
+
+    const handleDeleteTarget = async (id: string) => {
+         if (window.confirm("Delete this target?")) {
+            const newTargets = await dbService.deleteTarget(id);
+            if (newTargets) setTargets(newTargets);
+        }
+    };
+
+    // --- Commitment Handlers ---
     const handleAddCommitment = async (text: string, dueDate: string | null) => {
         const newCommitments = await dbService.addCommitment(text, dueDate);
         if (newCommitments) setAllCommitments(newCommitments);
     };
-    const handleUpdateCommitment = async (id: string, updates: { text: string; dueDate: string | null; }) => {
+
+    const handleUpdateCommitment = async (id: string, updates: { text: string; dueDate: string | null }) => {
         const newCommitments = await dbService.updateCommitment(id, updates);
         if (newCommitments) setAllCommitments(newCommitments);
     };
+
     const handleDeleteCommitment = async (id: string) => {
-        const newCommitments = await dbService.deleteCommitment(id);
-        if (newCommitments) setAllCommitments(newCommitments);
+        if (window.confirm("Delete this commitment?")) {
+            const newCommitments = await dbService.deleteCommitment(id);
+            if (newCommitments) setAllCommitments(newCommitments);
+        }
+    };
+    
+    // --- AI Coach Specific Task Adder (for promise-based flow) ---
+    const handleAddTaskFromAI = async (text: string, poms: number, dueDate: string, projectId: string | null, tags: string[]): Promise<void> => {
+        const newTasks = await dbService.addTask(text, poms, dueDate, projectId, tags);
+        if (newTasks) {
+            setTasks(newTasks);
+        }
     };
 
+    // Settings
     const handleSaveSettings = async (newSettings: Settings) => {
         await dbService.updateSettings(newSettings);
         setSettings(newSettings);
-        resetTimer();
-        setPage('timer'); // Navigate back to timer after saving
     };
 
-    const handleLogout = async () => {
-        localStorage.removeItem('pomodoroAppState');
-        await supabase.auth.signOut();
-        setTasks([]);
-        setProjects([]);
-        setGoals([]);
-        setTargets([]);
-        setAllCommitments([]);
-        setTodaysHistory([]);
-        setHistoricalLogs([]);
-        setDidRestoreFromStorage(false); // Reset persistence flag on logout
-        setDailyLog({ date: getTodayDateString(), completed_sessions: 0, total_focus_minutes: 0 });
-        setPage('timer');
-    };
+    if (!session) {
+        return <AuthPage />;
+    }
+    
+    if (isLoading) {
+        return <LoadingAnimation />;
+    }
 
-    // Page Rendering Logic
     const renderPage = () => {
-        const currentTask = tasksToday.find(t => !t.completed_at);
-
         switch (page) {
             case 'timer':
                 return <TimerPage
-                    currentTask={currentTask}
+                    appState={appState}
+                    settings={settings}
                     tasksToday={tasksToday}
                     completedToday={completedToday}
                     dailyLog={dailyLog}
-                    settings={settings}
-                    appState={appState}
                     startTimer={handleStartClick}
                     stopTimer={stopTimer}
                     resetTimer={resetTimer}
                     navigateToSettings={() => setPage('settings')}
+                    currentTask={tasksToday[0]}
                     todaysHistory={todaysHistory}
                     historicalLogs={historicalLogs}
                 />;
             case 'plan':
-                 return <PlanPage 
+                return <PlanPage
                     tasksToday={tasksToday}
                     tasksForTomorrow={tasksForTomorrow}
                     tasksFuture={tasksFuture}
@@ -766,8 +751,7 @@ const App: React.FC = () => {
                     projects={projects}
                     settings={settings}
                     onAddTask={handleAddTask}
-                    // FIX: Pass null for description and deadline when creating a project from the plan page.
-                    onAddProject={(name) => handleAddProject(name, null, null)}
+                    onAddProject={handleAddProject}
                     onDeleteTask={handleDeleteTask}
                     onMoveTask={handleMoveTask}
                     onBringTaskForward={handleBringTaskForward}
@@ -775,7 +759,22 @@ const App: React.FC = () => {
                     onUpdateTaskTimers={handleUpdateTaskTimers}
                     onUpdateTask={handleUpdateTask}
                     onMarkTaskIncomplete={handleMarkTaskIncomplete}
-                 />;
+                />;
+            case 'stats':
+                return <StatsPage />;
+            case 'ai':
+                return <AICoachPage 
+                    goals={goals}
+                    targets={targets}
+                    projects={projects}
+                    allCommitments={activeCommitments}
+                    onAddTask={handleAddTaskFromAI}
+                    onAddProject={handleAddProject}
+                    onAddTarget={handleAddTarget}
+                    onAddCommitment={handleAddCommitment}
+                    chatMessages={aiChatMessages}
+                    setChatMessages={setAiChatMessages}
+                />;
             case 'goals':
                 return <GoalsPage 
                     goals={goals}
@@ -795,87 +794,32 @@ const App: React.FC = () => {
                     onUpdateCommitment={handleUpdateCommitment}
                     onDeleteCommitment={handleDeleteCommitment}
                 />;
-            case 'stats':
-                return <StatsPage />;
-            case 'ai':
-                return <AICoachPage 
-                            goals={goals}
-                            targets={targets}
-                            projects={projects}
-                            allCommitments={allCommitments}
-                            onAddTask={handleAddTask}
-                            onAddProject={handleAddProject}
-                            onAddTarget={handleAddTarget}
-                            onAddCommitment={handleAddCommitment}
-                            chatMessages={aiChatMessages}
-                            setChatMessages={setAiChatMessages}
-                       />;
             case 'settings':
-                return <SettingsPage 
-                    settings={settings}
-                    onSave={handleSaveSettings}
-                />;
+                return <SettingsPage settings={settings} onSave={handleSaveSettings} />;
             default:
-                return <TimerPage
-                    currentTask={currentTask}
-                    tasksToday={tasksToday}
-                    completedToday={completedToday}
-                    dailyLog={dailyLog}
-                    settings={settings}
-                    appState={appState}
-                    startTimer={handleStartClick}
-                    stopTimer={stopTimer}
-                    resetTimer={resetTimer}
-                    navigateToSettings={() => setPage('settings')}
-                    todaysHistory={todaysHistory}
-                    historicalLogs={historicalLogs}
-                />;
+                return <div>Page not found</div>;
         }
     };
-    
-    // Main Component Render
-    if (isLoading) {
-        return <LoadingAnimation />;
-    }
-
-    if (!session) {
-        return <AuthPage />;
-    }
-    
-    const bgClass = appState.mode === 'focus'
-        ? 'bg-gradient-to-br from-[#667eea] to-[#764ba2]'
-        : 'bg-gradient-to-br from-[#a8e063] to-[#56ab2f]';
 
     return (
-        <div 
-          className={`min-h-screen w-full flex justify-center items-start pt-10 pb-10 ${bgClass}`}
-          style={{fontFamily: `'Segoe UI', Tahoma, Geneva, Verdana, sans-serif`}}
-        >
-            <div className="w-full max-w-2xl mx-auto px-4">
-                <div className="bg-white/10 backdrop-blur-2xl rounded-3xl p-4 sm:p-8 shadow-2xl border border-white/20 animate-slideIn">
-                    <Navbar currentPage={page} setPage={setPage} onLogout={handleLogout} />
-                    <main className="mt-4">
-                        {renderPage()}
-                    </main>
+        <div className="bg-slate-900 text-slate-200 min-h-screen" style={{fontFamily: `'Inter', sans-serif`}}>
+            <Navbar currentPage={page} setPage={setPage} onLogout={() => supabase.auth.signOut()} />
+            
+            <main className="md:pl-20 lg:pl-56 transition-all duration-300">
+                <div className="p-4 sm:p-6 pb-20 md:pb-6 max-w-4xl mx-auto">
+                    {renderPage()}
                 </div>
-                {isModalVisible && (
-                    <CompletionModal
-                        title={modalContent.title}
-                        message={modalContent.message}
-                        nextMode={modalContent.nextMode}
-                        showCommentBox={modalContent.showCommentBox}
-                        onContinue={handleModalContinue}
-                    />
-                )}
-                 {page !== 'ai' && session && <AIChatFab onClick={() => setPage('ai')} />}
-                <style>{`
-                  @keyframes slideIn {
-                      from { opacity: 0; transform: translateY(-30px); }
-                      to { opacity: 1; transform: translateY(0); }
-                  }
-                  .animate-slideIn { animation: slideIn 0.5s ease-out; }
-                `}</style>
-            </div>
+            </main>
+
+            {isModalVisible && (
+                <CompletionModal
+                    title={modalContent.title}
+                    message={modalContent.message}
+                    nextMode={modalContent.nextMode}
+                    showCommentBox={modalContent.showCommentBox}
+                    onContinue={handleModalContinue}
+                />
+            )}
         </div>
     );
 };

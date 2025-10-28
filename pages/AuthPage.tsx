@@ -117,27 +117,27 @@ const AuthPage: React.FC = () => {
 
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#667eea] to-[#764ba2]">
+        <div className="min-h-screen flex items-center justify-center bg-slate-900 text-slate-200" style={{fontFamily: `'Inter', sans-serif`}}>
             <div className="w-full max-w-md mx-auto px-4">
-                <div className="bg-white/10 backdrop-blur-2xl rounded-3xl p-8 shadow-2xl border border-white/20 animate-slideIn">
-                    <h1 className="text-white text-3xl font-bold text-center mb-2">AI Pomodoro Timer</h1>
-                    <p className="text-white/80 text-center mb-6">{isLogin ? 'Sign in to continue' : 'Create an account to start'}</p>
+                <div className="bg-slate-800/50 backdrop-blur-lg rounded-2xl p-8 shadow-2xl border border-slate-700/80 animate-slideIn">
+                    <h1 className="text-white text-3xl font-bold text-center mb-2 tracking-tight">FocusFlow</h1>
+                    <p className="text-slate-400 text-center mb-6">{isLogin ? 'Sign in to continue' : 'Create an account to start'}</p>
 
-                    {error && <p className="bg-red-500/50 text-white p-3 rounded-lg mb-4 text-center">{error}</p>}
-                    {notification && <p className="bg-green-500/50 text-white p-3 rounded-lg mb-4 text-center">{notification}</p>}
+                    {error && <p className="bg-red-500/30 text-red-200 p-3 rounded-lg mb-4 text-center text-sm">{error}</p>}
+                    {notification && <p className="bg-green-500/30 text-green-200 p-3 rounded-lg mb-4 text-center text-sm">{notification}</p>}
                     
-                    <form onSubmit={handleAuth}>
-                        <div className="mb-4">
+                    <form onSubmit={handleAuth} className="space-y-4">
+                        <div>
                             <input
                                 type="email"
                                 placeholder="Email"
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
                                 required
-                                className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50"
+                                className="w-full bg-slate-700/50 border border-slate-600 rounded-lg p-3 text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-400 focus:border-teal-400"
                             />
                         </div>
-                        <div className="mb-6">
+                        <div>
                             <input
                                 type="password"
                                 placeholder="Password"
@@ -145,13 +145,13 @@ const AuthPage: React.FC = () => {
                                 onChange={(e) => setPassword(e.target.value)}
                                 required
                                 minLength={6}
-                                className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50"
+                                className="w-full bg-slate-700/50 border border-slate-600 rounded-lg p-3 text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-400 focus:border-teal-400"
                             />
                         </div>
                         <button
                             type="submit"
                             disabled={loading}
-                            className="w-full p-3 bg-gradient-to-br from-cyan-400 to-blue-600 text-white font-bold rounded-lg transition hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="w-full p-3 bg-teal-500 hover:bg-teal-600 text-white font-bold rounded-lg transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             {loading ? 'Processing...' : (isLogin ? 'Login' : 'Sign Up')}
                         </button>
@@ -159,10 +159,10 @@ const AuthPage: React.FC = () => {
 
                     <div className="relative my-6">
                         <div className="absolute inset-0 flex items-center" aria-hidden="true">
-                            <div className="w-full border-t border-white/30" />
+                            <div className="w-full border-t border-slate-600" />
                         </div>
                         <div className="relative flex justify-center">
-                            <span className="bg-[#3e3562] px-2 text-sm text-white/70">OR</span>
+                            <span className="bg-slate-800 px-2 text-sm text-slate-400">OR</span>
                         </div>
                     </div>
 
@@ -170,9 +170,9 @@ const AuthPage: React.FC = () => {
                         <div id="googleSignInButton"></div>
                     </div>
 
-                    <p className="text-center text-white/70 mt-6">
+                    <p className="text-center text-slate-400 mt-6">
                         {isLogin ? "Don't have an account?" : "Already have an account?"}
-                        <button onClick={() => { setIsLogin(!isLogin); setError(null); setNotification(null); }} className="font-bold text-white hover:underline ml-2">
+                        <button onClick={() => { setIsLogin(!isLogin); setError(null); setNotification(null); }} className="font-bold text-teal-400 hover:underline ml-2">
                             {isLogin ? 'Sign Up' : 'Login'}
                         </button>
                     </p>
