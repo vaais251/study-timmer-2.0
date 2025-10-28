@@ -1,11 +1,3 @@
-
-
-
-
-
-
-
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { Task, Project, Settings } from '../types';
 import Panel from './common/Panel';
@@ -350,6 +342,82 @@ const TaskInputGroup: React.FC<TaskInputGroupProps> = ({ onAddTask, placeholder,
     );
 };
 
+interface CategoryFocusDropdownProps {
+    tasks: Task[];
+    settings: Settings;
+    title: string;
+}
+
+const CategoryFocusDropdown: React.FC<CategoryFocusDropdownProps> = ({ tasks, settings, title }) => {
+    const [isOpen, setIsOpen] = useState(false);
+
+    const categoryData = useMemo(() => {
+        const categoryMap = new Map<string, number>();
+
+        tasks.forEach(task => {
+            const remainingPoms = task.total_poms - task.completed_poms;
+            if (remainingPoms > 0 && task.tags && task.tags.length > 0) {
+                const focusDuration = task.custom_focus_duration || settings.focusDuration;
+                const remainingMinutes = remainingPoms * focusDuration;
+                
+                task.tags.forEach(tag => {
+                    const normalizedTag = tag.trim().toLowerCase();
+                    if (normalizedTag) {
+                        categoryMap.set(normalizedTag, (categoryMap.get(normalizedTag) || 0) + remainingMinutes);
+                    }
+                });
+            }
+        });
+
+        return Array.from(categoryMap.entries())
+            .map(([name, minutes]) => ({
+                name: name.charAt(0).toUpperCase() + name.slice(1),
+                minutes
+            }))
+            .sort((a, b) => b.minutes - a.minutes);
+
+    }, [tasks, settings]);
+
+    if (categoryData.length === 0) {
+        return null;
+    }
+
+    const topCategory = categoryData[0];
+
+    return (
+        <div className="relative mb-3">
+            <button 
+                onClick={() => setIsOpen(!isOpen)}
+                className="w-full bg-black/20 p-3 rounded-lg flex items-center justify-between transition hover:bg-black/30"
+                aria-expanded={isOpen}
+            >
+                <div className="flex items-center gap-3">
+                    <svg className="w-5 h-5 text-cyan-300" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zM13 15v-3h8.92c-.04.33-.08.66-.08 1 0 4.08-3.05 7.44-7 7.93v-1.93c-1.1 0-2-.9-2-2v-1h3zM13 4.07c1.02.32 1.94.8 2.75 1.42l-2.75 2.75V4.07zM4.93 7.5c1.4-1.4 3.3-2.17 5.07-1.93v2.68L4.93 7.5z"/></svg>
+                    <span className="text-sm text-white/80">{title}:</span>
+                    <span className="font-bold text-white">{topCategory.name} - {topCategory.minutes}m</span>
+                </div>
+                <svg className={`w-5 h-5 text-white/70 transform transition-transform ${isOpen ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
+            </button>
+            {isOpen && (
+                <div className="absolute top-full left-0 right-0 mt-1 bg-slate-800 border border-white/20 rounded-lg shadow-xl p-3 z-10 animate-slideUp">
+                    <ul className="space-y-2">
+                        {categoryData.map(item => (
+                            <li key={item.name} className="flex justify-between items-center text-sm">
+                                <span className="text-white/90">{item.name}</span>
+                                <span className="font-semibold text-white bg-black/20 px-2 py-0.5 rounded">{item.minutes}m</span>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            )}
+            <style>{`
+              @keyframes slideUp { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+              .animate-slideUp { animation: slideUp 0.2s ease-out; }
+            `}</style>
+        </div>
+    );
+};
+
 interface TaskManagerProps {
     tasksToday: Task[];
     tasksForTomorrow: Task[];
@@ -438,6 +506,7 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasksToday, tasksForTomorrow,
                     projects={projects}
                     onAddProject={onAddProject}
                 />
+                <CategoryFocusDropdown tasks={tasksToday} settings={settings} title="Est. Focus by Category" />
                 <ul 
                     className="max-h-64 overflow-y-auto pr-2"
                     onDragOver={(e) => e.preventDefault()}
@@ -487,6 +556,7 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasksToday, tasksForTomorrow,
                         </div>
                     )}
                 </div>
+                <CategoryFocusDropdown tasks={tasksForTomorrow} settings={settings} title="Est. Focus by Category" />
                 <ul className="max-h-48 overflow-y-auto pr-2" onDragOver={(e) => e.preventDefault()}>
                     {tasksForTomorrow.map((task, index) => (
                         <TaskItem 
