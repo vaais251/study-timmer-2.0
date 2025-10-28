@@ -3,12 +3,7 @@ import { Goal, Target, Project, Commitment, Task } from '../types';
 
 export async function generateContent(prompt: string): Promise<string> {
     try {
-        // The API key is securely managed and injected as an environment variable.
         const apiKey = "AIzaSyDAQmRyN9dNOxCoLneDXPETYC0hAKFvmLw";
-        if (!apiKey) {
-            console.warn("Gemini API key is not configured. AI features will be disabled.");
-            return "AI feature is disabled. Please ensure your Gemini API key is correctly set up in the environment.";
-        }
         
         const ai = new GoogleGenAI({ apiKey });
 
@@ -52,10 +47,7 @@ export async function runAgent(
     tools: FunctionDeclaration[],
     context: AgentContext
 ): Promise<GenerateContentResponse> {
-    const apiKey = process.env.API_KEY;
-    if (!apiKey) {
-        throw new Error("Gemini API key is not configured.");
-    }
+    const apiKey = "AIzaSyDAQmRyN9dNOxCoLneDXPETYC0hAKFvmLw";
     const ai = new GoogleGenAI({ apiKey });
 
     const systemInstruction = `You are PomoAI, an expert productivity coach and data analyst integrated into a Pomodoro study application. You have complete read-only access to the user's planning and performance data, which is provided below in structured format. Your primary role is to help the user understand their data, find insights, plan their work, and take action on their behalf using your available tools (like adding tasks or projects). You are conversational, encouraging, and highly analytical.
