@@ -4,7 +4,7 @@ import { Goal, Target, Project, Commitment, Task } from '../types';
 export async function generateContent(prompt: string): Promise<string> {
     try {
         // The API key is securely managed and injected as an environment variable.
-        const apiKey = "AIzaSyBT9IN5PiyqaWBdM9NekDg5d-5fWDuhZnE";
+        const apiKey = "AIzaSyDAQmRyN9dNOxCoLneDXPETYC0hAKFvmLw";
         if (!apiKey) {
             console.warn("Gemini API key is not configured. AI features will be disabled.");
             return "AI feature is disabled. Please ensure your Gemini API key is correctly set up in the environment.";
