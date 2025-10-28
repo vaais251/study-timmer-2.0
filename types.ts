@@ -117,5 +117,11 @@ export interface AppState {
     sessionTotalTime: number;
 }
 
+// For the AI Coach chat
+export interface ChatMessage {
+    role: 'user' | 'model';
+    text: string;
+}
+
 // Supabase session and user for auth
 export type { Session, User };

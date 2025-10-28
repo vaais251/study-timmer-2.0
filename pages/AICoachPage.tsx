@@ -1,13 +1,10 @@
-
-
-import React, { useState, useEffect } from 'react';
-import { Task, Goal, Target, Project, PomodoroHistory, Commitment } from '../types';
+import React, { useState, useEffect, useRef } from 'react';
+import { Goal, Target, Project, PomodoroHistory, Commitment, Task, ChatMessage } from '../types';
 import { getTodayDateString } from '../utils/date';
-import { generateContent } from '../services/geminiService';
+import { runAgent, AgentContext } from '../services/geminiService';
 import * as dbService from '../services/dbService';
-import AIPanel from '../components/AIPanel';
-import Panel from '../components/common/Panel';
 import Spinner from '../components/common/Spinner';
+import { FunctionDeclaration, Type } from '@google/genai';
 
 // Helper to format AI response from Markdown to HTML
 function formatAIResponse(text: string): string {
@@ -26,421 +23,316 @@ interface AICoachPageProps {
     targets: Target[];
     projects: Project[];
     allCommitments: Commitment[];
+    onAddTask: (text: string, poms: number, dueDate: string, projectId: string | null, tags: string[]) => Promise<void>;
+    onAddProject: (name: string, description: string | null, deadline: string | null, criteria?: {type: Project['completion_criteria_type'], value: number | null}) => Promise<string | null>;
+    onAddTarget: (text: string, deadline: string) => Promise<void>;
+    onAddCommitment: (text: string, dueDate: string | null) => Promise<void>;
+    chatMessages: ChatMessage[];
+    setChatMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
 }
 
 const getMonthAgoDateString = (): string => {
     const date = new Date();
-    // Set the date to one month ago from today.
     date.setMonth(date.getMonth() - 1);
     return getTodayDateString(date);
 };
 
-const AICoachPage: React.FC<AICoachPageProps> = ({ goals, targets, projects, allCommitments }) => {
-    const [insightsState, setInsightsState] = useState({ content: "Get AI-powered insights on your study habits based on your selected performance.", isLoading: false });
-    const [mentorState, setMentorState] = useState({ content: "Get personalized advice, content suggestions, and consistency tips.", isLoading: false });
-    const [analystState, setAnalystState] = useState({ content: "Ask me anything about your productivity data. For example: 'Which day last week did I focus the most?' or 'List all my incomplete tasks related to my 'History Essay' project.'", isLoading: false });
+// --- AI Function Declarations ---
+const toolDeclarations: FunctionDeclaration[] = [
+    {
+        name: 'addTask',
+        description: `Adds a new task to the user's to-do list. When a due date is not specified, it defaults to today. When poms (pomodoro sessions) are not specified, it defaults to 1.`,
+        parameters: {
+            type: Type.OBJECT,
+            properties: {
+                text: { type: Type.STRING, description: 'The content or description of the task. Must be descriptive.' },
+                poms: { type: Type.INTEGER, description: 'The estimated number of Pomodoro sessions required. Defaults to 1.' },
+                dueDate: { type: Type.STRING, description: `The date the task is due, in YYYY-MM-DD format. Defaults to today if not specified.` },
+                projectId: { type: Type.STRING, description: 'The ID of an existing project this task belongs to. Use null if no project.' },
+                tags: { type: Type.ARRAY, description: 'A list of tags to categorize the task, e.g., ["research", "writing"].', items: { type: Type.STRING } }
+            },
+            required: ['text']
+        }
+    },
+    {
+        name: 'addProject',
+        description: 'Creates a new project for the user to group tasks under.',
+        parameters: {
+            type: Type.OBJECT,
+            properties: {
+                name: { type: Type.STRING, description: 'The name of the new project.' },
+                description: { type: Type.STRING, description: 'A brief description of the project.' },
+                deadline: { type: Type.STRING, description: 'The deadline for the project in YYYY-MM-DD format.' },
+                criteriaType: { type: Type.STRING, enum: ['manual', 'task_count', 'duration_minutes'], description: 'The completion criteria type. Defaults to "manual".' },
+                criteriaValue: { type: Type.INTEGER, description: 'The target value for task_count or duration_minutes criteria.' }
+            },
+            required: ['name']
+        }
+    },
+    {
+        name: 'addTarget',
+        description: 'Sets a new key target or milestone for the user.',
+        parameters: {
+            type: Type.OBJECT,
+            properties: {
+                text: { type: Type.STRING, description: 'The description of the target.' },
+                deadline: { type: Type.STRING, description: 'The deadline for the target in YYYY-MM-DD format.' }
+            },
+            required: ['text', 'deadline']
+        }
+    },
+    {
+        name: 'addCommitment',
+        description: 'Adds a new commitment or promise for the user.',
+        parameters: {
+            type: Type.OBJECT,
+            properties: {
+                text: { type: Type.STRING, description: 'The text of the commitment.' },
+                dueDate: { type: Type.STRING, description: 'An optional due date for the commitment in YYYY-MM-DD format.' }
+            },
+            required: ['text']
+        }
+    }
+];
 
+const AICoachPage: React.FC<AICoachPageProps> = (props) => {
+    const { goals, targets, projects, allCommitments, onAddTask, onAddProject, onAddTarget, onAddCommitment, chatMessages, setChatMessages } = props;
+    
+    // Agent State
+    const [userInput, setUserInput] = useState('');
+    const [isAgentLoading, setIsAgentLoading] = useState(false);
+    const chatEndRef = useRef<HTMLDivElement>(null);
+    
+    // Context Data State
     const [historyRange, setHistoryRange] = useState(() => ({
         start: getMonthAgoDateString(),
         end: getTodayDateString(),
     }));
-    
     const [tasksInRange, setTasksInRange] = useState<Task[]>([]);
-    const [allTasks, setAllTasks] = useState<Task[]>([]);
-    const [allPomodoroHistory, setAllPomodoroHistory] = useState<PomodoroHistory[]>([]);
-    
+    const [pomodoroHistoryInRange, setPomodoroHistoryInRange] = useState<PomodoroHistory[]>([]);
     const [isDataLoading, setIsDataLoading] = useState(true);
-    const [isTaskListVisible, setIsTaskListVisible] = useState(false);
-    const [allowCommentAccess, setAllowCommentAccess] = useState(false);
 
-    // Effect for date-ranged data used by Insights and Mentor
     useEffect(() => {
         const fetchRangedData = async () => {
-            const fetchedTasks = await dbService.getHistoricalTasks(historyRange.start, historyRange.end);
+            setIsDataLoading(true);
+            const [fetchedTasks, fetchedHistory] = await Promise.all([
+                 dbService.getHistoricalTasks(historyRange.start, historyRange.end),
+                 dbService.getPomodoroHistory(historyRange.start, historyRange.end)
+            ]);
             setTasksInRange(fetchedTasks || []);
+            setPomodoroHistoryInRange(fetchedHistory || []);
+            setIsDataLoading(false);
         };
 
         if (historyRange.start && historyRange.end && new Date(historyRange.start) <= new Date(historyRange.end)) {
             fetchRangedData();
-        } else if (!historyRange.start && !historyRange.end) {
-            // When range is cleared for "All Data", use the already fetched `allTasks`
-            setTasksInRange(allTasks);
         } else {
             setTasksInRange([]);
+            setPomodoroHistoryInRange([]);
+            setIsDataLoading(false);
         }
-    }, [historyRange, allTasks]);
+    }, [historyRange]);
 
-    // Effect for all-time data used by the new Analyst feature. Runs once on mount.
     useEffect(() => {
-        const fetchAllData = async () => {
-            setIsDataLoading(true);
-            try {
-                const [fetchedAllTasks, fetchedAllHistory] = await Promise.all([
-                    dbService.getAllTasksForStats(),
-                    dbService.getAllPomodoroHistory(),
-                ]);
-                setAllTasks(fetchedAllTasks || []);
-                setAllPomodoroHistory(fetchedAllHistory || []);
-            } catch (error) {
-                console.error("Failed to load all data for AI Analyst:", error);
-                const errorMessage = "Error: Could not load the required data for analysis.";
-                setInsightsState(prev => ({ ...prev, content: errorMessage }));
-                setMentorState(prev => ({ ...prev, content: errorMessage }));
-                setAnalystState(prev => ({ ...prev, content: errorMessage }));
-            } finally {
-                setIsDataLoading(false);
+        chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, [chatMessages]);
+    
+    const handleAgentSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!userInput.trim() || isAgentLoading) return;
+
+        const newUserMessage: ChatMessage = { role: 'user', text: userInput };
+        const currentMessages = [...chatMessages, newUserMessage];
+        setChatMessages(currentMessages);
+        setUserInput('');
+        setIsAgentLoading(true);
+
+        const historyForApi = currentMessages.map(msg => ({
+            role: msg.role,
+            parts: [{ text: msg.text }]
+        }));
+        
+        const dailyLogsMap = new Map<string, { date: string, total_focus_minutes: number, completed_sessions: number }>();
+
+        // Aggregate focus time and sessions from pomodoro history
+        pomodoroHistoryInRange.forEach(p => {
+            const date = p.ended_at.split('T')[0];
+            if (!dailyLogsMap.has(date)) {
+                dailyLogsMap.set(date, { date, total_focus_minutes: 0, completed_sessions: 0 });
             }
+            const log = dailyLogsMap.get(date)!;
+            log.total_focus_minutes += Number(p.duration_minutes) || 0;
+            log.completed_sessions += 1;
+        });
+
+        // Ensure days with tasks but no focus time are included, so the AI knows about planned but unworked days.
+        tasksInRange.forEach(t => {
+            const date = t.due_date;
+            if (!dailyLogsMap.has(date)) {
+                dailyLogsMap.set(date, { date, total_focus_minutes: 0, completed_sessions: 0 });
+            }
+        });
+
+        const dailyLogs = Array.from(dailyLogsMap.values()).sort((a, b) => a.date.localeCompare(b.date));
+
+
+        const agentContext: AgentContext = {
+            goals: goals.map(g => ({ id: g.id, text: g.text })),
+            targets: targets.map(t => ({ id: t.id, text: t.text, deadline: t.deadline, completed_at: t.completed_at })),
+            projects: projects.map(p => ({
+                id: p.id,
+                name: p.name,
+                description: p.description,
+                status: p.status,
+                deadline: p.deadline,
+                completion_criteria_type: p.completion_criteria_type,
+                completion_criteria_value: p.completion_criteria_value,
+                progress_value: p.progress_value,
+            })),
+            commitments: allCommitments.map(c => ({ id: c.id, text: c.text, due_date: c.due_date })),
+            tasks: tasksInRange.map(t => ({
+                id: t.id,
+                text: t.text,
+                due_date: t.due_date,
+                completed_at: t.completed_at,
+                project_id: t.project_id,
+                completed_poms: t.completed_poms,
+                total_poms: t.total_poms,
+            })),
+            dailyLogs,
         };
-        fetchAllData();
-    }, []);
 
 
-    const completedInRange = tasksInRange.filter(t => t.completed_at);
-    const incompleteInRange = tasksInRange.filter(t => !t.completed_at);
-
-    const handleGetInsights = async () => {
-        setInsightsState({ ...insightsState, isLoading: true });
-
-        if (tasksInRange.length === 0) {
-            setInsightsState({ content: "No task data found for the selected date range. Complete some tasks first!", isLoading: false });
-            return;
-        }
-
-        const completedData = completedInRange.map(t => {
-            let taskString = `- Task: "${t.text}" (Est: ${t.total_poms}, Done: ${t.completed_poms}) on ${t.due_date}`;
-            if (allowCommentAccess && t.comments && t.comments.length > 0) {
-                taskString += `\n  - Comments: ${t.comments.join('; ')}`;
-            }
-            return taskString;
-        }).join('\n');
-        
-        const incompleteData = incompleteInRange.map(t => {
-            let taskString = `- Task: "${t.text}" (Est: ${t.total_poms}, Done: ${t.completed_poms}) on ${t.due_date}`;
-             if (allowCommentAccess && t.comments && t.comments.length > 0) {
-                taskString += `\n  - Comments: ${t.comments.join('; ')}`;
-            }
-            return taskString;
-        }).join('\n');
-        
-        const promptPeriod = historyRange.start && historyRange.end
-            ? `for the period from ${historyRange.start} to ${historyRange.end}`
-            : 'for all of your historical data';
-
-        const prompt = `
-            Act as a helpful and encouraging productivity coach. Analyze my data ${promptPeriod} in the context of my long-term goals.
-            ${allowCommentAccess ? "You also have access to my personal comments on each task, which may contain reflections on my progress or blockers." : ""}
-
-            My Core Goals (for long-term motivation):
-            ${goals.map(g => `- ${g.text}`).join('\n') || "None"}
-
-            My Current Active Projects (with deadlines):
-            ${projects.filter(p => p.status === 'active' && p.deadline).map(p => `- "${p.name}" (Deadline: ${p.deadline})`).join('\n') || "None"}
-
-            My Current Targets (with deadlines):
-            ${targets.filter(t => !t.completed_at).map(t => `- "${t.text}" (Deadline: ${t.deadline})`).join('\n') || "None"}
-
-            My Completed Tasks in this period:
-            ${completedData || "None"}
-
-            My Incomplete Tasks in this period:
-            ${incompleteData || "None"}
-
-            Based on ALL of this data, provide:
-            1. **A brief, positive summary** of my productivity, connecting it to my larger goals.
-            2. **Actionable Insights:** How did my work in this period contribute to my projects or targets? Are there any misalignments? If comments were provided, use them to identify any underlying themes (e.g., consistent blockers, feelings of being overwhelmed).
-            3. **One specific suggestion** for me to improve alignment with my goals going forward.
-
-            Format the response in simple Markdown. Keep it concise and strategic.
-        `;
-
-        const result = await generateContent(prompt);
-        setInsightsState({ content: formatAIResponse(result), isLoading: false });
-    };
-    
-    const handleGetMentorAdvice = async (userPrompt = '') => {
-        setMentorState({ ...mentorState, isLoading: true });
-
-        if (tasksInRange.length === 0 && !userPrompt) {
-            setMentorState({ content: "No task data to analyze. Please complete some tasks or ask a general question.", isLoading: false });
-            return;
-        }
-
-        const completedData = completedInRange.map(t => {
-            let taskString = `- "${t.text}" on ${t.due_date}`;
-            if (allowCommentAccess && t.comments && t.comments.length > 0) {
-                taskString += `\n  - Comments: ${t.comments.join('; ')}`;
-            }
-            return taskString;
-        }).join('\n');
-
-        const incompleteData = incompleteInRange.map(t => {
-            let taskString = `- "${t.text}" on ${t.due_date}`;
-            if (allowCommentAccess && t.comments && t.comments.length > 0) {
-                taskString += `\n  - Comments: ${t.comments.join('; ')}`;
-            }
-            return taskString;
-        }).join('\n');
-
-        const promptPeriod = historyRange.start && historyRange.end
-            ? `for the period from ${historyRange.start} to ${historyRange.end}`
-            : 'for all of your historical data';
-
-        const prompt = `
-            You are an insightful and supportive study mentor reviewing my Pomodoro timer data ${promptPeriod}.
-            You have access to my long-term goals and specific targets to provide better context for your advice.
-            ${allowCommentAccess ? "You also have access to my personal comments on each task. Use these to understand my mindset, challenges, and successes more deeply." : ""}
-
-            My Core Goals (for long-term motivation):
-            ${goals.map(g => `- ${g.text}`).join('\n') || "None"}
-
-            My Current Active Projects (with deadlines):
-            ${projects.filter(p => p.status === 'active' && p.deadline).map(p => `- "${p.name}" (Deadline: ${p.deadline})`).join('\n') || "None"}
-
-            My Current Targets (with deadlines):
-            ${targets.filter(t => !t.completed_at).map(t => `- "${t.text}" (Deadline: ${t.deadline})`).join('\n') || "None"}
-
-            My Completed Tasks in this period:
-            ${completedData || "None"}
-
-            My Incomplete Tasks in this period:
-            ${incompleteData || "None"}
-
-            ${userPrompt ? `My specific question is: "${userPrompt}"\n` : ''}
-
-            Based on all of this information:
-            1. **Connect my work in this period to my bigger goals.** Am I making progress on what matters most?
-            2. **Assess my consistency and focus** in light of my targets and project deadlines. If available, use my comments to add nuance to this assessment (e.g., "I see you completed the task, but your comments suggest you found it very difficult. Let's talk about that.").
-            3. **Provide specific, actionable advice** like a mentor. If themes emerge (e.g., procrastination on a specific project, or comments showing a lack of confidence), address them. Suggest related content (videos, articles) using your search knowledge if relevant.
-            4. ${userPrompt ? 'Address my specific question directly, using the context provided.' : 'Focus on general patterns and alignment with my goals.'}
+        try {
+            const response = await runAgent(historyForApi, toolDeclarations, agentContext);
             
-            Keep the tone supportive and strategic. Format using simple Markdown.
-        `;
+            const functionCalls = response.functionCalls;
 
-        const result = await generateContent(prompt);
-        setMentorState({ content: formatAIResponse(result), isLoading: false });
-    };
-    
-    const handleGetAnalystAnswer = async (userQuestion: string = '') => {
-        if (!userQuestion.trim()) {
-            setAnalystState({ content: "Please ask a question.", isLoading: false });
-            return;
-        }
+            if (functionCalls && functionCalls.length > 0) {
+                const call = functionCalls[0];
+                const { name, args } = call;
+                let functionResultPayload;
 
-        setAnalystState({ ...analystState, isLoading: true });
+                try {
+                    if (name === 'addTask') {
+                        await onAddTask(args.text, args.poms || 1, args.dueDate || getTodayDateString(), args.projectId || null, args.tags || []);
+                        functionResultPayload = { success: true, message: `Task "${args.text}" added.` };
+                    } else if (name === 'addProject') {
+                        await onAddProject(args.name, args.description || null, args.deadline || null, {type: args.criteriaType || 'manual', value: args.criteriaValue || null});
+                        functionResultPayload = { success: true, message: `Project "${args.name}" created.` };
+                    } else if (name === 'addTarget') {
+                        await onAddTarget(args.text, args.deadline);
+                        functionResultPayload = { success: true, message: `Target "${args.text}" set for ${args.deadline}.` };
+                    } else if (name === 'addCommitment') {
+                        await onAddCommitment(args.text, args.dueDate || null);
+                        functionResultPayload = { success: true, message: `Commitment "${args.text}" recorded.` };
+                    } else {
+                        functionResultPayload = { success: false, message: `Unknown function: ${name}` };
+                    }
+                } catch (toolError) {
+                    functionResultPayload = { success: false, message: `Error executing function ${name}: ${toolError instanceof Error ? toolError.message : String(toolError)}` };
+                }
 
-        // Sanitize data to reduce token count and remove sensitive/unnecessary fields, but keep essential IDs for joins.
-        const tasksForPrompt = allTasks.map(({ user_id, ...rest }) => rest);
-        const historyForPrompt = allPomodoroHistory.map(({ user_id, ...rest }) => rest);
-        const projectsForPrompt = projects;
-        const goalsForPrompt = goals;
-        const targetsForPrompt = targets;
-        const commitmentsForPrompt = allCommitments.map(({ user_id, ...rest }) => rest);
+                const historyWithFunctionCall = [...historyForApi, { role: 'model' as const, parts: [{ functionCall: call }] }];
+                const historyWithFunctionResponse = [...historyWithFunctionCall, {
+                    role: 'function' as const,
+                    parts: [{ functionResponse: { name, response: functionResultPayload } }]
+                }];
 
-        const prompt = `
-            You are a sophisticated data analyst AI integrated into a Pomodoro study application. Your role is to answer user questions by analyzing their productivity data with high accuracy.
-            You will be given the user's entire dataset in JSON format. You must use ONLY this data to answer the question and perform calculations by linking tables correctly.
-
-            Here is the description of the data schema and how tables are related:
-
-            **Primary Tables:**
-            - **tasks**: A list of all tasks the user has created. Each task has a unique \`id\`.
-              - \`id\`: The unique identifier for a task. **This is the primary key.**
-              - \`text\`: The description of the task.
-              - \`total_poms\`: Estimated Pomodoro sessions.
-              - \`completed_poms\`: Actual Pomodoro sessions spent.
-              - \`due_date\`: The date the task was scheduled for (YYYY-MM-DD).
-              - \`completed_at\`: Timestamp (ISO string) when task was marked complete. Null if incomplete.
-              - \`project_id\`: **(Foreign Key)** References the \`id\` in the \`projects\` table. Null if no project.
-              - \`tags\`: An array of strings for categorizing the task (e.g., ["study", "coding", "ai"]).
-              - \`comments\`: User's notes for each session on this task.
-
-            - **pomodoro_history**: A log of every completed Pomodoro focus session. This table tracks the actual time spent.
-              - \`task_id\`: **(Foreign Key)** References the \`id\` in the \`tasks\` table. This is how you link time spent to a specific task.
-              - \`ended_at\`: Timestamp (ISO string) when the session finished.
-              - \`duration_minutes\`: The length of the focus session in minutes. This is the most important field for time calculations.
-
-            - **projects**: A list of user-defined projects. Each project has a unique \`id\`.
-              - \`id\`: The unique identifier for a project. **This is the primary key.**
-              - \`name\`: The project's name.
-              - \`deadline\`: The project's due date (YYYY-MM-DD), or null if none.
-              - \`status\`: Can be 'active', 'completed', or 'due'.
-              - \`completed_at\`: Timestamp of completion, or null.
-              - \`completion_criteria_type\`: How completion is measured. Can be 'manual', 'task_count', or 'duration_minutes'.
-              - \`completion_criteria_value\`: The target value for 'task_count' or 'duration_minutes'. E.g., 10 tasks or 600 minutes.
-              - \`progress_value\`: The current progress towards 'completion_criteria_value'.
-
-            **Supporting Tables:**
-            - **goals**: The user's high-level, long-term goals.
-            - **targets**: Specific, measurable objectives with deadlines.
-            - **commitments**: A list of daily or dated commitments made by the user.
-              - \`id\`: Unique identifier.
-              - \`created_at\`: Timestamp of when the commitment was made.
-              - \`text\`: The content of the commitment (e.g., "I will study for 2 hours").
-              - \`due_date\`: An optional date for when the commitment is for (YYYY-MM-DD). Null if it's a general commitment.
-
-            **Crucial Calculation Logic & Rules:**
-            To answer questions about time spent on a specific topic (like a tag, project, or task), you MUST follow these steps precisely:
-            1.  Start with the \`pomodoro_history\` table. This is the ONLY source of truth for time spent.
-            2.  For each entry in \`pomodoro_history\`, take its \`task_id\`.
-            3.  Find the corresponding task in the \`tasks\` table by matching \`pomodoro_history.task_id\` with \`tasks.id\`. **This is a critical join.**
-            4.  Once you have the task, inspect its properties like \`tags\`, \`project_id\`, or \`text\` to see if it matches the user's query.
-            5.  If it matches, add the \`duration_minutes\` from that \`pomodoro_history\` entry to your total for that category.
-            6.  Sum up the minutes from all matching history entries to get the final answer.
-
-            **Example Question:** "How much time did I spend on the 'ai' tag till now?"
-            **Your Internal Thought Process MUST BE:**
-            - I must scan every entry in \`pomodoro_history\`.
-            - For each entry, I'll get the \`task_id\`. Let's say it's 'task-abc-123'.
-            - I will find the task in the \`tasks\` table where \`id\` is 'task-abc-123'.
-            - I will check if that task's \`tags\` array contains 'ai'.
-            - If it does, I will add its \`duration_minutes\` to my 'ai' total.
-            - After checking all history entries, I will present the final sum for 'ai'.
-
-            Here is the user's data:
-            \`\`\`json
-            {
-              "tasks": ${JSON.stringify(tasksForPrompt)},
-              "pomodoro_history": ${JSON.stringify(historyForPrompt)},
-              "projects": ${JSON.stringify(projectsForPrompt)},
-              "goals": ${JSON.stringify(goalsForPrompt)},
-              "targets": ${JSON.stringify(targetsForPrompt)},
-              "commitments": ${JSON.stringify(commitmentsForPrompt)}
+                const finalResponse = await runAgent(historyWithFunctionResponse, toolDeclarations, agentContext);
+                setChatMessages(prev => [...prev, { role: 'model', text: finalResponse.text }]);
+            } else {
+                setChatMessages(prev => [...prev, { role: 'model', text: response.text }]);
             }
-            \`\`\`
-
-            Today's date is ${getTodayDateString()}.
-
-            Now, please answer the following question from the user:
-            "${userQuestion}"
-
-            Provide a clear, concise, and accurate answer based strictly on the data and the logic provided. Use Markdown for formatting (e.g., lists, bold text). If the data is insufficient to answer the question, state that clearly.
-        `;
-
-        const result = await generateContent(prompt);
-        setAnalystState({ content: formatAIResponse(result), isLoading: false });
-    };
-
-    const renderDataSummary = () => {
-        if (isDataLoading) {
-            return <div className="h-24"><Spinner /></div>;
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
+            setChatMessages(prev => [...prev, { role: 'model', text: `Sorry, I ran into an error: ${errorMessage}` }]);
+        } finally {
+            setIsAgentLoading(false);
         }
-        if (tasksInRange.length === 0) {
-            return <p className="text-center text-white/60 py-4">No task data in this date range.</p>
-        }
-
-        const completionPercentage = tasksInRange.length > 0
-            ? Math.round((completedInRange.length / tasksInRange.length) * 100)
-            : 0;
-
-        return (
-            <div>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center mb-4">
-                    <div>
-                        <div className="text-sm text-white/70">Total Tasks</div>
-                        <div className="text-2xl font-bold text-white">{tasksInRange.length}</div>
-                    </div>
-                    <div>
-                        <div className="text-sm text-white/70">Completed</div>
-                        <div className="text-2xl font-bold text-green-400">{completedInRange.length}</div>
-                    </div>
-                    <div>
-                        <div className="text-sm text-white/70">Incomplete</div>
-                        <div className="text-2xl font-bold text-red-400">{incompleteInRange.length}</div>
-                    </div>
-                    <div>
-                        <div className="text-sm text-white/70">Completion %</div>
-                        <div className="text-2xl font-bold text-cyan-400">{completionPercentage}%</div>
-                    </div>
-                </div>
-                <button 
-                    onClick={() => setIsTaskListVisible(!isTaskListVisible)}
-                    className="text-center w-full text-sm text-cyan-300 hover:text-cyan-200 mb-2 py-1"
-                >
-                    {isTaskListVisible ? '▼ Hide Task List' : '► Show Task List'}
-                </button>
-                {isTaskListVisible && (
-                    <div className="max-h-48 overflow-y-auto bg-black/20 p-2 rounded-lg text-sm">
-                        <ul className="space-y-1">
-                            {tasksInRange.sort((a,b) => a.due_date.localeCompare(b.due_date)).map(task => (
-                                <li key={task.id} className={`p-1 flex items-center gap-2 ${task.completed_at ? 'text-green-300/90' : 'text-red-300/90'}`}>
-                                    <span className="font-mono text-xs">{task.due_date}</span>
-                                    <span>{task.text}</span>
-                                    <span className={`ml-auto text-xs px-2 py-0.5 rounded-full ${task.completed_at ? 'bg-green-500/20' : 'bg-red-500/20'}`}>
-                                      {task.completed_at ? 'Done' : 'Pending'}
-                                    </span>
-                                </li>
-                            ))}
-                        </ul>
-                    </div>
-                )}
-            </div>
-        );
     };
 
 
     return (
         <>
-            <Panel title="Select Data Range">
-                <p className="text-center text-sm text-white/70 mb-2">This range applies to the Insights and Mentor features below.</p>
-                <div className="flex flex-col sm:flex-row items-center justify-center gap-2">
-                    <input type="date" value={historyRange.start} onChange={e => setHistoryRange(p => ({...p, start: e.target.value}))} className="bg-white/20 border border-white/30 rounded-lg p-2 text-white/80 w-full text-center" style={{colorScheme: 'dark'}}/>
-                    <span className="text-white">to</span>
-                    <input type="date" value={historyRange.end} onChange={e => setHistoryRange(p => ({...p, end: e.target.value}))} className="bg-white/20 border border-white/30 rounded-lg p-2 text-white/80 w-full text-center" style={{colorScheme: 'dark'}}/>
-                    <button
-                        onClick={() => setHistoryRange({ start: '', end: '' })}
-                        className="p-2 w-full sm:w-auto px-4 rounded-lg font-bold text-white transition hover:scale-105 bg-gradient-to-br from-gray-500 to-gray-600"
-                    >
-                        All Data
-                    </button>
+            <div className="ai-coach-container relative bg-slate-900 rounded-2xl overflow-hidden flex flex-col h-[75vh]">
+                <div className="animated-gradient absolute inset-0"></div>
+                {/* Header */}
+                <div className="relative p-3 bg-black/30 backdrop-blur-sm border-b border-white/10 z-10">
+                    <h2 className="text-lg font-bold text-white text-center mb-2 flex items-center justify-center gap-2">
+                        <span className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center shadow-lg">🤖</span>
+                        AI Coach
+                    </h2>
+                    <p className="text-center text-xs text-white/60 mb-2">Provide a date range for performance context.</p>
+                     <div className="flex flex-col sm:flex-row items-center justify-center gap-2">
+                        <input type="date" value={historyRange.start} onChange={e => setHistoryRange(p => ({...p, start: e.target.value}))} className="bg-white/10 border border-white/20 rounded-lg p-1 text-white/80 w-full text-center text-xs" style={{colorScheme: 'dark'}}/>
+                        <span className="text-white/80 text-xs">to</span>
+                        <input type="date" value={historyRange.end} onChange={e => setHistoryRange(p => ({...p, end: e.target.value}))} className="bg-white/10 border border-white/20 rounded-lg p-1 text-white/80 w-full text-center text-xs" style={{colorScheme: 'dark'}}/>
+                    </div>
+                     {isDataLoading && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-cyan-400 animate-pulse"></div>}
                 </div>
-            </Panel>
+                
+                {/* Chat History */}
+                <div className="relative flex-grow overflow-y-auto p-4 space-y-4">
+                    {chatMessages.map((msg, index) => (
+                         <div key={index} className={`flex items-end gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                            {msg.role === 'model' && (
+                                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center shadow-lg flex-shrink-0">🤖</div>
+                            )}
+                            <div className={`max-w-xs md:max-w-md p-3 rounded-2xl text-white shadow-md ${msg.role === 'user' ? 'bg-gradient-to-br from-blue-600 to-cyan-500 rounded-br-none' : 'bg-slate-700 rounded-bl-none'}`}>
+                                <div className="prose prose-sm prose-invert" dangerouslySetInnerHTML={{ __html: formatAIResponse(msg.text) }} />
+                            </div>
+                        </div>
+                    ))}
+                    {isAgentLoading && (
+                         <div className="flex items-end gap-3 justify-start">
+                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center shadow-lg flex-shrink-0">🤖</div>
+                            <div className="p-3 rounded-2xl bg-slate-700 rounded-bl-none text-white">
+                                <div className="flex items-center gap-1">
+                                    <span className="w-2 h-2 bg-white/70 rounded-full animate-bounce" style={{ animationDelay: '0s' }}></span>
+                                    <span className="w-2 h-2 bg-white/70 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></span>
+                                    <span className="w-2 h-2 bg-white/70 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></span>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    <div ref={chatEndRef} />
+                </div>
 
-            <Panel title="📊 Data for Analysis">
-                {renderDataSummary()}
-            </Panel>
-            
-            <Panel title="⚙️ AI Settings">
-                <div className="flex items-center justify-center gap-3 bg-black/20 p-3 rounded-lg">
-                    <label htmlFor="comment-access" className="text-white/80 text-sm cursor-pointer">
-                        Allow AI to analyze task comments for deeper insights
-                    </label>
+                {/* Input Form */}
+                 <form onSubmit={handleAgentSubmit} className="relative flex gap-3 p-3 bg-slate-800/50 border-t border-white/10 z-10">
                     <input
-                        id="comment-access"
-                        type="checkbox"
-                        checked={allowCommentAccess}
-                        onChange={(e) => setAllowCommentAccess(e.target.checked)}
-                        className="h-5 w-5 rounded bg-white/20 border-white/30 text-purple-400 focus:ring-purple-400 cursor-pointer"
+                        type="text"
+                        value={userInput}
+                        onChange={e => setUserInput(e.target.value)}
+                        placeholder="Message your AI Coach..."
+                        disabled={isAgentLoading || isDataLoading}
+                        className="flex-grow bg-slate-900/70 border border-white/20 rounded-full py-2 px-4 text-white placeholder:text-white/50 focus:outline-none focus:ring-2 focus:ring-cyan-400 transition"
                     />
-                </div>
-                 <p className="text-xs text-white/60 text-center mt-2">
-                    This can provide more personalized advice by analyzing themes, blockers, or feelings in your comments. Disabled by default for your privacy.
-                </p>
-            </Panel>
-
-            <AIPanel 
-                title="🤖 AI Study Insights"
-                description="Get AI-powered insights on your study habits based on your selected performance."
-                buttonText="Get Insights"
-                onGetAdvice={handleGetInsights}
-                aiState={insightsState}
-                showPromptTextarea={false}
-            />
-             <AIPanel 
-                title="🎓 AI Study Mentor"
-                description="Your AI mentor analyzes your progress, goals, and targets to offer personalized advice."
-                buttonText="Get Mentorship Advice"
-                onGetAdvice={handleGetMentorAdvice}
-                aiState={mentorState}
-                showPromptTextarea={true}
-            />
-            <AIPanel 
-                title="🧠 AI Data Analyst"
-                description="Ask any question about your productivity. The AI has full access to your historical data to provide detailed answers. Ex: 'Which day last week did I focus most?'"
-                buttonText="Analyze & Answer"
-                onGetAdvice={handleGetAnalystAnswer}
-                aiState={analystState}
-                showPromptTextarea={true}
-            />
+                    <button type="submit" disabled={isAgentLoading || isDataLoading || !userInput.trim()} className="w-10 h-10 flex-shrink-0 bg-gradient-to-br from-cyan-500 to-blue-600 text-white rounded-full flex items-center justify-center transition-transform hover:scale-110 disabled:opacity-50 disabled:scale-100 disabled:cursor-not-allowed">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" /></svg>
+                    </button>
+                </form>
+            </div>
+            <style>{`
+              .prose-invert ul { margin-top: 0.5em; margin-bottom: 0.5em; }
+              .prose-invert li { margin-top: 0.2em; margin-bottom: 0.2em; }
+              .animated-gradient {
+                background: linear-gradient(-45deg, #1e1b4b, #312e81, #4f46e5, #3b0764);
+                background-size: 400% 400%;
+                animation: gradient-animation 15s ease infinite;
+              }
+              @keyframes gradient-animation {
+                0% { background-position: 0% 50%; }
+                50% { background-position: 100% 50%; }
+                100% { background-position: 0% 50%; }
+              }
+              @keyframes bounce {
+                0%, 100% { transform: translateY(0); }
+                50% { transform: translateY(-4px); }
+              }
+              .animate-bounce { animation: bounce 1s infinite ease-in-out; }
+            `}</style>
         </>
     );
 };

@@ -1,10 +1,12 @@
 
 
+
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
 import * as dbService from './services/dbService';
-import { Task, Settings, Mode, Page, DbDailyLog, Project, Goal, Target, AppState, PomodoroHistory, Commitment } from './types';
+import { Task, Settings, Mode, Page, DbDailyLog, Project, Goal, Target, AppState, PomodoroHistory, Commitment, ChatMessage } from './types';
 import { getTodayDateString } from './utils/date';
 import { playFocusStartSound, playFocusEndSound, playBreakStartSound, playBreakEndSound, playAlertLoop, resumeAudioContext } from './utils/audio';
 
@@ -18,6 +20,7 @@ import CompletionModal from './components/CompletionModal';
 import AuthPage from './pages/AuthPage';
 import LoadingAnimation from './components/common/LoadingAnimation';
 import GoalsPage from './pages/GoalsPage';
+import AIChatFab from './components/common/AIChatFab';
 
 // Reads from localStorage to initialize the timer state synchronously.
 const getInitialAppState = (): { initialState: AppState; initialPhaseEndTime: number | null; wasRestored: boolean } => {
@@ -78,6 +81,11 @@ const App: React.FC = () => {
     const [todaysHistory, setTodaysHistory] = useState<PomodoroHistory[]>([]);
     const [historicalLogs, setHistoricalLogs] = useState<DbDailyLog[]>([]);
     
+    // State for AI Coach Chat - lifted up for persistence
+    const [aiChatMessages, setAiChatMessages] = useState<ChatMessage[]>([
+        { role: 'model', text: 'Hello! I am your AI Coach. I have access to your goals, projects, and performance data. Ask me for insights, a weekly plan, or to add tasks for you!' }
+    ]);
+
     const [dailyLog, setDailyLog] = useState<DbDailyLog>({
         date: getTodayDateString(),
         completed_sessions: 0,
@@ -795,6 +803,12 @@ const App: React.FC = () => {
                             targets={targets}
                             projects={projects}
                             allCommitments={allCommitments}
+                            onAddTask={handleAddTask}
+                            onAddProject={handleAddProject}
+                            onAddTarget={handleAddTarget}
+                            onAddCommitment={handleAddCommitment}
+                            chatMessages={aiChatMessages}
+                            setChatMessages={setAiChatMessages}
                        />;
             case 'settings':
                 return <SettingsPage 
@@ -853,6 +867,7 @@ const App: React.FC = () => {
                         onContinue={handleModalContinue}
                     />
                 )}
+                 {page !== 'ai' && session && <AIChatFab onClick={() => setPage('ai')} />}
                 <style>{`
                   @keyframes slideIn {
                       from { opacity: 0; transform: translateY(-30px); }
