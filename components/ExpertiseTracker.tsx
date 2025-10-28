@@ -28,33 +28,50 @@ const formatTimeForMastery = (minutes: number): string => {
     return `${remainingMinutes}m`;
 };
 
+const FormattedTimeDisplay: React.FC<{ minutes: number; baseClass: string; unitClass: string }> = ({ minutes, baseClass, unitClass }) => {
+    const timeString = formatTimeForMastery(minutes);
+    
+    if (timeString === "<1m" || timeString === "0m") {
+        return <span className={baseClass}>{timeString}</span>;
+    }
+
+    const parts = timeString.split(' ');
+
+    return (
+        <span className={baseClass}>
+            {parts.map((part, index) => {
+                const value = part.slice(0, -1);
+                const unit = part.slice(-1);
+                return (
+                    <React.Fragment key={index}>
+                        {index > 0 && ' '}
+                        {value}<span className={unitClass}>{unit}</span>
+                    </React.Fragment>
+                );
+            })}
+        </span>
+    );
+};
+
 
 const FocusBreakdownChart: React.FC<{ data: { name: string; minutes: number }[], dateRange: {start: string, end: string} }> = ({ data, dateRange }) => {
     const totalMinutes = useMemo(() => data.reduce((sum, item) => sum + item.minutes, 0), [data]);
-    const isAllTime = !dateRange.start && !dateRange.end;
+    const isAllTime = !dateRange.start || !dateRange.end;
     const titleText = isAllTime ? "All Time" : "In Range";
-
-    const colors = [
-        '#f1f5f9', // slate-100
-        '#e2e8f0', // slate-200
-        '#cbd5e1', // slate-300
-    ];
 
     return (
         <div className="p-4 text-white" style={{ fontFamily: `'Segoe UI', 'Roboto', 'Helvetica Neue', sans-serif` }}>
             <h3 className="text-lg font-semibold text-white text-center mb-4">Focus Breakdown for Selected Categories</h3>
-            <div className="text-6xl font-bold mb-8 text-left">{totalMinutes}<span className="text-5xl font-medium align-baseline">m</span></div>
+            <div className="mb-8 text-left">
+                <FormattedTimeDisplay minutes={totalMinutes} baseClass="text-6xl font-bold" unitClass="text-5xl font-medium align-baseline" />
+            </div>
             <p className="text-sm text-white/70 -mt-6 mb-6 ml-1">{titleText} total for selected</p>
-            <div className="pl-2">
-                {data.map((item, index) => (
-                    <div key={item.name} className="flex items-center" style={{ marginTop: index > 0 ? '-24px' : '0px', zIndex: data.length - index, position: 'relative' }}>
-                        <div 
-                            className="w-16 h-16 rounded-full flex items-center justify-center text-slate-800 font-bold text-lg shadow-lg border-2 border-slate-800/20"
-                            style={{ backgroundColor: colors[index % colors.length] }}
-                        >
-                            {item.minutes}m
-                        </div>
-                        <span className="ml-4 text-xl font-medium">{item.name}</span>
+            
+            <div className="flex gap-4">
+                {data.map((item) => (
+                    <div key={item.name} className="flex-1 bg-black/30 p-4 rounded-xl shadow-lg text-center flex flex-col justify-center items-center min-h-[100px]">
+                        <div className="text-lg font-bold text-white/90 mb-2">{item.name}</div>
+                        <FormattedTimeDisplay minutes={item.minutes} baseClass="text-4xl text-cyan-300 font-semibold" unitClass="text-3xl font-medium" />
                     </div>
                 ))}
             </div>
@@ -289,8 +306,10 @@ const ExpertiseTracker: React.FC = () => {
 
         return (
             <div className="space-y-4">
-                {renderCategoryTracker(selectedCategories[0], 0)}
-                {allExpertiseData.length > 1 && renderCategoryTracker(selectedCategories[1], 1)}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {renderCategoryTracker(selectedCategories[0], 0)}
+                    {allExpertiseData.length > 1 && renderCategoryTracker(selectedCategories[1], 1)}
+                </div>
 
                 <div className="mt-6 bg-black/20 rounded-lg">
                     {totalRangeMinutes > 0 ? (

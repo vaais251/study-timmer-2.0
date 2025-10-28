@@ -1,4 +1,5 @@
 
+
 import React from 'react';
 
 interface SessionInfoProps {
@@ -17,7 +18,7 @@ const InfoItem: React.FC<{ label: string, value: string | number }> = ({ label, 
 
 const SessionInfo: React.FC<SessionInfoProps> = ({ completedTasksToday, totalTasksToday, remainingTasksToday, focusLeft }) => {
     return (
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-3 gap-4">
             <InfoItem label="Tasks Done" value={`${completedTasksToday}/${totalTasksToday}`} />
             <InfoItem label="Remaining" value={remainingTasksToday} />
             <InfoItem label="Focus Left" value={focusLeft} />

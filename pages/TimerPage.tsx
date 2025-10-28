@@ -1,4 +1,5 @@
 
+
 import React, { useMemo } from 'react';
 import { AppState, Settings, Task, DbDailyLog, PomodoroHistory } from '../types';
 import Header from '../components/Header';
@@ -43,14 +44,14 @@ const formatMinutes = (minutes: number): string => {
 
 const CurrentTaskDisplay: React.FC<{ task?: Task }> = ({ task }) => {
     return (
-        <div className="text-center h-12 flex items-center justify-center px-2">
+        <div className="text-center min-h-[3rem] flex items-center justify-center px-2 pt-2">
             {task ? (
-                <div className="bg-black/20 text-white/90 px-4 py-2 rounded-full shadow-inner inline-flex items-center gap-3">
+                <div className="bg-black/20 text-white/90 px-4 py-3 rounded-xl shadow-inner inline-flex items-center gap-3 max-w-full">
                     <TargetIcon />
-                    <span className="italic">{task.text}</span>
+                    <span className="italic break-words">{task.text}</span>
                 </div>
             ) : (
-                <div className="bg-black/20 text-white/60 px-4 py-2 rounded-full shadow-inner italic">
+                <div className="bg-black/20 text-white/60 px-4 py-3 rounded-xl shadow-inner italic">
                    No task for today. Add one in the Plan tab!
                 </div>
             )}
