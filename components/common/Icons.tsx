@@ -27,6 +27,9 @@ export const EditIcon: React.FC = () => <svg {...iconWithStrokeProps}><path d="M
 export const StarIcon: React.FC = () => <svg {...iconWithStrokeProps}><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>;
 export const LockIcon: React.FC = () => <svg {...iconWithStrokeProps}><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>;
 export const CheckIcon: React.FC = () => <svg {...iconWithStrokeProps}><polyline points="20 6 9 17 4 12"></polyline></svg>;
+export const BringForwardIcon: React.FC = () => <svg {...commonProps}><path d="M10 19l-7-7 7-7v14zM21 19V5h-2v14h2z"/></svg>;
+export const CalendarIcon: React.FC = () => <svg {...iconWithStrokeProps}><rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>;
+
 
 // Navbar Icons
 export const TimerIcon: React.FC = () => <svg {...iconWithStrokeProps}><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>;

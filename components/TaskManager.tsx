@@ -3,7 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import { Task, Project, Settings } from '../types';
 import Panel from './common/Panel';
-import { PostponeIcon, DuplicateIcon, MoreVerticalIcon, UndoIcon, EditIcon } from './common/Icons';
+import { PostponeIcon, DuplicateIcon, MoreVerticalIcon, UndoIcon, EditIcon, BringForwardIcon, CalendarIcon } from './common/Icons';
+import { getTodayDateString } from '../utils/date';
 
 interface TaskSettingsDropdownProps {
     task: Task;
@@ -61,28 +62,34 @@ interface TaskItemProps {
     task: Task;
     isCompleted: boolean;
     settings: Settings;
+    projects: Project[];
     onDelete: (id: string) => void;
     onMove?: (id: string, action: 'postpone' | 'duplicate') => void;
     onUpdateTaskTimers: (id: string, newTimers: { focus: number | null, break: number | null }) => void;
-    onUpdateTask: (id: string, newText: string, newTags: string[], newPoms: number) => void;
+    onUpdateTask: (id: string, newText: string, newTags: string[], newPoms: number, projectId: string | null) => void;
     onMarkTaskIncomplete?: (id: string) => void;
+    isTomorrowTask?: boolean;
+    displayDate?: string;
+    onBringForward?: (id: string) => void;
     dragProps?: object;
     ref?: React.Ref<HTMLLIElement>;
 }
 
-const TaskItem = React.forwardRef<HTMLLIElement, TaskItemProps>(({ task, isCompleted, settings, onDelete, onMove, onUpdateTaskTimers, onUpdateTask, onMarkTaskIncomplete, dragProps }, ref) => {
+const TaskItem = React.forwardRef<HTMLLIElement, TaskItemProps>(({ task, isCompleted, settings, projects, onDelete, onMove, onUpdateTaskTimers, onUpdateTask, onMarkTaskIncomplete, dragProps, isTomorrowTask, onBringForward, displayDate }, ref) => {
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
     const [editText, setEditText] = useState(task.text);
     const [editTags, setEditTags] = useState(task.tags?.join(', ') || '');
     const [editPoms, setEditPoms] = useState(task.total_poms.toString());
+    const [editProjectId, setEditProjectId] = useState<string>(task.project_id || 'none');
     const isDraggable = !isCompleted && dragProps;
 
     useEffect(() => {
         setEditText(task.text);
         setEditTags(task.tags?.join(', ') || '');
         setEditPoms(task.total_poms.toString());
-    }, [task.text, task.tags, task.total_poms]);
+        setEditProjectId(task.project_id || 'none');
+    }, [task.text, task.tags, task.total_poms, task.project_id]);
     
     const handleSave = () => {
         if (editText.trim() === '') {
@@ -96,7 +103,8 @@ const TaskItem = React.forwardRef<HTMLLIElement, TaskItemProps>(({ task, isCompl
         }
 
         const newTags = editTags.split(',').map(t => t.trim()).filter(Boolean);
-        onUpdateTask(task.id, editText.trim(), newTags, newPoms);
+        const finalProjectId = editProjectId === 'none' ? null : editProjectId;
+        onUpdateTask(task.id, editText.trim(), newTags, newPoms, finalProjectId);
         setIsEditing(false);
     };
 
@@ -104,10 +112,12 @@ const TaskItem = React.forwardRef<HTMLLIElement, TaskItemProps>(({ task, isCompl
         setEditText(task.text);
         setEditTags(task.tags?.join(', ') || '');
         setEditPoms(task.total_poms.toString());
+        setEditProjectId(task.project_id || 'none');
         setIsEditing(false);
     };
     
     if (isEditing) {
+        const activeProjects = projects.filter(p => p.status === 'active');
         return (
             <li ref={ref} className="bg-white/20 p-3 rounded-lg mb-2 ring-2 ring-cyan-400 animate-pulse-once">
                 <div className="flex flex-col gap-2">
@@ -126,6 +136,10 @@ const TaskItem = React.forwardRef<HTMLLIElement, TaskItemProps>(({ task, isCompl
                         className="w-full bg-white/20 border border-white/30 rounded-lg p-2 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50"
                         aria-label="Edit task tags"
                     />
+                    <select value={editProjectId} onChange={e => setEditProjectId(e.target.value)} className="w-full bg-white/20 border border-white/30 rounded-lg p-2 text-white focus:outline-none focus:bg-white/30 focus:border-white/50">
+                        <option value="none" className="bg-gray-800">No Project</option>
+                        {activeProjects.map(p => <option key={p.id} value={p.id} className="bg-gray-800">{p.name}</option>)}
+                    </select>
                      <div className="flex justify-between items-center gap-2 text-sm mt-2">
                         <div className="flex items-center gap-2">
                             <label htmlFor={`edit-poms-${task.id}`} className="text-white/70">Poms:</label>
@@ -173,7 +187,8 @@ const TaskItem = React.forwardRef<HTMLLIElement, TaskItemProps>(({ task, isCompl
             {isDraggable && <span className="text-white/70 cursor-grab pt-1">☰</span>}
             <div className="flex-grow min-w-0">
                 <span className={`break-words ${isCompleted ? 'line-through' : ''}`}>{task.text}</span>
-                <div className="flex items-center flex-wrap gap-2 mt-1 text-xs">
+                <div className="flex items-center flex-wrap gap-x-2 gap-y-1 mt-1 text-xs">
+                    {displayDate && <span className="bg-slate-500/30 text-slate-300 px-2 py-0.5 rounded-full inline-flex items-center gap-1"><CalendarIcon/> {new Date(displayDate + 'T00:00:00').toLocaleDateString()}</span>}
                     {task.projects && <span className="bg-blue-500/30 text-blue-300 px-2 py-0.5 rounded-full">{task.projects.name}</span>}
                     {task.tags?.map(tag => <span key={tag} className="bg-purple-500/30 text-purple-300 px-2 py-0.5 rounded-full">{tag}</span>)}
                     {(task.custom_focus_duration || task.custom_break_duration) && 
@@ -188,6 +203,11 @@ const TaskItem = React.forwardRef<HTMLLIElement, TaskItemProps>(({ task, isCompl
             <span className={`text-xs px-2 py-1 rounded ${isCompleted ? 'bg-white/10' : 'bg-white/20'}`}>
                 {task.completed_poms}/{task.total_poms}
             </span>
+            {isTomorrowTask && onBringForward && (
+                <button onClick={() => onBringForward(task.id)} className="p-1 text-green-300 hover:text-green-200 transition" title="Move to Today">
+                    <BringForwardIcon />
+                </button>
+            )}
             {isDraggable && onMove && (
                 <>
                     <button onClick={() => onMove(task.id, 'postpone')} className="p-1 text-amber-300 hover:text-amber-200 transition" title="Postpone to Tomorrow"><PostponeIcon /></button>
@@ -218,39 +238,45 @@ const TaskItem = React.forwardRef<HTMLLIElement, TaskItemProps>(({ task, isCompl
 
 
 interface TaskInputGroupProps {
-    onAddTask: (text: string, poms: number, projectId: string | null, tags: string[]) => void;
+    onAddTask: (text: string, poms: number, projectId: string | null, tags: string[], dueDate: string) => void;
     placeholder: string;
     buttonText: string;
     buttonClass: string;
     projects: Project[];
     onAddProject: (name: string) => Promise<string | null>;
+    isPlanning?: boolean;
 }
 
-const TaskInputGroup: React.FC<TaskInputGroupProps> = ({ onAddTask, placeholder, buttonText, buttonClass, projects, onAddProject }) => {
+const TaskInputGroup: React.FC<TaskInputGroupProps> = ({ onAddTask, placeholder, buttonText, buttonClass, projects, onAddProject, isPlanning }) => {
     const [text, setText] = useState('');
     const [poms, setPoms] = useState('1');
     const [selectedProject, setSelectedProject] = useState<string>('none');
     const [tags, setTags] = useState('');
     
+    const getTomorrow = () => {
+        const d = new Date();
+        d.setDate(d.getDate() + 1);
+        return getTodayDateString(d);
+    };
+    const [dueDate, setDueDate] = useState(getTomorrow());
+
     const activeProjects = projects.filter(p => p.status === 'active');
 
     const handleAdd = () => {
         if (text.trim() && parseInt(poms) > 0) {
             const projectId = selectedProject === 'none' ? null : selectedProject;
             const tagList = tags.split(',').map(t => t.trim()).filter(Boolean);
-            onAddTask(text.trim(), parseInt(poms), projectId, tagList);
+            const dateToAdd = isPlanning ? dueDate : getTodayDateString();
+            onAddTask(text.trim(), parseInt(poms), projectId, tagList, dateToAdd);
             setText('');
             setPoms('1');
             setTags('');
-            // Optional: reset project selection after adding a task
-            // setSelectedProject('none');
         }
     };
     
     const handleProjectChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
         if (e.target.value === 'new') {
             const currentSelection = selectedProject;
-            // Temporarily set dropdown to current selection to avoid it showing "Create New"
             setSelectedProject(currentSelection);
             
             const newProjectName = prompt("Enter new project name:");
@@ -302,6 +328,16 @@ const TaskInputGroup: React.FC<TaskInputGroupProps> = ({ onAddTask, placeholder,
                     placeholder="Tags (comma-separated)"
                     className="flex-grow bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50"
                 />
+                 {isPlanning && (
+                    <input 
+                        type="date"
+                        value={dueDate}
+                        min={getTomorrow()}
+                        onChange={e => setDueDate(e.target.value)}
+                        className="bg-white/20 border border-white/30 rounded-lg p-3 text-white/80 focus:outline-none focus:bg-white/30 focus:border-white/50 text-center"
+                        style={{colorScheme: 'dark'}}
+                    />
+                 )}
                 <button onClick={handleAdd} className={`p-3 sm:px-4 rounded-lg font-bold text-white transition hover:scale-105 ${buttonClass}`}>{buttonText}</button>
             </div>
         </div>
@@ -311,73 +347,76 @@ const TaskInputGroup: React.FC<TaskInputGroupProps> = ({ onAddTask, placeholder,
 interface TaskManagerProps {
     tasksToday: Task[];
     tasksForTomorrow: Task[];
+    tasksFuture: Task[];
     completedToday: Task[];
     projects: Project[];
     settings: Settings;
-    onAddTask: (text: string, poms: number, isTomorrow: boolean, projectId: string | null, tags: string[]) => void;
+    onAddTask: (text: string, poms: number, dueDate: string, projectId: string | null, tags: string[]) => void;
     onAddProject: (name: string) => Promise<string | null>;
     onDeleteTask: (id: string) => void;
     onMoveTask: (id: string, action: 'postpone' | 'duplicate') => void;
+    onBringTaskForward: (id: string) => void;
     onReorderTasks: (reorderedTasks: Task[]) => void;
     onUpdateTaskTimers: (id: string, newTimers: { focus: number | null, break: number | null }) => void;
-    onUpdateTask: (id: string, newText: string, newTags: string[], newPoms: number) => void;
+    onUpdateTask: (id: string, newText: string, newTags: string[], newPoms: number, projectId: string | null) => void;
     onMarkTaskIncomplete: (id: string) => void;
 }
 
-const TaskManager: React.FC<TaskManagerProps> = ({ tasksToday, tasksForTomorrow, completedToday, projects, settings, onAddTask, onAddProject, onDeleteTask, onMoveTask, onReorderTasks, onUpdateTaskTimers, onUpdateTask, onMarkTaskIncomplete }) => {
+const TaskManager: React.FC<TaskManagerProps> = ({ tasksToday, tasksForTomorrow, tasksFuture, completedToday, projects, settings, onAddTask, onAddProject, onDeleteTask, onMoveTask, onBringTaskForward, onReorderTasks, onUpdateTaskTimers, onUpdateTask, onMarkTaskIncomplete }) => {
     
-    // Refs and handlers for Today's list
     const dragItemToday = React.useRef<number | null>(null);
     const dragOverItemToday = React.useRef<number | null>(null);
 
-    const handleDragStartToday = (e: React.DragEvent<HTMLLIElement>, position: number) => {
-        dragItemToday.current = position;
-    };
-    const handleDragEnterToday = (e: React.DragEvent<HTMLLIElement>, position: number) => {
-        dragOverItemToday.current = position;
-    };
+    const handleDragStartToday = (_: React.DragEvent<HTMLLIElement>, position: number) => { dragItemToday.current = position; };
+    const handleDragEnterToday = (_: React.DragEvent<HTMLLIElement>, position: number) => { dragOverItemToday.current = position; };
     const handleDropToday = () => {
         if (dragItemToday.current === null || dragOverItemToday.current === null) return;
-        
         const reordered = [...tasksToday];
         const dragItemContent = reordered[dragItemToday.current];
         reordered.splice(dragItemToday.current, 1);
         reordered.splice(dragOverItemToday.current, 0, dragItemContent);
-        
         dragItemToday.current = null;
         dragOverItemToday.current = null;
         onReorderTasks(reordered);
     };
 
-    // Refs and handlers for Tomorrow's list
     const dragItemTomorrow = React.useRef<number | null>(null);
     const dragOverItemTomorrow = React.useRef<number | null>(null);
     
-    const handleDragStartTomorrow = (e: React.DragEvent<HTMLLIElement>, position: number) => {
-        dragItemTomorrow.current = position;
-    };
-    const handleDragEnterTomorrow = (e: React.DragEvent<HTMLLIElement>, position: number) => {
-        dragOverItemTomorrow.current = position;
-    };
+    const handleDragStartTomorrow = (_: React.DragEvent<HTMLLIElement>, position: number) => { dragItemTomorrow.current = position; };
+    const handleDragEnterTomorrow = (_: React.DragEvent<HTMLLIElement>, position: number) => { dragOverItemTomorrow.current = position; };
     const handleDropTomorrow = () => {
         if (dragItemTomorrow.current === null || dragOverItemTomorrow.current === null) return;
-
         const reordered = [...tasksForTomorrow];
         const dragItemContent = reordered[dragItemTomorrow.current];
         reordered.splice(dragItemTomorrow.current, 1);
         reordered.splice(dragOverItemTomorrow.current, 0, dragItemContent);
-
         dragItemTomorrow.current = null;
         dragOverItemTomorrow.current = null;
         onReorderTasks(reordered);
     };
 
+    const dragItemFuture = React.useRef<number | null>(null);
+    const dragOverItemFuture = React.useRef<number | null>(null);
+    
+    const handleDragStartFuture = (_: React.DragEvent<HTMLLIElement>, position: number) => { dragItemFuture.current = position; };
+    const handleDragEnterFuture = (_: React.DragEvent<HTMLLIElement>, position: number) => { dragOverItemFuture.current = position; };
+    const handleDropFuture = () => {
+        if (dragItemFuture.current === null || dragOverItemFuture.current === null) return;
+        const reordered = [...tasksFuture];
+        const dragItemContent = reordered[dragItemFuture.current];
+        reordered.splice(dragItemFuture.current, 1);
+        reordered.splice(dragOverItemFuture.current, 0, dragItemContent);
+        dragItemFuture.current = null;
+        dragOverItemFuture.current = null;
+        onReorderTasks(reordered);
+    };
 
     return (
         <>
             <Panel title="📝 Today's Tasks">
                 <TaskInputGroup 
-                    onAddTask={(text, poms, projectId, tags) => onAddTask(text, poms, false, projectId, tags)}
+                    onAddTask={onAddTask}
                     placeholder="Enter a new task..."
                     buttonText="Add"
                     buttonClass="bg-gradient-to-br from-green-500 to-emerald-600"
@@ -394,6 +433,7 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasksToday, tasksForTomorrow,
                             task={task} 
                             isCompleted={false} 
                             settings={settings}
+                            projects={projects}
                             onDelete={onDeleteTask} 
                             onMove={onMoveTask}
                             onUpdateTaskTimers={onUpdateTaskTimers}
@@ -407,21 +447,23 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasksToday, tasksForTomorrow,
                         />
                     ))}
                     {completedToday.map(task => (
-                        <TaskItem key={task.id} task={task} isCompleted={true} settings={settings} onDelete={onDeleteTask} onUpdateTaskTimers={onUpdateTaskTimers} onUpdateTask={onUpdateTask} onMarkTaskIncomplete={onMarkTaskIncomplete} />
+                        <TaskItem key={task.id} task={task} isCompleted={true} settings={settings} projects={projects} onDelete={onDeleteTask} onUpdateTaskTimers={onUpdateTaskTimers} onUpdateTask={onUpdateTask} onMarkTaskIncomplete={onMarkTaskIncomplete} />
                     ))}
                     {tasksToday.length === 0 && completedToday.length === 0 && <p className="text-center text-white/60 p-4">All done! Add a new task to get started.</p>}
                 </ul>
             </Panel>
             
-            <Panel title="🗓️ Tomorrow's Tasks">
+            <Panel title="🗓️ Plan a Task">
                 <TaskInputGroup 
-                    onAddTask={(text, poms, projectId, tags) => onAddTask(text, poms, true, projectId, tags)}
-                    placeholder="Plan for tomorrow..."
+                    onAddTask={onAddTask}
+                    placeholder="Plan for the future..."
                     buttonText="Plan"
                     buttonClass="bg-gradient-to-br from-amber-500 to-orange-600"
                     projects={projects}
                     onAddProject={onAddProject}
+                    isPlanning={true}
                 />
+                <h3 className="text-lg font-bold text-white mb-2 mt-4">Tomorrow's Tasks</h3>
                 <ul className="max-h-48 overflow-y-auto pr-2" onDragOver={(e) => e.preventDefault()}>
                     {tasksForTomorrow.map((task, index) => (
                         <TaskItem 
@@ -429,9 +471,12 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasksToday, tasksForTomorrow,
                            task={task} 
                            isCompleted={false} 
                            settings={settings} 
+                           projects={projects}
                            onDelete={onDeleteTask} 
                            onUpdateTaskTimers={onUpdateTaskTimers}
                            onUpdateTask={onUpdateTask}
+                           isTomorrowTask={true}
+                           onBringForward={onBringTaskForward}
                            dragProps={{
                                draggable: true,
                                onDragStart: (e) => handleDragStartTomorrow(e, index),
@@ -441,6 +486,33 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasksToday, tasksForTomorrow,
                         />
                     ))}
                     {tasksForTomorrow.length === 0 && <p className="text-center text-white/60 p-4">No tasks planned for tomorrow.</p>}
+                </ul>
+            </Panel>
+
+            <Panel title="🛰️ Future Tasks">
+                 <ul className="max-h-48 overflow-y-auto pr-2" onDragOver={(e) => e.preventDefault()}>
+                    {tasksFuture.map((task, index) => (
+                        <TaskItem 
+                           key={task.id} 
+                           task={task} 
+                           isCompleted={false} 
+                           settings={settings} 
+                           projects={projects}
+                           onDelete={onDeleteTask} 
+                           onUpdateTaskTimers={onUpdateTaskTimers}
+                           onUpdateTask={onUpdateTask}
+                           isTomorrowTask={true}
+                           displayDate={task.due_date}
+                           onBringForward={onBringTaskForward}
+                           dragProps={{
+                               draggable: true,
+                               onDragStart: (e) => handleDragStartFuture(e, index),
+                               onDragEnter: (e) => handleDragEnterFuture(e, index),
+                               onDragEnd: handleDropFuture,
+                           }}
+                        />
+                    ))}
+                    {tasksFuture.length === 0 && <p className="text-center text-white/60 p-4">No future tasks scheduled.</p>}
                 </ul>
             </Panel>
         </>

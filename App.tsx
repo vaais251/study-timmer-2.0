@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
@@ -94,9 +95,14 @@ const App: React.FC = () => {
 
     // Derived state for tasks
     const todayString = getTodayDateString();
-    const tasksToday = tasks.filter(t => t.due_date === todayString && !t.completed_at);
-    const tasksForTomorrow = tasks.filter(t => t.due_date > todayString && !t.completed_at);
-    const completedToday = tasks.filter(t => !!t.completed_at && t.due_date === todayString);
+    const tomorrowDate = new Date();
+    tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+    const tomorrowString = getTodayDateString(tomorrowDate);
+
+    const tasksToday = useMemo(() => tasks.filter(t => t.due_date === todayString && !t.completed_at), [tasks, todayString]);
+    const tasksForTomorrow = useMemo(() => tasks.filter(t => t.due_date === tomorrowString && !t.completed_at), [tasks, tomorrowString]);
+    const tasksFuture = useMemo(() => tasks.filter(t => t.due_date > tomorrowString && !t.completed_at), [tasks, tomorrowString]);
+    const completedToday = useMemo(() => tasks.filter(t => !!t.completed_at && t.due_date === todayString), [tasks, todayString]);
     
     // Derived state for commitments: filter out expired ones
     const activeCommitments = useMemo(() => {
@@ -536,11 +542,12 @@ const App: React.FC = () => {
         }
     };
 
-    const handleUpdateTask = async (id: string, newText: string, newTags: string[], newPoms: number) => {
+    const handleUpdateTask = async (id: string, newText: string, newTags: string[], newPoms: number, projectId: string | null) => {
         const updates = {
             text: newText,
             tags: newTags,
             total_poms: newPoms,
+            project_id: projectId,
         };
         const updatedTask = await dbService.updateTask(id, updates);
     
@@ -550,8 +557,8 @@ const App: React.FC = () => {
     };
 
 
-    const handleAddTask = async (text: string, poms: number, isTomorrow: boolean, projectId: string | null, tags: string[]) => {
-        const newTasks = await dbService.addTask(text, poms, isTomorrow, projectId, tags);
+    const handleAddTask = async (text: string, poms: number, dueDate: string, projectId: string | null, tags: string[]) => {
+        const newTasks = await dbService.addTask(text, poms, dueDate, projectId, tags);
         if (newTasks) {
             setTasks(newTasks);
         }
@@ -599,6 +606,11 @@ const App: React.FC = () => {
 
     const handleMoveTask = async (id: string, action: 'postpone' | 'duplicate') => {
         const newTasks = await dbService.moveTask(id, action);
+        if (newTasks) setTasks(newTasks);
+    };
+
+    const handleBringTaskForward = async (id: string) => {
+        const newTasks = await dbService.bringTaskForward(id);
         if (newTasks) setTasks(newTasks);
     };
     
@@ -732,6 +744,7 @@ const App: React.FC = () => {
                  return <PlanPage 
                     tasksToday={tasksToday}
                     tasksForTomorrow={tasksForTomorrow}
+                    tasksFuture={tasksFuture}
                     completedToday={completedToday}
                     projects={projects}
                     settings={settings}
@@ -739,6 +752,7 @@ const App: React.FC = () => {
                     onAddProject={(name) => handleAddProject(name, null)}
                     onDeleteTask={handleDeleteTask}
                     onMoveTask={handleMoveTask}
+                    onBringTaskForward={handleBringTaskForward}
                     onReorderTasks={handleReorderTasks}
                     onUpdateTaskTimers={handleUpdateTaskTimers}
                     onUpdateTask={handleUpdateTask}

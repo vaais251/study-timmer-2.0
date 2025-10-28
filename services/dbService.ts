@@ -68,15 +68,11 @@ export const getTasks = async (): Promise<Task[] | null> => {
     return data;
 };
 
-export const addTask = async (text: string, poms: number, isTomorrow: boolean, projectId: string | null, tags: string[]): Promise<Task[] | null> => {
+export const addTask = async (text: string, poms: number, dueDate: string, projectId: string | null, tags: string[]): Promise<Task[] | null> => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
         return null;
     }
-
-    const dueDate = isTomorrow 
-        ? getTodayDateString(new Date(Date.now() + 24 * 60 * 60 * 1000))
-        : getTodayDateString();
 
     const { data: maxOrderData } = await supabase
         .from('tasks')
@@ -295,6 +291,38 @@ export const moveTask = async (id: string, action: 'postpone' | 'duplicate'): Pr
     
     return getTasks();
 };
+
+export const bringTaskForward = async (id: string): Promise<Task[] | null> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    const today = getTodayDateString();
+
+    const { data: maxOrderData } = await supabase
+        .from('tasks')
+        .select('task_order')
+        .eq('user_id', user.id)
+        .eq('due_date', today)
+        .not('task_order', 'is', null)
+        .order('task_order', { ascending: false })
+        .limit(1)
+        .single();
+    
+    const newOrderForToday = (maxOrderData?.task_order ?? -1) + 1;
+
+    const { error } = await supabase
+        .from('tasks')
+        .update({ due_date: today, task_order: newOrderForToday })
+        .eq('id', id);
+
+    if (error) {
+        console.error("Error bringing task forward:", JSON.stringify(error, null, 2));
+        return null;
+    }
+
+    return getTasks();
+};
+
 
 export const markTaskIncomplete = async (id: string): Promise<Task[] | null> => {
     // First, find the task to get its due_date
