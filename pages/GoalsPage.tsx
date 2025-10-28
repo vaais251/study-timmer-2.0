@@ -6,7 +6,7 @@ import Panel from '../components/common/Panel';
 import { TrashIcon, EditIcon, StarIcon, LockIcon, CheckIcon, CalendarIcon } from '../components/common/Icons';
 import * as dbService from '../services/dbService';
 import Spinner from '../components/common/Spinner';
-import { getTodayDateString } from '../utils/date';
+import { getTodayDateString, getMonthStartDateString } from '../utils/date';
 
 const getDaysAgo = (days: number): string => {
     const date = new Date();
@@ -34,7 +34,7 @@ const ProjectTimeAnalysisDashboard: React.FC<{
     allTasks: Task[];
     allHistory: PomodoroHistory[];
 }> = ({ allProjects, allTasks, allHistory }) => {
-    const [dateRange, setDateRange] = useState({ start: getDaysAgo(30), end: new Date().toISOString().split('T')[0] });
+    const [dateRange, setDateRange] = useState({ start: getMonthStartDateString(), end: getTodayDateString() });
     const [statusFilter, setStatusFilter] = useState<'active' | 'completed' | 'due'>('active');
 
     const projectTimeData = useMemo(() => {
@@ -75,14 +75,22 @@ const ProjectTimeAnalysisDashboard: React.FC<{
         return projectTimeData.filter(p => p.status === statusFilter);
     }, [projectTimeData, statusFilter]);
 
-    const handleSetRange = (days: number | null) => {
-        if (days === null) {
+    const handleSetRangePreset = (preset: 'week' | 'month' | 'all') => {
+        if (preset === 'all') {
             setDateRange({ start: '', end: '' });
-        } else {
-            setDateRange({ start: getDaysAgo(days), end: new Date().toISOString().split('T')[0] });
+        } else if (preset === 'week') {
+            setDateRange({ start: getDaysAgo(6), end: getTodayDateString() });
+        } else if (preset === 'month') {
+            setDateRange({ start: getMonthStartDateString(), end: getTodayDateString() });
         }
     };
     
+    const today = getTodayDateString();
+    const isAllTime = !dateRange.start && !dateRange.end;
+    const isThisWeek = dateRange.start === getDaysAgo(6) && dateRange.end === today;
+    const isThisMonth = dateRange.start === getMonthStartDateString() && dateRange.end === today;
+
+
     const ProjectTimeBar: React.FC<{project: typeof projectTimeData[0]}> = ({ project }) => {
         const progress = (project.targetTime && project.targetTime > 0)
             ? Math.min(100, (project.timeSpent / project.targetTime) * 100)
@@ -114,10 +122,10 @@ const ProjectTimeAnalysisDashboard: React.FC<{
                      <input type="date" value={dateRange.end} onChange={e => setDateRange(p => ({...p, end: e.target.value}))} className="bg-white/20 border border-white/30 rounded-lg p-2 text-white/80 w-full text-center" style={{colorScheme: 'dark'}}/>
                 </div>
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 text-sm">
-                    <button onClick={() => handleSetRange(7)} className="p-2 rounded-lg bg-white/10 hover:bg-white/20 transition text-white">Last 7 Days</button>
-                    <button onClick={() => handleSetRange(30)} className="p-2 rounded-lg bg-white/10 hover:bg-white/20 transition text-white">Last 30 Days</button>
-                    <button onClick={() => handleSetRange(new Date().getDate() - 1)} className="p-2 rounded-lg bg-white/10 hover:bg-white/20 transition text-white">This Month</button>
-                    <button onClick={() => handleSetRange(null)} className="p-2 rounded-lg bg-white/10 hover:bg-white/20 transition text-white">All Time</button>
+                    <button onClick={() => handleSetRangePreset('week')} className={`p-2 rounded-lg transition font-semibold ${isThisWeek ? 'bg-white/20 text-white' : 'bg-white/10 hover:bg-white/20 text-white/80'}`}>This Week</button>
+                    <button onClick={() => handleSetRangePreset('month')} className={`p-2 rounded-lg transition font-semibold ${isThisMonth ? 'bg-white/20 text-white' : 'bg-white/10 hover:bg-white/20 text-white/80'}`}>This Month</button>
+                    <button className={`p-2 rounded-lg transition font-semibold bg-white/10 hover:bg-white/20 text-white/80`}>Date Range</button>
+                    <button onClick={() => handleSetRangePreset('all')} className={`p-2 rounded-lg transition font-semibold ${isAllTime ? 'bg-white/20 text-white' : 'bg-white/10 hover:bg-white/20 text-white/80'}`}>All Time</button>
                 </div>
             </div>
              <div className="flex justify-center gap-2 mb-4 bg-black/20 p-1 rounded-full">
@@ -820,9 +828,23 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
 
     }, [projects, projectStatusFilter, projectDateFilter, projectDateRange]);
     
-    const sortedTargets = useMemo(() => {
+    const { visibleSortedTargets, hasHiddenTargets } = useMemo(() => {
         const todayString = new Date().toISOString().split('T')[0];
-        return [...targets].sort((a, b) => {
+        const oneMonthAgo = new Date();
+        oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+
+        const visibleTargets = targets.filter(target => {
+            // Always show targets that are not completed
+            if (!target.completed_at) {
+                return true;
+            }
+            // For completed targets, only show them if they were completed within the last month
+            return new Date(target.completed_at) >= oneMonthAgo;
+        });
+
+        const hasHiddenTargets = targets.length > visibleTargets.length;
+        
+        const sorted = [...visibleTargets].sort((a, b) => {
             const aIsCompleted = !!a.completed_at;
             const bIsCompleted = !!b.completed_at;
             const aIsDue = !aIsCompleted && a.deadline < todayString;
@@ -835,6 +857,8 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
             // Within each group, sort by deadline
             return new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
         });
+
+        return { visibleSortedTargets: sorted, hasHiddenTargets };
     }, [targets]);
 
     const upcomingDeadlines = useMemo(() => {
@@ -907,7 +931,7 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
                     <button onClick={handleAddTarget} className="p-3 sm:px-4 rounded-lg font-bold text-white transition hover:scale-105 bg-gradient-to-br from-blue-500 to-cyan-600">Add Target</button>
                 </div>
                  <ul className="space-y-2 max-h-64 overflow-y-auto pr-2">
-                    {sortedTargets.map(target => (
+                    {visibleSortedTargets.map(target => (
                         <TargetItem 
                             key={target.id}
                             target={target}
@@ -917,6 +941,11 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
                     ))}
                     {targets.length === 0 && <p className="text-center text-white/60 p-4">No key targets defined yet.</p>}
                 </ul>
+                {hasHiddenTargets && (
+                    <p className="text-center text-xs text-white/50 pt-2 mt-2 border-t border-white/10">
+                        Completed targets older than one month are hidden for clarity.
+                    </p>
+                )}
             </Panel>
 
             <Panel title="📂 Project Management">
