@@ -5,6 +5,7 @@ import { runAgent, AgentContext } from '../services/geminiService';
 import * as dbService from '../services/dbService';
 import Spinner from '../components/common/Spinner';
 import { FunctionDeclaration, Type } from '@google/genai';
+import Panel from '../components/common/Panel';
 
 // Helper to format AI response from Markdown to HTML
 function formatAIResponse(text: string): string {
@@ -262,39 +263,34 @@ const AICoachPage: React.FC<AICoachPageProps> = (props) => {
 
 
     return (
-        <>
-            <div className="ai-coach-container relative bg-slate-900 rounded-2xl overflow-hidden flex flex-col h-[75vh]">
-                <div className="animated-gradient absolute inset-0"></div>
-                {/* Header */}
-                <div className="relative p-3 bg-black/30 backdrop-blur-sm border-b border-white/10 z-10">
-                    <h2 className="text-lg font-bold text-white text-center mb-2 flex items-center justify-center gap-2">
-                        <span className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center shadow-lg">🤖</span>
-                        AI Coach
-                    </h2>
+        <Panel title="🤖 AI Coach">
+             <div className="flex flex-col h-[calc(80vh-120px)] md:h-[calc(100vh-200px)] -m-4 sm:-m-6">
+                {/* Context Header */}
+                <div className="relative p-4 pt-0 bg-slate-900/30 border-b border-slate-700/80 z-10">
                     <p className="text-center text-xs text-white/60 mb-2">Provide a date range for performance context.</p>
                      <div className="flex flex-col sm:flex-row items-center justify-center gap-2">
-                        <input type="date" value={historyRange.start} onChange={e => setHistoryRange(p => ({...p, start: e.target.value}))} className="bg-white/10 border border-white/20 rounded-lg p-1 text-white/80 w-full text-center text-xs" style={{colorScheme: 'dark'}}/>
+                        <input type="date" value={historyRange.start} onChange={e => setHistoryRange(p => ({...p, start: e.target.value}))} className="bg-slate-700/50 border border-slate-600 rounded-lg p-2 text-white/80 w-full text-center text-xs" style={{colorScheme: 'dark'}}/>
                         <span className="text-white/80 text-xs">to</span>
-                        <input type="date" value={historyRange.end} onChange={e => setHistoryRange(p => ({...p, end: e.target.value}))} className="bg-white/10 border border-white/20 rounded-lg p-1 text-white/80 w-full text-center text-xs" style={{colorScheme: 'dark'}}/>
+                        <input type="date" value={historyRange.end} onChange={e => setHistoryRange(p => ({...p, end: e.target.value}))} className="bg-slate-700/50 border border-slate-600 rounded-lg p-2 text-white/80 w-full text-center text-xs" style={{colorScheme: 'dark'}}/>
                     </div>
-                     {isDataLoading && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-cyan-400 animate-pulse"></div>}
+                     {isDataLoading && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-teal-400 animate-pulse"></div>}
                 </div>
                 
                 {/* Chat History */}
-                <div className="relative flex-grow overflow-y-auto p-4 space-y-4">
+                <div className="flex-grow overflow-y-auto p-4 space-y-4">
                     {chatMessages.map((msg, index) => (
                          <div key={index} className={`flex items-end gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                             {msg.role === 'model' && (
-                                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center shadow-lg flex-shrink-0">🤖</div>
+                                <div className="w-8 h-8 rounded-full bg-teal-500 flex items-center justify-center shadow-lg flex-shrink-0">🤖</div>
                             )}
-                            <div className={`max-w-xs md:max-w-md p-3 rounded-2xl text-white shadow-md ${msg.role === 'user' ? 'bg-gradient-to-br from-blue-600 to-cyan-500 rounded-br-none' : 'bg-slate-700 rounded-bl-none'}`}>
+                            <div className={`max-w-xs md:max-w-md p-3 rounded-2xl text-white shadow-md ${msg.role === 'user' ? 'bg-teal-600 rounded-br-none' : 'bg-slate-700 rounded-bl-none'}`}>
                                 <div className="prose prose-sm prose-invert" dangerouslySetInnerHTML={{ __html: formatAIResponse(msg.text) }} />
                             </div>
                         </div>
                     ))}
                     {isAgentLoading && (
                          <div className="flex items-end gap-3 justify-start">
-                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center shadow-lg flex-shrink-0">🤖</div>
+                            <div className="w-8 h-8 rounded-full bg-teal-500 flex items-center justify-center shadow-lg flex-shrink-0">🤖</div>
                             <div className="p-3 rounded-2xl bg-slate-700 rounded-bl-none text-white">
                                 <div className="flex items-center gap-1">
                                     <span className="w-2 h-2 bg-white/70 rounded-full animate-bounce" style={{ animationDelay: '0s' }}></span>
@@ -308,16 +304,16 @@ const AICoachPage: React.FC<AICoachPageProps> = (props) => {
                 </div>
 
                 {/* Input Form */}
-                 <form onSubmit={handleAgentSubmit} className="relative flex gap-3 p-3 bg-slate-800/50 border-t border-white/10 z-10">
+                 <form onSubmit={handleAgentSubmit} className="relative flex gap-3 p-3 bg-slate-900/50 border-t border-slate-700/80 z-10">
                     <input
                         type="text"
                         value={userInput}
                         onChange={e => setUserInput(e.target.value)}
                         placeholder="Message your AI Coach..."
                         disabled={isAgentLoading || isDataLoading}
-                        className="flex-grow bg-slate-900/70 border border-white/20 rounded-full py-2 px-4 text-white placeholder:text-white/50 focus:outline-none focus:ring-2 focus:ring-cyan-400 transition"
+                        className="flex-grow bg-slate-700/50 border border-slate-600 rounded-full py-2 px-4 text-white placeholder:text-white/50 focus:outline-none focus:ring-2 focus:ring-teal-400 transition"
                     />
-                    <button type="submit" disabled={isAgentLoading || isDataLoading || !userInput.trim()} className="w-10 h-10 flex-shrink-0 bg-gradient-to-br from-cyan-500 to-blue-600 text-white rounded-full flex items-center justify-center transition-transform hover:scale-110 disabled:opacity-50 disabled:scale-100 disabled:cursor-not-allowed">
+                    <button type="submit" disabled={isAgentLoading || isDataLoading || !userInput.trim()} className="w-10 h-10 flex-shrink-0 bg-gradient-to-br from-teal-500 to-cyan-600 text-white rounded-full flex items-center justify-center transition-transform hover:scale-110 disabled:opacity-50 disabled:scale-100 disabled:cursor-not-allowed">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" /></svg>
                     </button>
                 </form>
@@ -325,23 +321,13 @@ const AICoachPage: React.FC<AICoachPageProps> = (props) => {
             <style>{`
               .prose-invert ul { margin-top: 0.5em; margin-bottom: 0.5em; }
               .prose-invert li { margin-top: 0.2em; margin-bottom: 0.2em; }
-              .animated-gradient {
-                background: linear-gradient(-45deg, #1e1b4b, #312e81, #4f46e5, #3b0764);
-                background-size: 400% 400%;
-                animation: gradient-animation 15s ease infinite;
-              }
-              @keyframes gradient-animation {
-                0% { background-position: 0% 50%; }
-                50% { background-position: 100% 50%; }
-                100% { background-position: 0% 50%; }
-              }
               @keyframes bounce {
                 0%, 100% { transform: translateY(0); }
                 50% { transform: translateY(-4px); }
               }
               .animate-bounce { animation: bounce 1s infinite ease-in-out; }
             `}</style>
-        </>
+        </Panel>
     );
 };
 
