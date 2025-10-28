@@ -2,7 +2,11 @@
 
 
 
-import React, { useState, useEffect } from 'react';
+
+
+
+
+import React, { useState, useEffect, useMemo } from 'react';
 import { Task, Project, Settings } from '../types';
 import Panel from './common/Panel';
 import { PostponeIcon, DuplicateIcon, MoreVerticalIcon, UndoIcon, EditIcon, BringForwardIcon, CalendarIcon } from './common/Icons';
@@ -414,6 +418,15 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasksToday, tasksForTomorrow,
         onReorderTasks(reordered);
     };
 
+    const tomorrowTasksCount = tasksForTomorrow.length;
+    const tomorrowFocusTime = useMemo(() => {
+        return tasksForTomorrow.reduce((total, task) => {
+            const focusDuration = task.custom_focus_duration || settings.focusDuration;
+            // For future tasks, all pomodoros are remaining
+            return total + (task.total_poms * focusDuration);
+        }, 0);
+    }, [tasksForTomorrow, settings.focusDuration]);
+
     return (
         <>
             <Panel title="📝 Today's Tasks">
@@ -465,7 +478,15 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasksToday, tasksForTomorrow,
                     onAddProject={onAddProject}
                     isPlanning={true}
                 />
-                <h3 className="text-lg font-bold text-white mb-2 mt-4">Tomorrow's Tasks</h3>
+                <div className="flex justify-between items-baseline mb-2 mt-4">
+                    <h3 className="text-lg font-bold text-white">Tomorrow's Tasks</h3>
+                    {tomorrowTasksCount > 0 && (
+                        <div className="text-xs text-white/80 flex items-center gap-3">
+                            <span>Total Tasks: <span className="font-bold text-white">{tomorrowTasksCount}</span></span>
+                            <span>Total Focus: <span className="font-bold text-white">{tomorrowFocusTime}m</span></span>
+                        </div>
+                    )}
+                </div>
                 <ul className="max-h-48 overflow-y-auto pr-2" onDragOver={(e) => e.preventDefault()}>
                     {tasksForTomorrow.map((task, index) => (
                         <TaskItem 
@@ -505,6 +526,7 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasksToday, tasksForTomorrow,
                            onUpdateTask={onUpdateTask}
                            isTomorrowTask={true}
                            displayDate={task.due_date}
+                           // FIX: Corrected typo from onBringForward to onBringTaskForward
                            onBringForward={onBringTaskForward}
                            dragProps={{
                                draggable: true,
