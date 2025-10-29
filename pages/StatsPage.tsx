@@ -3,11 +3,11 @@ import HistoryPanel from '../components/HistoryPanel';
 import Spinner from '../components/common/Spinner';
 import * as dbService from '../services/dbService';
 import { DbDailyLog, Task, Project, Target, Settings, PomodoroHistory } from '../types';
-import { getTodayDateString, getMonthStartDateString } from '../utils/date';
+import { getTodayDateString, getMonthStartDateString, getSevenDaysAgoDateString } from '../utils/date';
 
 const StatsPage: React.FC = () => {
     const [historyRange, setHistoryRange] = useState(() => ({
-        start: getMonthStartDateString(),
+        start: getSevenDaysAgoDateString(),
         end: getTodayDateString(),
     }));
     const [logs, setLogs] = useState<DbDailyLog[]>([]);

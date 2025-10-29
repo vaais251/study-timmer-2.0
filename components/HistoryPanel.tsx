@@ -164,16 +164,30 @@ const ConsistencyTracker: React.FC<{ logs: DbDailyLog[] }> = ({ logs }) => {
     );
 };
 
-const CategoryTimelineChart: React.FC<{ tasks: Task[], history: PomodoroHistory[] }> = ({ tasks, history }) => {
-    const [view, setView] = useState<'month' | 'week'>('month');
+interface CategoryTimelineChartProps {
+    tasks: Task[];
+    history: PomodoroHistory[];
+    historyRange: { start: string; end: string };
+}
+
+const CategoryTimelineChart: React.FC<CategoryTimelineChartProps> = ({ tasks, history, historyRange }) => {
+    const [view, setView] = useState<'month' | 'week' | 'custom'>('week');
 
     const chartData = useMemo(() => {
-        const today = new Date();
-        const startDate = new Date();
-        startDate.setDate(today.getDate() - (view === 'month' ? 29 : 6));
+        let startDate: Date;
+        let endDate: Date;
+
+        if (view === 'custom') {
+            startDate = new Date(historyRange.start + 'T00:00:00');
+            endDate = new Date(historyRange.end + 'T00:00:00');
+        } else {
+            endDate = new Date();
+            startDate = new Date();
+            startDate.setDate(endDate.getDate() - (view === 'month' ? 29 : 6));
+        }
         
         const startDateString = getTodayDateString(startDate);
-        const endDateString = getTodayDateString(today);
+        const endDateString = getTodayDateString(endDate);
 
         const filteredHistory = history.filter(h => {
             const hDate = h.ended_at.split('T')[0];
@@ -188,7 +202,9 @@ const CategoryTimelineChart: React.FC<{ tasks: Task[], history: PomodoroHistory[
 
         // Initialize date map for all days in the range
         const loopDate = new Date(startDate);
-        while (loopDate <= today) {
+        const finalEndDate = new Date(endDate);
+        finalEndDate.setHours(23, 59, 59, 999); // Ensure end date is included
+        while (loopDate <= finalEndDate) {
             const dateStr = getTodayDateString(loopDate);
             dataByDate.set(dateStr, { date: new Date(dateStr + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) });
             loopDate.setDate(loopDate.getDate() + 1);
@@ -225,14 +241,14 @@ const CategoryTimelineChart: React.FC<{ tasks: Task[], history: PomodoroHistory[
 
         return { data: finalData, tags: sortedTags };
 
-    }, [view, tasks, history]);
+    }, [view, tasks, history, historyRange]);
 
     const COLORS = ['#F59E0B', '#10B981', '#38BDF8', '#EC4899', '#84CC16', '#F43F5E', '#6366F1'];
     
     return (
         <div className="mt-8">
             <h3 className="text-lg font-semibold text-white text-center mb-2">Category Focus Over Time</h3>
-             <div className="flex justify-center gap-2 mb-4 bg-black/20 p-1 rounded-full max-w-sm mx-auto">
+             <div className="flex justify-center gap-2 mb-4 bg-black/20 p-1 rounded-full max-w-md mx-auto">
                 <button 
                     onClick={() => setView('week')} 
                     className={`flex-1 p-2 text-sm rounded-full font-bold transition-colors ${view === 'week' ? 'bg-white/20 text-white' : 'text-white/60 hover:bg-white/10'}`}
@@ -244,6 +260,12 @@ const CategoryTimelineChart: React.FC<{ tasks: Task[], history: PomodoroHistory[
                     className={`flex-1 p-2 text-sm rounded-full font-bold transition-colors ${view === 'month' ? 'bg-white/20 text-white' : 'text-white/60 hover:bg-white/10'}`}
                 >
                     This Month
+                </button>
+                 <button 
+                    onClick={() => setView('custom')} 
+                    className={`flex-1 p-2 text-sm rounded-full font-bold transition-colors ${view === 'custom' ? 'bg-white/20 text-white' : 'text-white/60 hover:bg-white/10'}`}
+                >
+                    Align to Range
                 </button>
             </div>
             {chartData.data.length > 0 && chartData.tags.length > 0 ? (
@@ -315,28 +337,44 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
         const projectsCompleted = projects.length;
         const targetsCompleted = targets.length;
         
-        // --- Corrected Totals Logic ---
-        // A "relevant" project/target is one that was either DUE in the range or COMPLETED in the range.
+        const { start, end } = historyRange;
         
-        // Relevant Projects
-        const projectsDueInRange = new Set(
-            allProjects
-                .filter(p => p.deadline && p.deadline >= historyRange.start && p.deadline <= historyRange.end)
-                .map(p => p.id)
-        );
-        const projectsCompletedInRange = new Set(projects.map(p => p.id)); // `projects` prop is already filtered by completion date in range
-        const totalRelevantProjectIds = new Set([...projectsDueInRange, ...projectsCompletedInRange]);
-        const totalProjectsInRange = totalRelevantProjectIds.size;
+        // --- Corrected Totals Logic ---
+        // A project is relevant if its lifespan (creation to completion) intersects with the date range,
+        // or if its deadline falls within the range. This gives us the denominator for projects.
+        const relevantProjects = allProjects.filter(p => {
+            const createdAtDate = p.created_at.split('T')[0];
+            const completedAtDate = p.completed_at ? p.completed_at.split('T')[0] : null;
 
-        // Relevant Targets
-        const targetsDueInRange = new Set(
-            allTargets
-                .filter(t => t.deadline >= historyRange.start && t.deadline <= historyRange.end)
-                .map(t => t.id)
-        );
-        const targetsCompletedInRange = new Set(targets.map(t => t.id)); // `targets` prop is already filtered by completion date in range
-        const totalRelevantTargetIds = new Set([...targetsDueInRange, ...targetsCompletedInRange]);
-        const totalTargetsInRange = totalRelevantTargetIds.size;
+            // Project's lifespan intersects with the range [start, end]
+            const startsBeforeOrDuringRange = createdAtDate <= end;
+            const endsDuringOrAfterRange = !completedAtDate || completedAtDate >= start;
+            const hasLifespanOverlap = startsBeforeOrDuringRange && endsDuringOrAfterRange;
+
+            // Also include if deadline is in range, as it's a key event.
+            const deadlineInRange = p.deadline && p.deadline >= start && p.deadline <= end;
+
+            return hasLifespanOverlap || deadlineInRange;
+        });
+        const totalProjectsInRange = relevantProjects.length;
+
+        // A target is relevant if its lifespan (creation to completion/present) intersects with the date range,
+        // or if its deadline falls within the range.
+        const relevantTargets = allTargets.filter(t => {
+            const createdAtDate = t.created_at.split('T')[0];
+            const completedAtDate = t.completed_at ? t.completed_at.split('T')[0] : null;
+
+            // Target's lifespan intersects with the range [start, end]
+            const startsBeforeOrDuringRange = createdAtDate <= end;
+            const endsDuringOrAfterRange = !completedAtDate || completedAtDate >= start;
+            const hasLifespanOverlap = startsBeforeOrDuringRange && endsDuringOrAfterRange;
+
+            // Also include if deadline is in range, as it's a key event.
+            const deadlineInRange = t.deadline >= start && t.deadline <= end;
+
+            return hasLifespanOverlap || deadlineInRange;
+        });
+        const totalTargetsInRange = relevantTargets.length;
 
         const lineChartDataPoints = new Map<string, { total: number, completed: number }>();
         if (historyRange.start && historyRange.end) {
@@ -694,7 +732,7 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
             </div>
 
             {/* --- Section 6: Category Timeline --- */}
-            <CategoryTimelineChart tasks={allTasks} history={timelinePomodoroHistory} />
+            <CategoryTimelineChart tasks={allTasks} history={timelinePomodoroHistory} historyRange={historyRange} />
 
             {/* --- Section 7: Overall Stats --- */}
             <div className="mt-8 space-y-6">

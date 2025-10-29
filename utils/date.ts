@@ -1,4 +1,5 @@
 
+
 export const getTodayDateString = (date = new Date()): string => {
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -10,4 +11,10 @@ export const getMonthStartDateString = (date = new Date()): string => {
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     return `${year}-${month}-01`;
+};
+
+export const getSevenDaysAgoDateString = (): string => {
+    const date = new Date();
+    date.setDate(date.getDate() - 6);
+    return getTodayDateString(date);
 };
