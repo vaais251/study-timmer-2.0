@@ -39,6 +39,7 @@ export interface Goal {
     id: string;
     created_at: string;
     text: string;
+    completed_at: string | null;
 }
 
 // Corresponds to the `commitments` table
@@ -48,6 +49,7 @@ export interface Commitment {
     user_id: string;
     text: string;
     due_date: string | null;
+    completed_at: string | null;
 }
 
 // Corresponds to the `targets` table

@@ -1,5 +1,6 @@
 
 
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
@@ -666,6 +667,11 @@ const App: React.FC = () => {
             if (newGoals) setGoals(newGoals);
         }
     };
+
+    const handleSetGoalCompletion = async (id: string, isComplete: boolean) => {
+        const newGoals = await dbService.setGoalCompletion(id, isComplete ? new Date().toISOString() : null);
+        if (newGoals) setGoals(newGoals);
+    };
     
     // --- Target Handlers ---
     const handleAddTarget = async (text: string, deadline: string) => {
@@ -701,6 +707,11 @@ const App: React.FC = () => {
             const newCommitments = await dbService.deleteCommitment(id);
             if (newCommitments) setAllCommitments(newCommitments);
         }
+    };
+
+    const handleSetCommitmentCompletion = async (id: string, isComplete: boolean) => {
+        const newCommitments = await dbService.setCommitmentCompletion(id, isComplete ? new Date().toISOString() : null);
+        if (newCommitments) setAllCommitments(newCommitments);
     };
     
     // --- AI Coach Specific Task Adder (for promise-based flow) ---
@@ -784,6 +795,7 @@ const App: React.FC = () => {
                     onAddGoal={handleAddGoal}
                     onUpdateGoal={handleUpdateGoal}
                     onDeleteGoal={handleDeleteGoal}
+                    onSetGoalCompletion={handleSetGoalCompletion}
                     onAddTarget={handleAddTarget}
                     onUpdateTarget={handleUpdateTarget}
                     onDeleteTarget={handleDeleteTarget}
@@ -793,6 +805,7 @@ const App: React.FC = () => {
                     onAddCommitment={handleAddCommitment}
                     onUpdateCommitment={handleUpdateCommitment}
                     onDeleteCommitment={handleDeleteCommitment}
+                    onSetCommitmentCompletion={handleSetCommitmentCompletion}
                 />;
             case 'settings':
                 return <SettingsPage settings={settings} onSave={handleSaveSettings} />;

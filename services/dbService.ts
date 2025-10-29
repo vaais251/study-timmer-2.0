@@ -564,7 +564,7 @@ export const deleteProjectUpdate = async (updateId: string, projectId: string): 
 export const getGoals = async (): Promise<Goal[] | null> => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return null;
-    const { data, error } = await supabase.from('goals').select('id, text, created_at').eq('user_id', user.id);
+    const { data, error } = await supabase.from('goals').select('*').eq('user_id', user.id);
     return error ? null : data;
 }
 
@@ -579,6 +579,15 @@ export const updateGoal = async (id: string, updates: Partial<Goal>): Promise<Go
     const { error } = await supabase.from('goals').update(updates).eq('id', id);
     if (error) console.error("Error updating goal:", JSON.stringify(error, null, 2));
     return error ? null : await getGoals();
+}
+
+export const setGoalCompletion = async (id: string, completed_at: string | null): Promise<Goal[] | null> => {
+    const { error } = await supabase.from('goals').update({ completed_at }).eq('id', id);
+    if (error) {
+        console.error("Error setting goal completion:", JSON.stringify(error, null, 2));
+        return null;
+    }
+    return getGoals();
 }
 
 export const deleteGoal = async (id: string): Promise<Goal[] | null> => {
@@ -644,6 +653,15 @@ export const updateCommitment = async (id: string, updates: { text: string; dueD
     const { error } = await supabase.from('commitments').update({ text: updates.text, due_date: updates.dueDate }).eq('id', id);
     if (error) {
         console.error("Error updating commitment:", JSON.stringify(error, null, 2));
+        return null;
+    }
+    return getCommitments();
+}
+
+export const setCommitmentCompletion = async (id: string, completed_at: string | null): Promise<Commitment[] | null> => {
+    const { error } = await supabase.from('commitments').update({ completed_at }).eq('id', id);
+    if (error) {
+        console.error("Error setting commitment completion:", JSON.stringify(error, null, 2));
         return null;
     }
     return getCommitments();

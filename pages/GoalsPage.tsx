@@ -1,5 +1,6 @@
 
 
+
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Goal, Target, Project, Task, PomodoroHistory, Commitment, ProjectUpdate } from '../types';
 import Panel from '../components/common/Panel';
@@ -469,10 +470,12 @@ const GoalItem: React.FC<{
     goal: Goal;
     onUpdateGoal: (id: string, text: string) => void;
     onDeleteGoal: (id: string) => void;
-}> = ({ goal, onUpdateGoal, onDeleteGoal }) => {
+    onSetCompletion: (id: string, isComplete: boolean) => void;
+}> = ({ goal, onUpdateGoal, onDeleteGoal, onSetCompletion }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [editText, setEditText] = useState(goal.text);
     const isOld = isOlderThanOrEqualToTwoDays(goal.created_at);
+    const isComplete = !!goal.completed_at;
 
     const handleSave = () => {
         if (editText.trim() && editText.trim() !== goal.text) {
@@ -514,16 +517,23 @@ const GoalItem: React.FC<{
     }
     
     return (
-        <li className="bg-gradient-to-br from-slate-800 to-slate-900 border border-white/10 rounded-xl p-4 transform transition-all hover:scale-[1.02] hover:shadow-2xl hover:border-white/20">
+        <li className={`bg-gradient-to-br from-slate-800 to-slate-900 border border-white/10 rounded-xl p-4 transform transition-all hover:scale-[1.02] hover:shadow-2xl hover:border-white/20 ${isComplete ? 'opacity-50' : ''}`}>
             <div className="flex items-start justify-between gap-4">
                 <div className="flex items-start gap-3 flex-grow min-w-0">
+                     <input
+                        type="checkbox"
+                        checked={isComplete}
+                        onChange={(e) => onSetCompletion(goal.id, e.target.checked)}
+                        className="h-6 w-6 rounded bg-white/20 border-white/30 text-green-400 focus:ring-green-400 flex-shrink-0 cursor-pointer mt-1"
+                        aria-label={`Mark goal as ${isComplete ? 'incomplete' : 'complete'}`}
+                    />
                     <div className="text-amber-300 mt-1 flex-shrink-0">
                         <StarIcon />
                     </div>
-                    <p className="text-white/90 font-medium text-base flex-grow break-words">{goal.text}</p>
+                    <p className={`text-white/90 font-medium text-base flex-grow break-words ${isComplete ? 'line-through' : ''}`}>{goal.text}</p>
                 </div>
                 <div className="flex items-center gap-1 flex-shrink-0">
-                     <button onClick={() => setIsEditing(true)} disabled={isOld} className="p-2 rounded-full text-sky-300 hover:bg-sky-500/20 transition disabled:text-sky-300/30 disabled:cursor-not-allowed" title={isOld ? "Editing is disabled for old goals" : "Edit Goal"}><EditIcon /></button>
+                     <button onClick={() => setIsEditing(true)} disabled={isOld || isComplete} className="p-2 rounded-full text-sky-300 hover:bg-sky-500/20 transition disabled:text-sky-300/30 disabled:cursor-not-allowed" title={(isOld || isComplete) ? "Editing is disabled for completed or old goals" : "Edit Goal"}><EditIcon /></button>
                      <button onClick={() => onDeleteGoal(goal.id)} className="p-2 rounded-full text-red-400 hover:bg-red-500/20 transition" title="Delete Goal"><TrashIcon /></button>
                 </div>
             </div>
@@ -536,12 +546,16 @@ const CommitmentItem: React.FC<{
     commitment: Commitment;
     onUpdate: (id: string, updates: { text: string; dueDate: string | null; }) => void;
     onDelete: (id: string) => void;
-}> = ({ commitment, onUpdate, onDelete }) => {
+    onSetCompletion: (id: string, isComplete: boolean) => void;
+}> = ({ commitment, onUpdate, onDelete, onSetCompletion }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [editText, setEditText] = useState(commitment.text);
     const [editDueDate, setEditDueDate] = useState(commitment.due_date || '');
+    const isComplete = !!commitment.completed_at;
 
     const { isEditable, reason } = useMemo(() => {
+        if (isComplete) return { isEditable: false, reason: 'Editing is disabled for completed commitments.' };
+
         const ageInMillis = new Date().getTime() - new Date(commitment.created_at).getTime();
         const oneDayInMillis = 24 * 60 * 60 * 1000;
         const twentyOneDaysInMillis = 21 * oneDayInMillis;
@@ -555,7 +569,7 @@ const CommitmentItem: React.FC<{
         
         const daysRemaining = Math.ceil((twentyOneDaysInMillis - ageInMillis) / oneDayInMillis);
         return { isEditable: false, reason: `Locked for reflection. Unlocks in ${daysRemaining} day(s).` };
-    }, [commitment.created_at]);
+    }, [commitment.created_at, isComplete]);
     
 
     const handleSave = () => {
@@ -591,12 +605,21 @@ const CommitmentItem: React.FC<{
     }
 
     return (
-        <li className="flex items-start justify-between gap-4 p-4 rounded-lg bg-black/20">
-            <div className="flex-grow min-w-0">
-                <p className="text-white">{commitment.text}</p>
-                <div className="text-xs text-white/60 mt-1 flex gap-4">
-                    <span>Committed: {new Date(commitment.created_at).toLocaleDateString()}</span>
-                    {commitment.due_date && <span>Due: {new Date(commitment.due_date+'T00:00:00').toLocaleDateString()}</span>}
+        <li className={`flex items-start justify-between gap-4 p-4 rounded-lg bg-black/20 ${isComplete ? 'opacity-50' : ''}`}>
+             <div className="flex items-start gap-3 flex-grow min-w-0">
+                <input
+                    type="checkbox"
+                    checked={isComplete}
+                    onChange={(e) => onSetCompletion(commitment.id, e.target.checked)}
+                    className="h-5 w-5 rounded bg-white/20 border-white/30 text-green-400 focus:ring-green-400 flex-shrink-0 cursor-pointer mt-1"
+                    aria-label={`Mark commitment as ${isComplete ? 'incomplete' : 'complete'}`}
+                />
+                <div className="flex-grow">
+                    <p className={`text-white ${isComplete ? 'line-through' : ''}`}>{commitment.text}</p>
+                    <div className="text-xs text-white/60 mt-1 flex gap-4">
+                        <span>Committed: {new Date(commitment.created_at).toLocaleDateString()}</span>
+                        {commitment.due_date && <span>Due: {new Date(commitment.due_date+'T00:00:00').toLocaleDateString()}</span>}
+                    </div>
                 </div>
             </div>
             <div className="flex items-center gap-1 flex-shrink-0">
@@ -621,9 +644,11 @@ const CommitmentsPanel: React.FC<{
     onAdd: (text: string, dueDate: string | null) => void;
     onUpdate: (id: string, updates: { text: string; dueDate: string | null; }) => void;
     onDelete: (id: string) => void;
-}> = ({ commitments, onAdd, onUpdate, onDelete }) => {
+    onSetCompletion: (id: string, isComplete: boolean) => void;
+}> = ({ commitments, onAdd, onUpdate, onDelete, onSetCompletion }) => {
     const [newCommitment, setNewCommitment] = useState('');
     const [newDueDate, setNewDueDate] = useState('');
+    const [showArchived, setShowArchived] = useState(false);
 
     const handleAdd = () => {
         if (newCommitment.trim()) {
@@ -632,6 +657,27 @@ const CommitmentsPanel: React.FC<{
             setNewDueDate('');
         }
     };
+    
+    const oneMonthAgo = useMemo(() => {
+        const d = new Date();
+        d.setMonth(d.getMonth() - 1);
+        return d;
+    }, []);
+
+    const { visibleCommitments, hiddenCount } = useMemo(() => {
+        const sorted = [...commitments].sort((a,b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+        if (showArchived) {
+            return { visibleCommitments: sorted, hiddenCount: 0 };
+        }
+        
+        const visible = sorted.filter(c => {
+            if (!c.completed_at) return true;
+            return new Date(c.completed_at) > oneMonthAgo;
+        });
+
+        return { visibleCommitments: visible, hiddenCount: sorted.length - visible.length };
+    }, [commitments, showArchived, oneMonthAgo]);
 
     return (
         <Panel title="💪 My Commitments">
@@ -662,8 +708,15 @@ const CommitmentsPanel: React.FC<{
                     />
                 </div>
             </div>
+             <div className="text-right mb-2">
+                {hiddenCount > 0 && (
+                    <button onClick={() => setShowArchived(s => !s)} className="text-xs text-cyan-300 hover:text-cyan-200 font-semibold px-3 py-1 rounded-full hover:bg-white/10 transition">
+                        {showArchived ? 'Hide Archived' : `Show ${hiddenCount} Archived`}
+                    </button>
+                )}
+            </div>
             <ul className="space-y-2 max-h-64 overflow-y-auto pr-2">
-                {commitments.map(c => <CommitmentItem key={c.id} commitment={c} onUpdate={onUpdate} onDelete={onDelete} />)}
+                {visibleCommitments.map(c => <CommitmentItem key={c.id} commitment={c} onUpdate={onUpdate} onDelete={onDelete} onSetCompletion={onSetCompletion} />)}
                 {commitments.length === 0 && <p className="text-center text-white/60 p-4">Make a commitment to start your day with intention.</p>}
             </ul>
         </Panel>
@@ -679,6 +732,7 @@ interface GoalsPageProps {
     onAddGoal: (text: string) => void;
     onUpdateGoal: (id: string, text: string) => void;
     onDeleteGoal: (id: string) => void;
+    onSetGoalCompletion: (id: string, isComplete: boolean) => void;
     onAddTarget: (text: string, deadline: string) => void;
     onUpdateTarget: (id: string, updates: Partial<Target>) => void;
     onDeleteTarget: (id: string) => void;
@@ -688,14 +742,16 @@ interface GoalsPageProps {
     onAddCommitment: (text: string, dueDate: string | null) => void;
     onUpdateCommitment: (id: string, updates: { text: string; dueDate: string | null; }) => void;
     onDeleteCommitment: (id: string) => void;
+    onSetCommitmentCompletion: (id: string, isComplete: boolean) => void;
 }
 
 const GoalsPage: React.FC<GoalsPageProps> = (props) => {
-    const { goals, targets, projects, commitments, onAddGoal, onUpdateGoal, onDeleteGoal, onAddTarget, onUpdateTarget, onDeleteTarget, onAddProject, onUpdateProject, onDeleteProject, onAddCommitment, onUpdateCommitment, onDeleteCommitment } = props;
+    const { goals, targets, projects, commitments, onAddGoal, onUpdateGoal, onDeleteGoal, onSetGoalCompletion, onAddTarget, onUpdateTarget, onDeleteTarget, onAddProject, onUpdateProject, onDeleteProject, onAddCommitment, onUpdateCommitment, onDeleteCommitment, onSetCommitmentCompletion } = props;
 
     const [newGoal, setNewGoal] = useState('');
     const [newTarget, setNewTarget] = useState('');
     const [newDeadline, setNewDeadline] = useState('');
+    const [showArchivedGoals, setShowArchivedGoals] = useState(false);
     
     // Project form state
     const [newProjectName, setNewProjectName] = useState('');
@@ -761,6 +817,25 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
             setNewDeadline('');
         }
     };
+    
+    const oneMonthAgo = useMemo(() => {
+        const d = new Date();
+        d.setMonth(d.getMonth() - 1);
+        return d;
+    }, []);
+
+    const { visibleGoals, hiddenGoalsCount } = useMemo(() => {
+        if (showArchivedGoals) {
+            return { visibleGoals: goals, hiddenGoalsCount: 0 };
+        }
+        
+        const visible = goals.filter(g => {
+            if (!g.completed_at) return true;
+            return new Date(g.completed_at) > oneMonthAgo;
+        });
+
+        return { visibleGoals: visible, hiddenGoalsCount: goals.length - visible.length };
+    }, [goals, showArchivedGoals, oneMonthAgo]);
 
     const filteredProjects = useMemo(() => {
         // Determine the date range based on the filter
@@ -903,9 +978,16 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
                         Add
                     </button>
                 </div>
+                 <div className="text-right mb-2">
+                    {hiddenGoalsCount > 0 && (
+                        <button onClick={() => setShowArchivedGoals(s => !s)} className="text-xs text-cyan-300 hover:text-cyan-200 font-semibold px-3 py-1 rounded-full hover:bg-white/10 transition">
+                            {showArchivedGoals ? 'Hide Archived' : `Show ${hiddenGoalsCount} Archived`}
+                        </button>
+                    )}
+                </div>
                 <ul className="grid grid-cols-1 lg:grid-cols-2 gap-3 max-h-96 overflow-y-auto pr-2">
-                    {goals.map(goal => (
-                        <GoalItem key={goal.id} goal={goal} onUpdateGoal={onUpdateGoal} onDeleteGoal={onDeleteGoal} />
+                    {visibleGoals.map(goal => (
+                        <GoalItem key={goal.id} goal={goal} onUpdateGoal={onUpdateGoal} onDeleteGoal={onDeleteGoal} onSetCompletion={onSetGoalCompletion} />
                     ))}
                     {goals.length === 0 && <p className="text-center text-white/60 p-4 col-span-full">Define your core purpose. What are you striving for?</p>}
                 </ul>
@@ -1042,6 +1124,7 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
                 onAdd={onAddCommitment}
                 onUpdate={onUpdateCommitment}
                 onDelete={onDeleteCommitment}
+                onSetCompletion={onSetCommitmentCompletion}
             />
             
              <style>{`
