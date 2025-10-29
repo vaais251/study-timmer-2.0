@@ -300,6 +300,7 @@ const AICoachPage: React.FC<AICoachPageProps> = (props) => {
                 project_id: t.project_id,
                 completed_poms: t.completed_poms,
                 total_poms: t.total_poms,
+                comments: t.comments,
             })),
             dailyLogs,
             aiMemories: aiMemories.map(m => ({ id: m.id, type: m.type, content: m.content, tags: m.tags, created_at: m.created_at })),

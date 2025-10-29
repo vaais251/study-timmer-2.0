@@ -38,7 +38,7 @@ export interface AgentContext {
     targets: Pick<Target, 'id' | 'text' | 'deadline' | 'completed_at'>[];
     projects: Pick<Project, 'id' | 'name' | 'description' | 'status' | 'deadline' | 'completion_criteria_type' | 'completion_criteria_value' | 'progress_value'>[];
     commitments: Pick<Commitment, 'id' | 'text' | 'due_date'>[];
-    tasks: Pick<Task, 'id' | 'text' | 'due_date' | 'completed_at' | 'project_id' | 'completed_poms' | 'total_poms'>[];
+    tasks: Pick<Task, 'id' | 'text' | 'due_date' | 'completed_at' | 'project_id' | 'completed_poms' | 'total_poms' | 'comments'>[];
     dailyLogs: { date: string; total_focus_minutes: number; completed_sessions: number }[];
     aiMemories: Pick<AiMemory, 'id' | 'type' | 'content' | 'tags' | 'created_at'>[];
 }
@@ -67,17 +67,77 @@ When a user asks you to perform an action (e.g., "create a task", "set up a proj
 
 Today's date is ${new Date().toISOString().split('T')[0]}.
 
---- USER DATA SCHEMA & CONTEXT ---
-The following data is for the currently selected date range.
+--- DATABASE SCHEMA & CONTEXT ---
+You have access to the user's data, structured in the following tables. Use this schema to understand relationships and answer data-driven questions with high precision.
 
-== SCHEMA DEFINITIONS ==
-- **Goal**: A high-level, long-term ambition. Fields: \`id\`, \`text\`.
-- **Target**: A specific, measurable objective with a deadline. Fields: \`id\`, \`text\`, \`deadline\`, \`completed_at\`.
-- **Project**: A collection of tasks. Fields: \`id\`, \`name\`, \`description\`, \`status\` ('active', 'completed', 'due'), \`deadline\`, \`completion_criteria_type\` ('manual', 'task_count', 'duration_minutes'), \`completion_criteria_value\`, \`progress_value\`.
-- **Task**: An individual to-do item. Fields: \`id\`, \`text\`, \`due_date\`, \`completed_at\`, \`project_id\`, \`completed_poms\`, \`total_poms\`.
-- **Commitment**: A promise or accountability statement. Fields: \`id\`, \`text\`, \`due_date\`.
-- **DailyPerformanceLog**: A summary of work for a single day. Fields: \`date\`, \`total_focus_minutes\`, \`completed_sessions\` (number of pomodoros).
-- **AiMemory**: A piece of information you have stored about the user. Fields: \`id\`, \`type\` ('personal', 'learning', or 'ai'), \`content\`, \`tags\`.
+== TABLES, COLUMNS & RELATIONSHIPS ==
+
+1.  **goals** - High-level, long-term ambitions.
+    *   \`id\` (string, PK): Unique identifier.
+    *   \`text\` (string): The description of the goal.
+    *   \`completed_at\` (timestamp | null): Timestamp of completion.
+
+2.  **targets** - Specific, measurable outcomes with a deadline.
+    *   \`id\` (string, PK): Unique identifier.
+    *   \`text\` (string): The description of the target.
+    *   \`deadline\` (date string, YYYY-MM-DD): The target's due date.
+    *   \`completed_at\` (timestamp | null): Timestamp of completion.
+
+3.  **projects** - Large initiatives that group related tasks.
+    *   \`id\` (string, PK): Unique identifier.
+    *   \`name\` (string): Project name.
+    *   \`description\` (string | null): Detailed project description.
+    *   \`deadline\` (date string | null): The project's due date.
+    *   \`status\` (string): Current status: 'active', 'completed', or 'due'.
+    *   \`completion_criteria_type\` (string): How completion is measured: 'manual', 'task_count', 'duration_minutes'.
+    *   \`completion_criteria_value\` (number | null): The target value for the criteria (e.g., 10 for task_count).
+    *   \`progress_value\` (number): Current progress towards the criteria value.
+
+4.  **tasks** - Individual, actionable to-do items. The core unit of work.
+    *   \`id\` (string, PK): Unique identifier.
+    *   \`text\` (string): The task description.
+    *   \`total_poms\` (number): Estimated Pomodoro sessions needed.
+    *   \`completed_poms\` (number): Pomodoro sessions completed for this task.
+    *   \`comments\` (array of strings): **CRITICAL**: User's notes/comments added after each focus session. This contains valuable qualitative data on what was accomplished or learned.
+    *   \`due_date\` (date string, YYYY-MM-DD): The task's due date.
+    *   \`completed_at\` (timestamp | null): When the task was fully completed.
+    *   \`project_id\` (string | null, FK -> projects.id): The project this task belongs to.
+    *   \`tags\` (array of strings): User-defined tags for categorization.
+    *   \`custom_focus_duration\` (number | null): Override for default focus time (in minutes).
+
+5.  **pomodoro_history** - The authoritative log of all completed focus sessions.
+    *   \`id\` (string, PK): Unique identifier.
+    *   \`task_id\` (string | null, FK -> tasks.id): The task worked on during this session.
+    *   \`ended_at\` (timestamp): Exact timestamp when the focus session ended.
+    *   \`duration_minutes\` (number): The duration of the focus session.
+
+6.  **commitments** - Promises or accountability items.
+    *   \`id\` (string, PK): Unique identifier.
+    *   \`text\` (string): The commitment text.
+    *   \`due_date\` (date string | null): An optional due date.
+    *   \`status\` (string): 'active', 'completed', or 'broken'.
+
+7.  **ai_memories** - Your long-term memory about the user.
+    *   \`id\` (string, PK): Unique identifier.
+    *   \`type\` (string): 'learning' (from @learn), 'personal' (from @personal), or 'ai' (AI-inferred).
+    *   \`content\` (string): The information to remember.
+    *   \`tags\` (array of strings | null): Associated tags.
+    *   \`source_task_id\` (string | null, FK -> tasks.id): The task that generated a 'learning' memory.
+
+8.  **project_updates** - A manual log of updates for a project.
+    *   \`id\` (string, PK): Unique identifier.
+    *   \`project_id\` (string, FK -> projects.id)
+    *   \`task_id\` (string | null, FK -> tasks.id)
+    *   \`update_date\` (date string, YYYY-MM-DD)
+    *   \`description\` (string): The text of the update.
+
+9.  **daily_logs** (Provided in context as 'Daily Performance Logs') - A summary of daily activity derived from \`pomodoro_history\`.
+    *   \`date\` (date string, YYYY-MM-DD)
+    *   \`completed_sessions\` (number)
+    *   \`total_focus_minutes\` (number)
+
+--- CONTEXT DATA ---
+The following data is a snapshot for the currently selected date range and user's high-level planning.
 
 == AI MEMORY BANK (Learnings & Personal Context) ==
 ${context.aiMemories.map(m => `- [${m.type.toUpperCase()}] (ID: ${m.id}) ${m.content} ${m.tags ? `Tags: [${m.tags.join(', ')}]` : ''}`).join('\n') || "No memories yet."}
@@ -98,12 +158,16 @@ ${context.projects.map(p => {
 Note: When adding a task to a project, you MUST use the project's ID.
 
 == TASKS (within date range) ==
-${context.tasks.map(t => `- [${t.completed_at ? 'X' : ' '}] ${t.text} (${t.completed_poms}/${t.total_poms} poms, Due: ${t.due_date}, ProjectID: ${t.project_id || 'None'}, ID: ${t.id})`).join('\n') || 'No tasks in this period.'}
+${context.tasks.map(t => {
+    const comments = t.comments && t.comments.length > 0 ? ` Comments: [${t.comments.join('; ')}]` : '';
+    return `- [${t.completed_at ? 'X' : ' '}] ${t.text} (${t.completed_poms}/${t.total_poms} poms, Due: ${t.due_date}, ProjectID: ${t.project_id || 'None'}, ID: ${t.id})${comments}`;
+}).join('\n') || 'No tasks in this period.'}
 
 == COMMITMENTS ==
 ${context.commitments.map(c => `- ${c.text} (Due: ${c.due_date || 'N/A'}, ID: ${c.id})`).join('\n') || 'No commitments made.'}
 
 == DAILY PERFORMANCE LOGS (within date range) ==
+This data is derived from the \`pomodoro_history\` table.
 ${context.dailyLogs.map(log => `- Date: ${log.date}, Focus Time: ${log.total_focus_minutes} minutes, Pomodoros: ${log.completed_sessions}`).join('\n') || 'No focus sessions recorded in this period.'}
 --- END OF CONTEXT ---
 
