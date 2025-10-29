@@ -1,11 +1,12 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Goal, Target, Project, PomodoroHistory, Commitment, Task, ChatMessage, AiMemory } from '../types';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { Goal, Target, Project, PomodoroHistory, Commitment, Task, ChatMessage, AiMemory, AiMemoryType } from '../types';
 import { getTodayDateString } from '../utils/date';
 import { runAgent, AgentContext, generateContent } from '../services/geminiService';
 import * as dbService from '../services/dbService';
 import Spinner from '../components/common/Spinner';
 import { FunctionDeclaration, Type } from '@google/genai';
 import Panel from '../components/common/Panel';
+import { TrashIcon } from '../components/common/Icons';
 
 // Helper to format AI response from Markdown to HTML
 function formatAIResponse(text: string): string {
@@ -133,12 +134,65 @@ const toolDeclarations: FunctionDeclaration[] = [
     }
 ];
 
+const AiMemoryManager: React.FC<{ memories: AiMemory[], onDelete: (id: string) => void }> = ({ memories, onDelete }) => {
+    const groupedMemories = useMemo(() => {
+        const groups: { [key in AiMemoryType]: AiMemory[] } = {
+            learning: [],
+            personal: [],
+            ai: [],
+        };
+        memories.forEach(memory => {
+            if (groups[memory.type]) {
+                groups[memory.type].push(memory);
+            }
+        });
+        return groups;
+    }, [memories]);
+
+    const typeInfo = {
+        learning: { title: "🧠 Learnings", description: "Facts you've explicitly saved with @learn after a focus session." },
+        personal: { title: "👤 Personal Context", description: "Information you've told the AI to remember about you with @personal." },
+        ai: { title: "🤖 AI Inferences", description: "Context the AI has autonomously saved to improve conversations." }
+    };
+
+    return (
+        <Panel title="AI Memory Bank">
+            <p className="text-white/80 text-center text-sm mb-4">Here is what I remember to provide you with personalized coaching. You can ask me to forget things at any time.</p>
+            {(['learning', 'personal', 'ai'] as const).map(type => (
+                <div key={type} className="mb-4">
+                    <h3 className="text-lg font-bold text-white mb-1">{typeInfo[type].title}</h3>
+                    <p className="text-xs text-white/60 mb-2">{typeInfo[type].description}</p>
+                    <ul className="space-y-2 max-h-48 overflow-y-auto pr-2">
+                        {groupedMemories[type].length > 0 ? groupedMemories[type].map(memory => (
+                            <li key={memory.id} className="bg-black/20 p-3 rounded-lg flex justify-between items-start gap-2 group">
+                                <div>
+                                    <p className="text-sm text-white/90">{memory.content}</p>
+                                    <span className="text-xs text-white/50">{new Date(memory.created_at).toLocaleDateString()}</span>
+                                    {memory.tags && memory.tags.length > 0 && (
+                                        <div className="flex flex-wrap gap-1 mt-1">
+                                            {memory.tags.map(tag => <span key={tag} className="text-xs bg-purple-500/30 text-purple-300 px-1.5 py-0.5 rounded-full">{tag}</span>)}
+                                        </div>
+                                    )}
+                                </div>
+                                <button onClick={() => onDelete(memory.id)} className="p-1 text-red-400 hover:text-red-300 transition opacity-0 group-hover:opacity-100 flex-shrink-0" title="Delete Memory">
+                                    <TrashIcon />
+                                </button>
+                            </li>
+                        )) : <p className="text-center text-sm text-white/50 p-2 italic">No {type} memories yet.</p>}
+                    </ul>
+                </div>
+            ))}
+        </Panel>
+    );
+};
+
 const AICoachPage: React.FC<AICoachPageProps> = (props) => {
     const { goals, targets, projects, allCommitments, onAddTask, onAddProject, onAddTarget, onAddCommitment, chatMessages, setChatMessages, aiMemories, onMemoryChange } = props;
     
     // Agent State
     const [userInput, setUserInput] = useState('');
     const [isAgentLoading, setIsAgentLoading] = useState(false);
+    const [isMemoriesVisible, setIsMemoriesVisible] = useState(false);
     const chatEndRef = useRef<HTMLDivElement>(null);
     
     // Context Data State
@@ -174,6 +228,17 @@ const AICoachPage: React.FC<AICoachPageProps> = (props) => {
     useEffect(() => {
         chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [chatMessages]);
+
+    const handleDeleteMemory = async (id: string) => {
+        if (window.confirm("Are you sure you want the AI to forget this memory? This action cannot be undone.")) {
+            const success = await dbService.deleteAiMemory(id);
+            if (success) {
+                await onMemoryChange();
+            } else {
+                alert("Failed to delete memory. Please try again.");
+            }
+        }
+    };
 
     const handleSaveContextualMemory = async (content: string, type: 'personal' | 'ai') => {
         const contextualMemories = aiMemories.filter(m => m.type === 'personal' || m.type === 'ai');
@@ -319,32 +384,33 @@ const AICoachPage: React.FC<AICoachPageProps> = (props) => {
                 let functionResultPayload;
 
                 try {
+                    // FIX: Cast `unknown` args from Gemini function calls to their expected types.
                     if (name === 'addTask') {
-                        await onAddTask(args.text, args.poms || 1, args.dueDate || getTodayDateString(), args.projectId || null, args.tags || []);
-                        functionResultPayload = { success: true, message: `Task "${args.text}" added.` };
+                        await onAddTask(args.text as string, (args.poms as number) || 1, (args.dueDate as string) || getTodayDateString(), (args.projectId as string) || null, (args.tags as string[]) || []);
+                        functionResultPayload = { success: true, message: `Task "${args.text as string}" added.` };
                     } else if (name === 'addProject') {
-                        await onAddProject(args.name, args.description || null, args.deadline || null, {type: args.criteriaType || 'manual', value: args.criteriaValue || null});
-                        functionResultPayload = { success: true, message: `Project "${args.name}" created.` };
+                        await onAddProject(args.name as string, (args.description as string) || null, (args.deadline as string) || null, {type: (args.criteriaType as Project['completion_criteria_type']) || 'manual', value: (args.criteriaValue as number) || null});
+                        functionResultPayload = { success: true, message: `Project "${args.name as string}" created.` };
                     } else if (name === 'addTarget') {
-                        await onAddTarget(args.text, args.deadline);
-                        functionResultPayload = { success: true, message: `Target "${args.text}" set for ${args.deadline}.` };
+                        await onAddTarget(args.text as string, args.deadline as string);
+                        functionResultPayload = { success: true, message: `Target "${args.text as string}" set for ${args.deadline as string}.` };
                     } else if (name === 'addCommitment') {
-                        await onAddCommitment(args.text, args.dueDate || null);
-                        functionResultPayload = { success: true, message: `Commitment "${args.text}" recorded.` };
+                        await onAddCommitment(args.text as string, (args.dueDate as string) || null);
+                        functionResultPayload = { success: true, message: `Commitment "${args.text as string}" recorded.` };
                     } else if (name === 'saveMemory') {
-                        await handleSaveContextualMemory(args.content, args.type);
+                        await handleSaveContextualMemory(args.content as string, args.type as 'personal' | 'ai');
                         functionResultPayload = { success: true, message: `Memory saved.` };
                     } else if (name === 'updateMemory') {
-                        await dbService.updateAiMemory(args.memoryId, { content: args.newContent });
+                        await dbService.updateAiMemory(args.memoryId as string, { content: args.newContent as string });
                         await onMemoryChange();
                         functionResultPayload = { success: true, message: `Memory updated.` };
                     } else if (name === 'deleteMemory') {
-                        const deleted = await dbService.deleteAiMemory(args.memoryId);
+                        const deleted = await dbService.deleteAiMemory(args.memoryId as string);
                         if (deleted) {
                             await onMemoryChange();
-                            functionResultPayload = { success: true, message: `Memory with ID ${args.memoryId} has been deleted.` };
+                            functionResultPayload = { success: true, message: `Memory with ID ${args.memoryId as string} has been deleted.` };
                         } else {
-                            functionResultPayload = { success: false, message: `Failed to delete memory with ID ${args.memoryId}.` };
+                            functionResultPayload = { success: false, message: `Failed to delete memory with ID ${args.memoryId as string}.` };
                         }
                     } else {
                         functionResultPayload = { success: false, message: `Unknown function: ${name}` };
@@ -374,74 +440,97 @@ const AICoachPage: React.FC<AICoachPageProps> = (props) => {
 
 
     return (
-        <Panel title="🤖 AI Coach">
-             <div className="flex flex-col h-[calc(80vh-120px)] md:h-[calc(100vh-200px)] -m-4 sm:-m-6">
-                {/* Context Header */}
-                <div className="relative p-4 pt-0 bg-slate-900/30 border-b border-slate-700/80 z-10">
-                    <p className="text-center text-xs text-white/60 mb-2">Provide a date range for performance context.</p>
-                     <div className="flex flex-col sm:flex-row items-center justify-center gap-2">
-                        <input type="date" value={historyRange.start} onChange={e => setHistoryRange(p => ({...p, start: e.target.value}))} className="bg-slate-700/50 border border-slate-600 rounded-lg p-2 text-white/80 w-full text-center text-xs" style={{colorScheme: 'dark'}}/>
-                        <span className="text-white/80 text-xs">to</span>
-                        <input type="date" value={historyRange.end} onChange={e => setHistoryRange(p => ({...p, end: e.target.value}))} className="bg-slate-700/50 border border-slate-600 rounded-lg p-2 text-white/80 w-full text-center text-xs" style={{colorScheme: 'dark'}}/>
-                    </div>
-                     {isDataLoading && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-teal-400 animate-pulse"></div>}
-                </div>
-                
-                {/* Chat History */}
-                <div className="flex-grow overflow-y-auto p-4 space-y-4">
-                    {chatMessages.map((msg, index) => (
-                         <div key={index} className={`flex items-end gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                            {msg.role === 'model' && (
-                                <div className="w-8 h-8 rounded-full bg-teal-500 flex items-center justify-center shadow-lg flex-shrink-0">🤖</div>
-                            )}
-                            <div className={`max-w-xs md:max-w-md p-3 rounded-2xl text-white shadow-md ${msg.role === 'user' ? 'bg-teal-600 rounded-br-none' : 'bg-slate-700 rounded-bl-none'}`}>
-                                <div className="prose prose-sm prose-invert" dangerouslySetInnerHTML={{ __html: formatAIResponse(msg.text) }} />
-                            </div>
+        <>
+            <Panel title="🤖 AI Coach">
+                 <div className="flex flex-col h-[calc(80vh-120px)] md:h-[calc(100vh-200px)] -m-4 sm:-m-6">
+                    {/* Context Header */}
+                    <div className="relative p-4 pt-0 bg-slate-900/30 border-b border-slate-700/80 z-10">
+                        <p className="text-center text-xs text-white/60 mb-2">Provide a date range for performance context.</p>
+                         <div className="flex flex-col sm:flex-row items-center justify-center gap-2">
+                            <input type="date" value={historyRange.start} onChange={e => setHistoryRange(p => ({...p, start: e.target.value}))} className="bg-slate-700/50 border border-slate-600 rounded-lg p-2 text-white/80 w-full text-center text-xs" style={{colorScheme: 'dark'}}/>
+                            <span className="text-white/80 text-xs">to</span>
+                            <input type="date" value={historyRange.end} onChange={e => setHistoryRange(p => ({...p, end: e.target.value}))} className="bg-slate-700/50 border border-slate-600 rounded-lg p-2 text-white/80 w-full text-center text-xs" style={{colorScheme: 'dark'}}/>
                         </div>
-                    ))}
-                    {isAgentLoading && (
-                         <div className="flex items-end gap-3 justify-start">
-                            <div className="w-8 h-8 rounded-full bg-teal-500 flex items-center justify-center shadow-lg flex-shrink-0">🤖</div>
-                            <div className="p-3 rounded-2xl bg-slate-700 rounded-bl-none text-white">
-                                <div className="flex items-center gap-1">
-                                    <span className="w-2 h-2 bg-white/70 rounded-full animate-bounce" style={{ animationDelay: '0s' }}></span>
-                                    <span className="w-2 h-2 bg-white/70 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></span>
-                                    <span className="w-2 h-2 bg-white/70 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></span>
+                         {isDataLoading && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-teal-400 animate-pulse"></div>}
+                    </div>
+                    
+                    {/* Chat History */}
+                    <div className="flex-grow overflow-y-auto p-4 space-y-4">
+                        {chatMessages.map((msg, index) => (
+                             <div key={index} className={`flex items-end gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                {msg.role === 'model' && (
+                                    <div className="w-8 h-8 rounded-full bg-teal-500 flex items-center justify-center shadow-lg flex-shrink-0">🤖</div>
+                                )}
+                                <div className={`max-w-xs md:max-w-md p-3 rounded-2xl text-white shadow-md ${msg.role === 'user' ? 'bg-teal-600 rounded-br-none' : 'bg-slate-700 rounded-bl-none'}`}>
+                                    <div className="prose prose-sm prose-invert" dangerouslySetInnerHTML={{ __html: formatAIResponse(msg.text) }} />
                                 </div>
                             </div>
-                        </div>
-                    )}
-                    <div ref={chatEndRef} />
-                </div>
+                        ))}
+                        {isAgentLoading && (
+                             <div className="flex items-end gap-3 justify-start">
+                                <div className="w-8 h-8 rounded-full bg-teal-500 flex items-center justify-center shadow-lg flex-shrink-0">🤖</div>
+                                <div className="p-3 rounded-2xl bg-slate-700 rounded-bl-none text-white">
+                                    <div className="flex items-center gap-1">
+                                        <span className="w-2 h-2 bg-white/70 rounded-full animate-bounce" style={{ animationDelay: '0s' }}></span>
+                                        <span className="w-2 h-2 bg-white/70 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></span>
+                                        <span className="w-2 h-2 bg-white/70 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></span>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                        <div ref={chatEndRef} />
+                    </div>
 
-                {/* Input Form */}
-                 <div className="p-3 bg-slate-900/50 border-t border-slate-700/80 z-10">
-                     <form onSubmit={handleAgentSubmit} className="relative flex gap-3">
-                        <input
-                            type="text"
-                            value={userInput}
-                            onChange={e => setUserInput(e.target.value)}
-                            placeholder="Message your AI Coach..."
-                            disabled={isAgentLoading || isDataLoading}
-                            className="flex-grow bg-slate-700/50 border border-slate-600 rounded-full py-2 px-4 text-white placeholder:text-white/50 focus:outline-none focus:ring-2 focus:ring-teal-400 transition"
-                        />
-                        <button type="submit" disabled={isAgentLoading || isDataLoading || !userInput.trim()} className="w-10 h-10 flex-shrink-0 bg-gradient-to-br from-teal-500 to-cyan-600 text-white rounded-full flex items-center justify-center transition-transform hover:scale-110 disabled:opacity-50 disabled:scale-100 disabled:cursor-not-allowed">
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" /></svg>
-                        </button>
-                    </form>
-                    <p className="text-center text-xs text-slate-500 mt-2 px-2">Use <code>@personal</code> to save key info. E.g., <code>@personal My main goal is to finish my thesis.</code></p>
-                 </div>
+                    {/* Input Form */}
+                     <div className="p-3 bg-slate-900/50 border-t border-slate-700/80 z-10">
+                         <form onSubmit={handleAgentSubmit} className="relative flex gap-3">
+                            <input
+                                type="text"
+                                value={userInput}
+                                onChange={e => setUserInput(e.target.value)}
+                                placeholder="Message your AI Coach..."
+                                disabled={isAgentLoading || isDataLoading}
+                                className="flex-grow bg-slate-700/50 border border-slate-600 rounded-full py-2 px-4 text-white placeholder:text-white/50 focus:outline-none focus:ring-2 focus:ring-teal-400 transition"
+                            />
+                            <button type="submit" disabled={isAgentLoading || isDataLoading || !userInput.trim()} className="w-10 h-10 flex-shrink-0 bg-gradient-to-br from-teal-500 to-cyan-600 text-white rounded-full flex items-center justify-center transition-transform hover:scale-110 disabled:opacity-50 disabled:scale-100 disabled:cursor-not-allowed">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" /></svg>
+                            </button>
+                        </form>
+                        <p className="text-center text-xs text-slate-500 mt-2 px-2">Use <code>@personal</code> to save key info. E.g., <code>@personal My main goal is to finish my thesis.</code></p>
+                     </div>
+                </div>
+                <style>{`
+                  .prose-invert ul { margin-top: 0.5em; margin-bottom: 0.5em; }
+                  .prose-invert li { margin-top: 0.2em; margin-bottom: 0.2em; }
+                  @keyframes bounce {
+                    0%, 100% { transform: translateY(0); }
+                    50% { transform: translateY(-4px); }
+                  }
+                  .animate-bounce { animation: bounce 1s infinite ease-in-out; }
+                `}</style>
+            </Panel>
+            
+            <div className="text-center my-4">
+                <button
+                    onClick={() => setIsMemoriesVisible(v => !v)}
+                    className="text-sm text-cyan-300 hover:text-cyan-200 font-semibold px-4 py-2 rounded-full hover:bg-white/10 transition flex items-center gap-2 mx-auto"
+                    aria-expanded={isMemoriesVisible}
+                >
+                    {isMemoriesVisible ? '▼ Hide Memory Bank' : '► Show Memory Bank'}
+                </button>
             </div>
+
+            {isMemoriesVisible && (
+                <div className="animate-fadeIn">
+                    <AiMemoryManager memories={aiMemories} onDelete={handleDeleteMemory} />
+                </div>
+            )}
+            
             <style>{`
-              .prose-invert ul { margin-top: 0.5em; margin-bottom: 0.5em; }
-              .prose-invert li { margin-top: 0.2em; margin-bottom: 0.2em; }
-              @keyframes bounce {
-                0%, 100% { transform: translateY(0); }
-                50% { transform: translateY(-4px); }
-              }
-              .animate-bounce { animation: bounce 1s infinite ease-in-out; }
+              @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+              .animate-fadeIn { animation: fadeIn 0.5s ease-out forwards; }
             `}</style>
-        </Panel>
+        </>
     );
 };
 
