@@ -173,8 +173,6 @@ interface CategoryTimelineChartProps {
 const CategoryTimelineChart = React.memo(({ tasks, history, historyRange }: CategoryTimelineChartProps) => {
     const [view, setView] = useState<'month' | 'week' | 'custom'>('week');
     const [visibleTags, setVisibleTags] = useState<string[]>([]);
-    const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-    const dropdownRef = useRef<HTMLDivElement>(null);
 
     const chartData = useMemo(() => {
         let startDate: Date;
@@ -250,22 +248,15 @@ const CategoryTimelineChart = React.memo(({ tasks, history, historyRange }: Cate
         setVisibleTags(chartData.tags);
     }, [chartData.tags]);
 
-    useEffect(() => {
-        const handleClickOutside = (event: MouseEvent) => {
-            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-                setIsDropdownOpen(false);
-            }
-        };
-        document.addEventListener("mousedown", handleClickOutside);
-        return () => document.removeEventListener("mousedown", handleClickOutside);
-    }, [dropdownRef]);
-
-    const handleTagVisibilityChange = (tag: string) => {
-        setVisibleTags(prev => 
-            prev.includes(tag) 
-                ? prev.filter(t => t !== tag) 
-                : [...prev, tag]
-        );
+    const handleLegendClick = (o: any) => {
+        const { dataKey } = o;
+        if (chartData.tags.includes(dataKey)) {
+            setVisibleTags(prev => 
+                prev.includes(dataKey) 
+                    ? prev.filter(t => t !== dataKey) 
+                    : [...prev, dataKey]
+            );
+        }
     };
 
     const COLORS = ['#F59E0B', '#10B981', '#38BDF8', '#EC4899', '#84CC16', '#F43F5E', '#6366F1'];
@@ -293,36 +284,6 @@ const CategoryTimelineChart = React.memo(({ tasks, history, historyRange }: Cate
                     Align to Range
                 </button>
             </div>
-            {chartData.tags.length > 0 && (
-                 <div className="relative max-w-md mx-auto mb-4" ref={dropdownRef}>
-                    <button
-                        type="button"
-                        className="inline-flex justify-between w-full rounded-md border border-slate-600 shadow-sm px-4 py-2 bg-slate-800 text-sm font-medium text-slate-300 hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-900 focus:ring-cyan-500"
-                        onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                    >
-                        <span>Select Categories ({visibleTags.length} / {chartData.tags.length})</span>
-                        <svg className="-mr-1 ml-2 h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
-                    </button>
-                    {isDropdownOpen && (
-                        <div className="origin-top-right absolute right-0 mt-2 w-full rounded-md shadow-lg bg-slate-700 ring-1 ring-black ring-opacity-5 z-20">
-                            <div className="py-1 max-h-60 overflow-y-auto" role="menu" aria-orientation="vertical">
-                                {chartData.tags.map((tag, index) => (
-                                    <div key={tag} onClick={() => handleTagVisibilityChange(tag)} className="flex items-center px-4 py-2 text-sm text-slate-200 hover:bg-slate-600 cursor-pointer" role="menuitem">
-                                        <div className="w-4 h-4 rounded-sm mr-3 flex-shrink-0" style={{ backgroundColor: COLORS[index % COLORS.length] }}></div>
-                                        <input
-                                            type="checkbox"
-                                            className="h-4 w-4 rounded border-slate-500 text-cyan-600 focus:ring-cyan-500 pointer-events-none"
-                                            checked={visibleTags.includes(tag)}
-                                            readOnly
-                                        />
-                                        <span className="ml-3 truncate">{tag.charAt(0).toUpperCase() + tag.slice(1)}</span>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-                </div>
-            )}
             {chartData.data.length > 0 && chartData.tags.length > 0 ? (
                  <div className="h-96 mt-4">
                     <ResponsiveContainer width="100%" height="100%">
@@ -331,9 +292,9 @@ const CategoryTimelineChart = React.memo(({ tasks, history, historyRange }: Cate
                             <XAxis dataKey="date" stroke="rgba(255,255,255,0.7)" tick={{ fontSize: 10 }} />
                             <YAxis stroke="rgba(255,255,255,0.7)" unit="m" />
                             <Tooltip contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }} itemStyle={{ color: 'white' }} labelStyle={{ color: 'white', fontWeight: 'bold' }} />
-                            <Legend wrapperStyle={{fontSize: "12px"}}/>
+                            <Legend wrapperStyle={{fontSize: "12px", cursor: 'pointer'}} onClick={handleLegendClick}/>
                             {chartData.tags.map((tag, index) => (
-                                visibleTags.includes(tag) && <Line 
+                                <Line 
                                     key={tag} 
                                     type="monotone" 
                                     dataKey={tag} 
@@ -342,6 +303,7 @@ const CategoryTimelineChart = React.memo(({ tasks, history, historyRange }: Cate
                                     strokeWidth={2}
                                     dot={{ r: 2 }}
                                     activeDot={{ r: 6 }}
+                                    hide={!visibleTags.includes(tag)}
                                 />
                             ))}
                         </LineChart>
@@ -360,6 +322,20 @@ const CategoryTimelineChart = React.memo(({ tasks, history, historyRange }: Cate
 const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, projects, allProjects, targets, allTargets, historyRange, setHistoryRange, settings, pomodoroHistory, consistencyLogs, timelinePomodoroHistory }) => {
     const [selectedDay, setSelectedDay] = useState<string>(getTodayDateString());
     const [detailViewType, setDetailViewType] = useState<'day' | 'week' | 'month' | 'all'>('day');
+    
+    const [visibleLines, setVisibleLines] = useState({
+        completedTasks: true,
+        incompleteTasks: false,
+        totalTasks: false,
+    });
+
+    const handleLegendClick = (o: any) => {
+        const { dataKey } = o;
+        if (Object.keys(visibleLines).includes(dataKey)) {
+            setVisibleLines(prev => ({ ...prev, [dataKey]: !prev[dataKey as keyof typeof prev] }));
+        }
+    };
+
 
     const handleSetRange = (days: number) => {
         const today = getTodayDateString();
@@ -380,7 +356,7 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                 projectBreakdownData: [{ name: 'Completed', value: 0 }, { name: 'Pending', value: 0 }],
                 tagAnalysisData: [],
                 focusLineChartData: [],
-                dailyCompletedTasksChartData: []
+                dailyTaskVolumeChartData: []
             };
         }
 
@@ -482,29 +458,32 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
             focusMinutes: minutes,
         }));
 
-        const completedTasksPerDay = new Map<string, number>();
+        const dailyTaskStats = new Map<string, { total: number, completed: number }>();
         if (historyRange.start && historyRange.end) {
             let currentDate = new Date(historyRange.start + 'T00:00:00');
             const endDate = new Date(historyRange.end + 'T00:00:00');
             while(currentDate <= endDate) {
                 const dateString = currentDate.toISOString().split('T')[0];
-                completedTasksPerDay.set(dateString, 0);
+                dailyTaskStats.set(dateString, { total: 0, completed: 0 });
                 currentDate.setDate(currentDate.getDate() + 1);
             }
         }
 
-        allTasks.forEach(task => {
-            if (task.completed_at) {
-                const completedDate = task.completed_at.split('T')[0];
-                if (completedTasksPerDay.has(completedDate)) {
-                    completedTasksPerDay.set(completedDate, completedTasksPerDay.get(completedDate)! + 1);
+        tasks.forEach(task => {
+            if (dailyTaskStats.has(task.due_date)) {
+                const dayStat = dailyTaskStats.get(task.due_date)!;
+                dayStat.total++;
+                if (task.completed_at) {
+                    dayStat.completed++;
                 }
             }
         });
 
-        const dailyCompletedTasksChartData = Array.from(completedTasksPerDay.entries()).map(([dateString, count]) => ({
+        const dailyTaskVolumeChartData = Array.from(dailyTaskStats.entries()).map(([dateString, stats]) => ({
             date: new Date(dateString + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-            completedTasks: count,
+            completedTasks: stats.completed,
+            incompleteTasks: stats.total - stats.completed,
+            totalTasks: stats.total,
         }));
 
         const totalCompletedTasks = allTasks.filter(t => t.completed_at).length;
@@ -560,7 +539,7 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
         return {
             totalFocus, completedCount, totalTasks, pomsDone, pomsEst, projectsCompleted, targetsCompleted,
             totalProjectsInRange, totalTargetsInRange,
-            lineChartData, taskBreakdownData, projectBreakdownData, tagAnalysisData, focusLineChartData, dailyCompletedTasksChartData
+            lineChartData, taskBreakdownData, projectBreakdownData, tagAnalysisData, focusLineChartData, dailyTaskVolumeChartData
         };
     }, [logs, tasks, allTasks, projects, allProjects, targets, allTargets, historyRange, settings, pomodoroHistory]);
 
@@ -718,16 +697,18 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                     </div>
                 </div>
                 <div>
-                    <h3 className="text-lg font-semibold text-white text-center mb-2">Daily Completed Tasks</h3>
+                    <h3 className="text-lg font-semibold text-white text-center mb-2">Daily Task Volume</h3>
                     <div className="h-72">
                          <ResponsiveContainer width="100%" height="100%">
-                            <LineChart data={aggregatedData.dailyCompletedTasksChartData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+                            <LineChart data={aggregatedData.dailyTaskVolumeChartData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.2)" />
                                 <XAxis dataKey="date" stroke="rgba(255,255,255,0.7)" tick={{ fontSize: 10 }} />
                                 <YAxis stroke="rgba(255,255,255,0.7)" allowDecimals={false} />
                                 <Tooltip contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }} itemStyle={{ color: 'white' }} labelStyle={{ color: 'white', fontWeight: 'bold' }} />
-                                <Legend wrapperStyle={{fontSize: "12px"}}/>
-                                <Line type="monotone" dataKey="completedTasks" name="Completed Tasks" stroke="#818cf8" activeDot={{ r: 8 }} />
+                                <Legend wrapperStyle={{fontSize: "12px", cursor: 'pointer'}} onClick={handleLegendClick} />
+                                <Line type="monotone" dataKey="completedTasks" name="Completed" stroke="#34D399" activeDot={{ r: 8 }} hide={!visibleLines.completedTasks} />
+                                <Line type="monotone" dataKey="incompleteTasks" name="Incomplete" stroke="#F87171" activeDot={{ r: 8 }} hide={!visibleLines.incompleteTasks} />
+                                <Line type="monotone" dataKey="totalTasks" name="Total" stroke="#F59E0B" activeDot={{ r: 8 }} hide={!visibleLines.totalTasks} />
                             </LineChart>
                         </ResponsiveContainer>
                     </div>
