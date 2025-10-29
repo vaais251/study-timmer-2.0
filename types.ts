@@ -47,6 +47,8 @@ export interface Commitment {
     text: string;
     due_date: string | null;
     completed_at: string | null;
+    broken_at: string | null;
+    status: 'active' | 'completed' | 'broken';
 }
 
 // Corresponds to the `targets` table
@@ -56,6 +58,7 @@ export interface Target {
     text: string;
     deadline: string;
     completed_at: string | null;
+    status: 'active' | 'completed' | 'incomplete';
 }
 
 // Corresponds to the `tasks` table

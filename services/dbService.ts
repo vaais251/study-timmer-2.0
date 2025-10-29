@@ -610,6 +610,8 @@ export const addTarget = async (text: string, deadline: string): Promise<Target[
 }
 
 export const updateTarget = async (id: string, updates: Partial<Target>): Promise<Target[] | null> => {
+    // The logic to set 'status' has been removed as the 'status' column does not exist in the DB.
+    // The status is now derived on the client-side.
     const { error } = await supabase.from('targets').update(updates).eq('id', id);
     if (error) console.error("Error updating target:", JSON.stringify(error, null, 2));
     return error ? null : await getTargets();
@@ -619,6 +621,14 @@ export const deleteTarget = async (id: string): Promise<Target[] | null> => {
     const { error } = await supabase.from('targets').delete().eq('id', id);
     return error ? null : await getTargets();
 }
+
+export const checkAndUpdatePastDueTargets = async (): Promise<Target[] | null> => {
+    // This function was causing an error because the 'targets.status' column does not exist.
+    // The logic to determine a target's status is now handled on the client-side
+    // by deriving it from 'completed_at' and 'deadline' fields.
+    // This function now returns null to prevent any database operations and errors.
+    return null;
+};
 
 
 // --- Commitments ---
@@ -658,14 +668,33 @@ export const updateCommitment = async (id: string, updates: { text: string; dueD
     return getCommitments();
 }
 
-export const setCommitmentCompletion = async (id: string, completed_at: string | null): Promise<Commitment[] | null> => {
-    const { error } = await supabase.from('commitments').update({ completed_at }).eq('id', id);
+export const setCommitmentCompletion = async (id: string, isComplete: boolean): Promise<Commitment[] | null> => {
+    const updates = isComplete
+        ? { completed_at: new Date().toISOString(), status: 'completed' as const, broken_at: null }
+        : { completed_at: null, status: 'active' as const, broken_at: null };
+
+    const { error } = await supabase.from('commitments').update(updates).eq('id', id);
     if (error) {
         console.error("Error setting commitment completion:", JSON.stringify(error, null, 2));
         return null;
     }
     return getCommitments();
-}
+};
+
+export const markCommitmentBroken = async (id: string): Promise<Commitment[] | null> => {
+    const updates = {
+        status: 'broken' as const,
+        broken_at: new Date().toISOString(),
+        completed_at: null,
+    };
+    const { error } = await supabase.from('commitments').update(updates).eq('id', id);
+    if (error) {
+        console.error("Error marking commitment as broken:", JSON.stringify(error, null, 2));
+        return null;
+    }
+    return getCommitments();
+};
+
 
 export const deleteCommitment = async (id: string): Promise<Commitment[] | null> => {
     const { error } = await supabase.from('commitments').delete().eq('id', id);
@@ -675,6 +704,49 @@ export const deleteCommitment = async (id: string): Promise<Commitment[] | null>
     }
     return getCommitments();
 }
+
+export const checkAndUpdatePastDueCommitments = async (): Promise<Commitment[] | null> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+    const today = getTodayDateString();
+
+    // Find active commitments with a due date that has passed.
+    const { data: pastDueCommitments, error: findError } = await supabase
+        .from('commitments')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('status', 'active')
+        .not('due_date', 'is', null)
+        .lt('due_date', today);
+    
+    if (findError) {
+        console.error("Error finding past due commitments:", JSON.stringify(findError, null, 2));
+        return null; // Return null on error, don't proceed.
+    }
+
+    if (!pastDueCommitments || pastDueCommitments.length === 0) {
+        return null; // No commitments to update, return null to signal no state change needed.
+    }
+
+    const idsToUpdate = pastDueCommitments.map(c => c.id);
+
+    const { error: updateError } = await supabase
+        .from('commitments')
+        .update({
+            status: 'completed',
+            completed_at: new Date().toISOString(),
+        })
+        .in('id', idsToUpdate);
+    
+    if (updateError) {
+        console.error("Error updating past due commitments:", JSON.stringify(updateError, null, 2));
+        return null;
+    }
+
+    // On success, return the fresh list of all commitments.
+    return getCommitments();
+};
+
 
 
 // --- Daily Logs ---

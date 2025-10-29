@@ -126,9 +126,9 @@ const App: React.FC = () => {
     const tasksFuture = useMemo(() => tasks.filter(t => t.due_date > tomorrowString && !t.completed_at), [tasks, tomorrowString]);
     const completedToday = useMemo(() => tasks.filter(t => !!t.completed_at && t.due_date === todayString), [tasks, todayString]);
     
-    // Derived state for commitments: filter out expired ones
+    // Derived state for commitments: filter out expired ones for AI coach context
     const activeCommitments = useMemo(() => {
-        return allCommitments.filter(c => !c.due_date || c.due_date >= todayString);
+        return allCommitments.filter(c => c.status === 'active' && (!c.due_date || c.due_date >= todayString));
     }, [allCommitments, todayString]);
 
 
@@ -213,9 +213,30 @@ const App: React.FC = () => {
                 setProjects(userProjects);
             }
 
+            // Check for and auto-complete past-due commitments
+            const updatedCommitmentsAfterCheck = await dbService.checkAndUpdatePastDueCommitments();
+            if (updatedCommitmentsAfterCheck) {
+                setAllCommitments(updatedCommitmentsAfterCheck);
+            } else if (userCommitments) {
+                setAllCommitments(userCommitments);
+            }
+
             if (userGoals) setGoals(userGoals);
-            if (userTargets) setTargets(userTargets);
-            if (userCommitments) setAllCommitments(userCommitments);
+            
+            // FIX: The `status` column doesn't exist. Derive it on the client-side.
+            if (userTargets) {
+                const augmentedTargets = userTargets.map(t => {
+                    const status: Target['status'] = t.completed_at
+                        ? 'completed'
+                        : t.deadline < today
+                        ? 'incomplete'
+                        : 'active';
+                    return { ...t, status };
+                });
+                setTargets(augmentedTargets);
+            }
+
+
             if (userAiMemories) setAiMemories(userAiMemories);
             
             if (!didRestoreFromStorage) {
@@ -716,18 +737,51 @@ const App: React.FC = () => {
     // --- Target Handlers ---
     const handleAddTarget = async (text: string, deadline: string) => {
         const newTargets = await dbService.addTarget(text, deadline);
-        if (newTargets) setTargets(newTargets);
+        if (newTargets) {
+            const today = getTodayDateString();
+            const augmentedTargets = newTargets.map(t => {
+                const status: Target['status'] = t.completed_at
+                    ? 'completed'
+                    : t.deadline < today
+                    ? 'incomplete'
+                    : 'active';
+                return { ...t, status };
+            });
+            setTargets(augmentedTargets);
+        }
     };
     
     const handleUpdateTarget = async (id: string, updates: Partial<Target>) => {
         const newTargets = await dbService.updateTarget(id, updates);
-        if (newTargets) setTargets(newTargets);
+        if (newTargets) {
+            const today = getTodayDateString();
+            const augmentedTargets = newTargets.map(t => {
+                const status: Target['status'] = t.completed_at
+                    ? 'completed'
+                    : t.deadline < today
+                    ? 'incomplete'
+                    : 'active';
+                return { ...t, status };
+            });
+            setTargets(augmentedTargets);
+        }
     };
 
     const handleDeleteTarget = async (id: string) => {
          if (window.confirm("Delete this target?")) {
             const newTargets = await dbService.deleteTarget(id);
-            if (newTargets) setTargets(newTargets);
+            if (newTargets) {
+                 const today = getTodayDateString();
+                const augmentedTargets = newTargets.map(t => {
+                    const status: Target['status'] = t.completed_at
+                        ? 'completed'
+                        : t.deadline < today
+                        ? 'incomplete'
+                        : 'active';
+                    return { ...t, status };
+                });
+                setTargets(augmentedTargets);
+            }
         }
     };
 
@@ -750,10 +804,15 @@ const App: React.FC = () => {
     };
 
     const handleSetCommitmentCompletion = async (id: string, isComplete: boolean) => {
-        const newCommitments = await dbService.setCommitmentCompletion(id, isComplete ? new Date().toISOString() : null);
+        const newCommitments = await dbService.setCommitmentCompletion(id, isComplete);
         if (newCommitments) setAllCommitments(newCommitments);
     };
     
+    const handleMarkCommitmentBroken = async (id: string) => {
+        const newCommitments = await dbService.markCommitmentBroken(id);
+        if (newCommitments) setAllCommitments(newCommitments);
+    };
+
     // --- AI Coach Specific Task Adder (for promise-based flow) ---
     const handleAddTaskFromAI = async (text: string, poms: number, dueDate: string, projectId: string | null, tags: string[]): Promise<void> => {
         const newTasks = await dbService.addTask(text, poms, dueDate, projectId, tags);
@@ -841,7 +900,7 @@ const App: React.FC = () => {
                     goals={goals}
                     targets={targets}
                     projects={projects}
-                    commitments={activeCommitments}
+                    commitments={allCommitments}
                     onAddGoal={handleAddGoal}
                     onUpdateGoal={handleUpdateGoal}
                     onDeleteGoal={handleDeleteGoal}
@@ -856,6 +915,7 @@ const App: React.FC = () => {
                     onUpdateCommitment={handleUpdateCommitment}
                     onDeleteCommitment={handleDeleteCommitment}
                     onSetCommitmentCompletion={handleSetCommitmentCompletion}
+                    onMarkCommitmentBroken={handleMarkCommitmentBroken}
                 />;
             case 'settings':
                 return <SettingsPage settings={settings} onSave={handleSaveSettings} />;

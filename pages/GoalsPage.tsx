@@ -1,10 +1,7 @@
-
-
-
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Goal, Target, Project, Task, PomodoroHistory, Commitment, ProjectUpdate } from '../types';
 import Panel from '../components/common/Panel';
-import { TrashIcon, EditIcon, StarIcon, LockIcon, CheckIcon, CalendarIcon } from '../components/common/Icons';
+import { TrashIcon, EditIcon, StarIcon, LockIcon, CheckIcon } from '../components/common/Icons';
 import * as dbService from '../services/dbService';
 import Spinner from '../components/common/Spinner';
 import { getTodayDateString, getMonthStartDateString } from '../utils/date';
@@ -400,9 +397,8 @@ const TargetItem: React.FC<{
     const [editText, setEditText] = useState(target.text);
     const [editDeadline, setEditDeadline] = useState(target.deadline);
     
-    const todayString = new Date().toISOString().split('T')[0];
-    const isCompleted = !!target.completed_at;
-    const isDue = !isCompleted && target.deadline < todayString;
+    const isCompleted = target.status === 'completed';
+    const isIncomplete = target.status === 'incomplete';
     const isOld = isOlderThanOrEqualToTwoDays(target.created_at);
 
     const handleSave = () => {
@@ -437,7 +433,7 @@ const TargetItem: React.FC<{
     let textColor = 'text-white';
     if (isCompleted) {
         bgColor = 'bg-white/5 text-white/50';
-    } else if (isDue) {
+    } else if (isIncomplete) {
         bgColor = 'bg-red-900/40';
         textColor = 'text-red-300';
     }
@@ -449,7 +445,7 @@ const TargetItem: React.FC<{
                     type="checkbox" 
                     checked={isCompleted} 
                     onChange={(e) => onUpdateTarget(target.id, { completed_at: e.target.checked ? new Date().toISOString() : null })} 
-                    disabled={isCompleted || isDue || isOld}
+                    disabled={isCompleted || isOld}
                     className="h-5 w-5 rounded bg-white/20 border-white/30 text-green-400 focus:ring-green-400 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0" 
                 />
                 <span className={`${isCompleted ? 'line-through' : ''} ${textColor}`}>
@@ -457,7 +453,7 @@ const TargetItem: React.FC<{
                 </span>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
-                {isDue && <span className="text-xs bg-red-500/50 text-white px-2 py-1 rounded-full font-bold">DUE</span>}
+                {isIncomplete && <span className="text-xs bg-red-500/50 text-white px-2 py-1 rounded-full font-bold">INCOMPLETE</span>}
                 {!isCompleted && !isOld && <button onClick={() => setIsEditing(true)} className="p-1 text-sky-300 hover:text-sky-200 transition" title="Edit Target"><EditIcon /></button>}
                 <span className="text-xs bg-black/20 px-2 py-1 rounded-full">{new Date(target.deadline + 'T00:00:00').toLocaleDateString()}</span>
                 <button onClick={() => onDeleteTarget(target.id)} className="p-1 text-red-400 hover:text-red-300 transition" title="Delete Target"><TrashIcon /></button>
@@ -542,35 +538,92 @@ const GoalItem: React.FC<{
 };
 
 // --- Commitments Components ---
+const useCommitmentStatus = (commitment: Commitment) => {
+    return useMemo(() => {
+        const now = new Date();
+        const createdAt = new Date(commitment.created_at);
+        const ageInMillis = now.getTime() - createdAt.getTime();
+        
+        // Constants
+        const TWO_HOURS_IN_MS = 2 * 60 * 60 * 1000;
+        const ONE_MONTH_IN_MS = 30 * 24 * 60 * 60 * 1000; // Approx
+
+        // Basic states
+        const isCompleted = commitment.status === 'completed';
+        const isBroken = commitment.status === 'broken';
+        const isTerminated = isCompleted || isBroken;
+        const isGracePeriod = ageInMillis <= TWO_HOURS_IN_MS;
+
+        // Editability (only in grace period)
+        const isEditable = !isTerminated && isGracePeriod;
+        const isDeletable = !isTerminated && isGracePeriod;
+        
+        // New "canBeCompleted" logic
+        let canBeCompleted = false;
+        if (!isTerminated && !isGracePeriod) {
+            if (commitment.due_date) {
+                // With due date, can't be manually completed.
+                canBeCompleted = false; 
+            } else {
+                // Without due date, can be completed after one month.
+                canBeCompleted = ageInMillis > ONE_MONTH_IN_MS;
+            }
+        }
+
+        // "canBeBroken" logic remains the same: any time after grace period.
+        const canBeBroken = !isTerminated && !isGracePeriod;
+
+        // New lock reason logic
+        let lockReason = '';
+        if (isTerminated) {
+            lockReason = `This commitment is already ${commitment.status}.`;
+        } else if (isGracePeriod) {
+            const timeLeft = Math.ceil((TWO_HOURS_IN_MS - ageInMillis) / (60 * 1000));
+            lockReason = `Editing is allowed for ${timeLeft} more minutes. Actions are locked during this grace period.`;
+        } else { // After grace period
+            if (commitment.due_date) {
+                lockReason = "This commitment will complete automatically after its due date. It can be marked as broken at any time.";
+            } else {
+                if (ageInMillis <= ONE_MONTH_IN_MS) {
+                    const daysLeft = 30 - Math.floor(ageInMillis / (24 * 60 * 60 * 1000));
+                    lockReason = `This commitment is locked. You can mark it complete in ~${daysLeft} days, or break it now.`;
+                } else {
+                    lockReason = "This commitment is unlocked. You can now mark it as complete or broken.";
+                }
+            }
+        }
+        
+        // Due date status for UI display
+        const dueDate = commitment.due_date ? new Date(commitment.due_date + 'T23:59:59') : null;
+        const isPastDue = dueDate ? now > dueDate : false;
+
+        return {
+            isCompleted,
+            isBroken,
+            isTerminated,
+            isEditable,
+            isDeletable,
+            canBeCompleted,
+            canBeBroken,
+            lockReason,
+            isPastDue,
+            isGracePeriod
+        };
+    }, [commitment]);
+};
+
 const CommitmentItem: React.FC<{
     commitment: Commitment;
     onUpdate: (id: string, updates: { text: string; dueDate: string | null; }) => void;
     onDelete: (id: string) => void;
     onSetCompletion: (id: string, isComplete: boolean) => void;
-}> = ({ commitment, onUpdate, onDelete, onSetCompletion }) => {
+    onMarkAsBroken: (id: string) => void;
+}> = ({ commitment, onUpdate, onDelete, onSetCompletion, onMarkAsBroken }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [editText, setEditText] = useState(commitment.text);
     const [editDueDate, setEditDueDate] = useState(commitment.due_date || '');
-    const isComplete = !!commitment.completed_at;
 
-    const { isEditable, reason } = useMemo(() => {
-        if (isComplete) return { isEditable: false, reason: 'Editing is disabled for completed commitments.' };
-
-        const ageInMillis = new Date().getTime() - new Date(commitment.created_at).getTime();
-        const oneDayInMillis = 24 * 60 * 60 * 1000;
-        const twentyOneDaysInMillis = 21 * oneDayInMillis;
-        
-        if (ageInMillis <= oneDayInMillis) {
-            return { isEditable: true, reason: 'Editable for the first 24 hours.' };
-        }
-        if (ageInMillis > twentyOneDaysInMillis) {
-            return { isEditable: true, reason: 'Editing re-enabled after 21 days.' };
-        }
-        
-        const daysRemaining = Math.ceil((twentyOneDaysInMillis - ageInMillis) / oneDayInMillis);
-        return { isEditable: false, reason: `Locked for reflection. Unlocks in ${daysRemaining} day(s).` };
-    }, [commitment.created_at, isComplete]);
-    
+    const { isTerminated, isEditable, isDeletable, canBeCompleted, canBeBroken, lockReason, isPastDue } = useCommitmentStatus(commitment);
 
     const handleSave = () => {
         if (editText.trim()) {
@@ -604,34 +657,42 @@ const CommitmentItem: React.FC<{
         )
     }
 
+    const statusStyles = {
+        active: 'bg-black/20',
+        completed: 'bg-green-900/40 opacity-70',
+        broken: 'bg-red-900/40 opacity-70',
+    };
+
     return (
-        <li className={`flex items-start justify-between gap-4 p-4 rounded-lg bg-black/20 ${isComplete ? 'opacity-50' : ''}`}>
+        <li className={`flex flex-col sm:flex-row sm:items-start justify-between gap-4 p-4 rounded-lg ${statusStyles[commitment.status]}`}>
              <div className="flex items-start gap-3 flex-grow min-w-0">
-                <input
-                    type="checkbox"
-                    checked={isComplete}
-                    onChange={(e) => onSetCompletion(commitment.id, e.target.checked)}
-                    className="h-5 w-5 rounded bg-white/20 border-white/30 text-green-400 focus:ring-green-400 flex-shrink-0 cursor-pointer mt-1"
-                    aria-label={`Mark commitment as ${isComplete ? 'incomplete' : 'complete'}`}
-                />
                 <div className="flex-grow">
-                    <p className={`text-white ${isComplete ? 'line-through' : ''}`}>{commitment.text}</p>
-                    <div className="text-xs text-white/60 mt-1 flex gap-4">
+                    <p className={`text-white ${isTerminated ? 'line-through' : ''}`}>{commitment.text}</p>
+                    <div className="text-xs text-white/60 mt-1 flex flex-wrap gap-x-4 gap-y-1">
                         <span>Committed: {new Date(commitment.created_at).toLocaleDateString()}</span>
-                        {commitment.due_date && <span>Due: {new Date(commitment.due_date+'T00:00:00').toLocaleDateString()}</span>}
+                        {commitment.due_date && <span className={isPastDue && !isTerminated ? 'font-bold text-amber-400' : ''}>Due: {new Date(commitment.due_date+'T00:00:00').toLocaleDateString()}</span>}
+                        {commitment.completed_at && <span className="text-green-400">Completed: {new Date(commitment.completed_at).toLocaleDateString()}</span>}
+                        {commitment.broken_at && <span className="text-red-400">Broken: {new Date(commitment.broken_at).toLocaleDateString()}</span>}
                     </div>
                 </div>
             </div>
-            <div className="flex items-center gap-1 flex-shrink-0">
-                {isEditable ? (
+            <div className="flex items-center gap-1 flex-shrink-0 self-start sm:self-center">
+                {!isTerminated && (
+                    <>
+                        <button onClick={() => onSetCompletion(commitment.id, true)} disabled={!canBeCompleted} className="p-2 text-green-400 hover:text-green-300 disabled:text-green-400/30 disabled:cursor-not-allowed transition" title={canBeCompleted ? "Mark as Completed" : lockReason}><CheckIcon /></button>
+                        <button onClick={() => onMarkAsBroken(commitment.id)} disabled={!canBeBroken} className="p-2 text-red-400 hover:text-red-300 disabled:text-red-400/30 disabled:cursor-not-allowed transition" title={canBeBroken ? "Mark as Broken" : lockReason}>
+                            <svg className="w-6 h-6 stroke-current" viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                        </button>
+                    </>
+                )}
+                {isEditable && isDeletable ? (
                     <>
                         <button onClick={() => setIsEditing(true)} className="p-2 text-sky-300 hover:text-sky-200 transition" title="Edit Commitment"><EditIcon /></button>
                         <button onClick={() => onDelete(commitment.id)} className="p-2 text-red-400 hover:text-red-300 transition" title="Delete Commitment"><TrashIcon /></button>
                     </>
                 ) : (
-                    <div className="p-2 text-amber-400 flex items-center gap-2 text-sm" title={reason}>
+                    !isTerminated && <div className="p-2 text-amber-400 flex items-center gap-2 text-sm" title={lockReason}>
                         <LockIcon />
-                        <span className="hidden sm:inline">Locked</span>
                     </div>
                 )}
             </div>
@@ -645,10 +706,14 @@ const CommitmentsPanel: React.FC<{
     onUpdate: (id: string, updates: { text: string; dueDate: string | null; }) => void;
     onDelete: (id: string) => void;
     onSetCompletion: (id: string, isComplete: boolean) => void;
-}> = ({ commitments, onAdd, onUpdate, onDelete, onSetCompletion }) => {
+    onMarkAsBroken: (id: string) => void;
+}> = ({ commitments, onAdd, onUpdate, onDelete, onSetCompletion, onMarkAsBroken }) => {
     const [newCommitment, setNewCommitment] = useState('');
     const [newDueDate, setNewDueDate] = useState('');
-    const [showArchived, setShowArchived] = useState(false);
+    const [view, setView] = useState<'active' | 'completed' | 'broken'>('active');
+    
+    const [dateRange, setDateRange] = useState<{ start: string; end: string }>({ start: '', end: '' });
+    const [showDateFilter, setShowDateFilter] = useState(false);
 
     const handleAdd = () => {
         if (newCommitment.trim()) {
@@ -658,30 +723,95 @@ const CommitmentsPanel: React.FC<{
         }
     };
     
-    const oneMonthAgo = useMemo(() => {
-        const d = new Date();
-        d.setMonth(d.getMonth() - 1);
-        return d;
-    }, []);
+    const { active, completed, broken, hiddenCompletedCount, hiddenBrokenCount } = useMemo(() => {
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-    const { visibleCommitments, hiddenCount } = useMemo(() => {
-        const sorted = [...commitments].sort((a,b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        const allActive = commitments.filter(c => c.status === 'active');
+        const allCompleted = commitments.filter(c => c.status === 'completed');
+        const allBroken = commitments.filter(c => c.status === 'broken');
 
-        if (showArchived) {
-            return { visibleCommitments: sorted, hiddenCount: 0 };
+        let filteredCompleted = allCompleted;
+        let filteredBroken = allBroken;
+
+        if (dateRange.start && dateRange.end) {
+            filteredCompleted = allCompleted.filter(c => {
+                if (!c.completed_at) return false;
+                const completedDate = c.completed_at.split('T')[0];
+                return completedDate >= dateRange.start && completedDate <= dateRange.end;
+            });
+            filteredBroken = allBroken.filter(c => {
+                if (!c.broken_at) return false;
+                const brokenDate = c.broken_at.split('T')[0];
+                return brokenDate >= dateRange.start && brokenDate <= dateRange.end;
+            });
+        } else {
+            filteredCompleted = allCompleted.filter(c => c.completed_at && new Date(c.completed_at) > thirtyDaysAgo);
+            filteredBroken = allBroken.filter(c => c.broken_at && new Date(c.broken_at) > thirtyDaysAgo);
         }
-        
-        const visible = sorted.filter(c => {
-            if (!c.completed_at) return true;
-            return new Date(c.completed_at) > oneMonthAgo;
-        });
 
-        return { visibleCommitments: visible, hiddenCount: sorted.length - visible.length };
-    }, [commitments, showArchived, oneMonthAgo]);
+        const hiddenCompletedCount = allCompleted.length - filteredCompleted.length;
+        const hiddenBrokenCount = allBroken.length - filteredBroken.length;
 
+        allActive.sort((a,b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        filteredCompleted.sort((a,b) => new Date(b.completed_at || 0).getTime() - new Date(a.completed_at || 0).getTime());
+        filteredBroken.sort((a,b) => new Date(b.broken_at || 0).getTime() - new Date(a.broken_at || 0).getTime());
+
+        return { 
+            active: allActive, 
+            completed: filteredCompleted, 
+            broken: filteredBroken,
+            hiddenCompletedCount,
+            hiddenBrokenCount
+        };
+    }, [commitments, dateRange]);
+
+    const handleClearFilter = () => {
+        setDateRange({ start: '', end: '' });
+        setShowDateFilter(false);
+    };
+
+    const lists = { active, completed, broken };
+    const currentList = lists[view];
+    const hiddenCount = view === 'completed' ? hiddenCompletedCount : hiddenBrokenCount;
+    
+    const FilterControls = () => {
+        if (view !== 'completed' && view !== 'broken') return null;
+
+        return (
+            <div className="bg-black/20 p-2 rounded-lg mb-4 text-sm text-center">
+                {!showDateFilter ? (
+                    <div className="flex justify-center items-center gap-4 py-1">
+                        <p className="text-white/70">
+                            {dateRange.start && dateRange.end 
+                                ? `Showing custom range.`
+                                : `Showing last 30 days. ${hiddenCount > 0 ? `${hiddenCount} older items hidden.` : ''}`
+                            }
+                        </p>
+                        <button onClick={() => setShowDateFilter(true)} className="font-semibold text-cyan-300 hover:text-cyan-200">
+                            Filter Date
+                        </button>
+                    </div>
+                ) : (
+                    <div className="space-y-2 p-2 animate-fadeIn">
+                        <div className="flex flex-col sm:flex-row items-center justify-center gap-2">
+                            <input type="date" value={dateRange.start} onChange={e => setDateRange(p => ({...p, start: e.target.value}))} className="bg-white/20 border border-white/30 rounded-lg p-2 text-white/80 w-full text-center" style={{colorScheme: 'dark'}}/>
+                            <span className="text-white/80">to</span>
+                            <input type="date" value={dateRange.end} onChange={e => setDateRange(p => ({...p, end: e.target.value}))} className="bg-white/20 border border-white/30 rounded-lg p-2 text-white/80 w-full text-center" style={{colorScheme: 'dark'}}/>
+                        </div>
+                        <div className="flex justify-center gap-4 pt-1">
+                            <button onClick={() => setShowDateFilter(false)} className="text-white/70 hover:text-white">Cancel</button>
+                            <button onClick={handleClearFilter} className="font-semibold text-amber-400 hover:text-amber-300">Clear</button>
+                        </div>
+                    </div>
+                )}
+            </div>
+        );
+    };
+    
     return (
         <Panel title="💪 My Commitments">
-            <p className="text-white/80 text-center text-sm mb-4">What will you hold yourself accountable for today? Commitments lock after 24 hours.</p>
+            <p className="text-white/80 text-center text-sm mb-4">What will you hold yourself accountable for? Commitments have a 2-hour grace period for edits, then lock for reflection.</p>
             <div className="space-y-2 mb-4">
                 <div className="relative">
                     <input
@@ -708,16 +838,21 @@ const CommitmentsPanel: React.FC<{
                     />
                 </div>
             </div>
-             <div className="text-right mb-2">
-                {hiddenCount > 0 && (
-                    <button onClick={() => setShowArchived(s => !s)} className="text-xs text-cyan-300 hover:text-cyan-200 font-semibold px-3 py-1 rounded-full hover:bg-white/10 transition">
-                        {showArchived ? 'Hide Archived' : `Show ${hiddenCount} Archived`}
+             <div className="flex justify-center gap-2 mb-4 bg-black/20 p-1 rounded-full">
+                {(['active', 'completed', 'broken'] as const).map(status => (
+                     <button key={status} onClick={() => setView(status)} className={`flex-1 p-2 text-sm rounded-full font-bold transition-colors ${view === status ? 'bg-white/20 text-white' : 'text-white/60 hover:bg-white/10'}`}>
+                        {status.charAt(0).toUpperCase() + status.slice(1)} ({status === 'active' ? lists.active.length : commitments.filter(c => c.status === status).length})
                     </button>
-                )}
+                ))}
             </div>
+            
+            <FilterControls />
+            
             <ul className="space-y-2 max-h-64 overflow-y-auto pr-2">
-                {visibleCommitments.map(c => <CommitmentItem key={c.id} commitment={c} onUpdate={onUpdate} onDelete={onDelete} onSetCompletion={onSetCompletion} />)}
-                {commitments.length === 0 && <p className="text-center text-white/60 p-4">Make a commitment to start your day with intention.</p>}
+                {currentList.map(c => <CommitmentItem key={c.id} commitment={c} onUpdate={onUpdate} onDelete={onDelete} onSetCompletion={onSetCompletion} onMarkAsBroken={onMarkAsBroken} />)}
+                {currentList.length === 0 && <p className="text-center text-white/60 p-4">
+                    {dateRange.start && dateRange.end ? `No ${view} commitments in this date range.` : `No ${view} commitments.`}
+                </p>}
             </ul>
         </Panel>
     )
@@ -743,15 +878,21 @@ interface GoalsPageProps {
     onUpdateCommitment: (id: string, updates: { text: string; dueDate: string | null; }) => void;
     onDeleteCommitment: (id: string) => void;
     onSetCommitmentCompletion: (id: string, isComplete: boolean) => void;
+    onMarkCommitmentBroken: (id: string) => void;
 }
 
 const GoalsPage: React.FC<GoalsPageProps> = (props) => {
-    const { goals, targets, projects, commitments, onAddGoal, onUpdateGoal, onDeleteGoal, onSetGoalCompletion, onAddTarget, onUpdateTarget, onDeleteTarget, onAddProject, onUpdateProject, onDeleteProject, onAddCommitment, onUpdateCommitment, onDeleteCommitment, onSetCommitmentCompletion } = props;
+    const { goals, targets, projects, commitments, onAddGoal, onUpdateGoal, onDeleteGoal, onSetGoalCompletion, onAddTarget, onUpdateTarget, onDeleteTarget, onAddProject, onUpdateProject, onDeleteProject, onAddCommitment, onUpdateCommitment, onDeleteCommitment, onSetCommitmentCompletion, onMarkCommitmentBroken } = props;
 
     const [newGoal, setNewGoal] = useState('');
     const [newTarget, setNewTarget] = useState('');
     const [newDeadline, setNewDeadline] = useState('');
     const [showArchivedGoals, setShowArchivedGoals] = useState(false);
+    
+    // Target states
+    const [targetView, setTargetView] = useState<'pending' | 'incomplete' | 'completed'>('pending');
+    const [targetDateRange, setTargetDateRange] = useState<{ start: string; end: string }>({ start: '', end: '' });
+    const [showTargetDateFilter, setShowTargetDateFilter] = useState(false);
     
     // Project form state
     const [newProjectName, setNewProjectName] = useState('');
@@ -767,8 +908,9 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
 
     // Project list filters
     const [projectStatusFilter, setProjectStatusFilter] = useState<'active' | 'completed' | 'due'>('active');
-    const [projectDateFilter, setProjectDateFilter] = useState<'week' | 'month' | 'range' | 'all'>('all');
     const [projectDateRange, setProjectDateRange] = useState({ start: '', end: '' });
+    const [showProjectDateFilter, setShowProjectDateFilter] = useState(false);
+
 
     useEffect(() => {
         const fetchStatsData = async () => {
@@ -837,104 +979,97 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
         return { visibleGoals: visible, hiddenGoalsCount: goals.length - visible.length };
     }, [goals, showArchivedGoals, oneMonthAgo]);
 
-    const filteredProjects = useMemo(() => {
-        // Determine the date range based on the filter
-        let startDate: string | null = null;
-        let endDate: string | null = null;
+    const {
+        activeProjects,
+        visibleCompletedProjects,
+        visibleDueProjects,
+        hiddenCompletedProjectsCount,
+        hiddenDueProjectsCount,
+    } = useMemo(() => {
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-        if (projectDateFilter !== 'all') {
-            const today = new Date();
-            let start = new Date();
-            let end = new Date();
+        const allActive = projects.filter(p => p.status === 'active');
+        const allCompleted = projects.filter(p => p.status === 'completed');
+        const allDue = projects.filter(p => p.status === 'due');
 
-            switch (projectDateFilter) {
-                case 'week': {
-                    const dayOfWeek = today.getDay(); // Sunday - 0, Monday - 1, ...
-                    start.setDate(today.getDate() - dayOfWeek);
-                    end = new Date(start);
-                    end.setDate(start.getDate() + 6);
-                    break;
-                }
-                case 'month':
-                    start = new Date(today.getFullYear(), today.getMonth(), 1);
-                    end = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-                    break;
-                case 'range':
-                    startDate = projectDateRange.start || null;
-                    endDate = projectDateRange.end || null;
-                    break;
-            }
+        let visibleCompleted, visibleDue;
 
-            if (projectDateFilter !== 'range') {
-                startDate = start.toISOString().split('T')[0];
-                endDate = end.toISOString().split('T')[0];
-            }
+        if (projectDateRange.start && projectDateRange.end) {
+            visibleCompleted = allCompleted.filter(p => {
+                if (!p.completed_at) return false;
+                const completedDate = p.completed_at.split('T')[0];
+                return completedDate >= projectDateRange.start && completedDate <= projectDateRange.end;
+            });
+            visibleDue = allDue.filter(p => {
+                if (!p.deadline) return false;
+                return p.deadline >= projectDateRange.start && p.deadline <= projectDateRange.end;
+            });
+        } else {
+            visibleCompleted = allCompleted.filter(p => p.completed_at && new Date(p.completed_at) > thirtyDaysAgo);
+            visibleDue = allDue.filter(p => p.deadline && new Date(p.deadline) > thirtyDaysAgo);
         }
 
-        // Filter the projects
-        const timeFilteredProjects = projects.filter(p => {
-            // Always include 'active' projects
-            if (p.status === 'active') {
-                return true;
-            }
+        const hiddenCompleted = allCompleted.length - visibleCompleted.length;
+        const hiddenDue = allDue.length - visibleDue.length;
 
-            // If showing 'all time', include all non-active projects
-            if (projectDateFilter === 'all') {
-                return true;
-            }
+        allActive.sort((a, b) => (a.deadline || 'z').localeCompare(b.deadline || 'z'));
+        visibleCompleted.sort((a,b) => (b.completed_at || '').localeCompare(a.completed_at || ''));
+        visibleDue.sort((a,b) => (a.deadline || '').localeCompare(b.deadline || ''));
 
-            // If a date range is set, filter 'completed' and 'due' projects
-            if (startDate && endDate) {
-                if (p.status === 'completed' && p.completed_at) {
-                    const completedDate = p.completed_at.split('T')[0];
-                    return completedDate >= startDate && completedDate <= endDate;
-                }
-                if (p.status === 'due' && p.deadline) {
-                    return p.deadline >= startDate && p.deadline <= endDate;
-                }
-            }
-            
-            // Exclude projects that don't match criteria
-            return false;
-        });
-
-        // Finally, apply the status filter to the time-filtered list
-        return timeFilteredProjects.filter(p => p.status === projectStatusFilter);
-
-    }, [projects, projectStatusFilter, projectDateFilter, projectDateRange]);
+        return {
+            activeProjects: allActive,
+            visibleCompletedProjects: visibleCompleted,
+            visibleDueProjects: visibleDue,
+            hiddenCompletedProjectsCount: hiddenCompleted,
+            hiddenDueProjectsCount: hiddenDue,
+        };
+    }, [projects, projectDateRange]);
     
-    const { visibleSortedTargets, hasHiddenTargets } = useMemo(() => {
-        const todayString = new Date().toISOString().split('T')[0];
-        const oneMonthAgo = new Date();
-        oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+    const {
+        pendingTargets,
+        incompleteTargets,
+        completedTargets,
+        hiddenIncompleteCount,
+        hiddenCompletedCount,
+    } = useMemo(() => {
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-        const visibleTargets = targets.filter(target => {
-            // Always show targets that are not completed
-            if (!target.completed_at) {
-                return true;
-            }
-            // For completed targets, only show them if they were completed within the last month
-            return new Date(target.completed_at) >= oneMonthAgo;
-        });
+        const allActive = targets.filter(t => t.status === 'active');
+        const allIncomplete = targets.filter(t => t.status === 'incomplete');
+        const allCompleted = targets.filter(t => t.status === 'completed');
 
-        const hasHiddenTargets = targets.length > visibleTargets.length;
-        
-        const sorted = [...visibleTargets].sort((a, b) => {
-            const aIsCompleted = !!a.completed_at;
-            const bIsCompleted = !!b.completed_at;
-            const aIsDue = !aIsCompleted && a.deadline < todayString;
-            const bIsDue = !bIsCompleted && b.deadline < todayString;
+        // Pending targets are always visible, no filtering.
+        const pending = allActive.sort((a, b) => new Date(a.deadline).getTime() - new Date(b.deadline).getTime());
 
-            // Group by status: active -> due -> completed
-            if (aIsCompleted !== bIsCompleted) return aIsCompleted ? 1 : -1;
-            if (!aIsCompleted && aIsDue !== bIsDue) return aIsDue ? 1 : -1;
-            
-            // Within each group, sort by deadline
-            return new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
-        });
+        let visibleIncomplete = allIncomplete;
+        let visibleCompleted = allCompleted;
 
-        return { visibleSortedTargets: sorted, hasHiddenTargets };
-    }, [targets]);
+        if (targetDateRange.start && targetDateRange.end) {
+            visibleIncomplete = allIncomplete.filter(t => t.deadline >= targetDateRange.start && t.deadline <= targetDateRange.end);
+            visibleCompleted = allCompleted.filter(t => {
+                if (!t.completed_at) return false;
+                const completedDate = t.completed_at.split('T')[0];
+                return completedDate >= targetDateRange.start && completedDate <= targetDateRange.end;
+            });
+        } else {
+            // Default view: hide if older than 30 days for completed/incomplete
+            visibleIncomplete = allIncomplete.filter(t => new Date(t.deadline) >= thirtyDaysAgo);
+            visibleCompleted = allCompleted.filter(t => t.completed_at && new Date(t.completed_at) >= thirtyDaysAgo);
+        }
+
+        const incomplete = visibleIncomplete.sort((a, b) => new Date(a.deadline).getTime() - new Date(b.deadline).getTime());
+        const completed = visibleCompleted.sort((a, b) => new Date(b.completed_at || 0).getTime() - new Date(a.completed_at || 0).getTime());
+
+        return {
+            pendingTargets: pending,
+            incompleteTargets: incomplete,
+            completedTargets: completed,
+            hiddenIncompleteCount: allIncomplete.length - visibleIncomplete.length,
+            hiddenCompletedCount: allCompleted.length - visibleCompleted.length,
+        };
+    }, [targets, targetDateRange]);
 
     const upcomingDeadlines = useMemo(() => {
         const tomorrow = new Date();
@@ -942,10 +1077,92 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
         const tomorrowString = tomorrow.toISOString().split('T')[0];
 
         const projectsDue = projects.filter(p => p.status === 'active' && p.deadline === tomorrowString);
-        const targetsDue = targets.filter(t => !t.completed_at && t.deadline === tomorrowString);
+        const targetsDue = targets.filter(t => t.status === 'active' && t.deadline === tomorrowString);
 
         return [...projectsDue, ...targetsDue];
     }, [projects, targets]);
+    
+    const handleClearTargetFilter = () => {
+        setTargetDateRange({ start: '', end: '' });
+        setShowTargetDateFilter(false);
+    };
+    
+    const TargetFilterControls = () => {
+        if (targetView !== 'completed' && targetView !== 'incomplete') return null;
+        
+        const hiddenCount = targetView === 'completed' ? hiddenCompletedCount : hiddenIncompleteCount;
+
+        return (
+            <div className="bg-black/20 p-2 rounded-lg my-4 text-sm text-center">
+                {!showTargetDateFilter ? (
+                    <div className="flex justify-center items-center gap-4 py-1">
+                        <p className="text-white/70">
+                            {targetDateRange.start && targetDateRange.end 
+                                ? `Showing custom range.`
+                                : `Showing last 30 days. ${hiddenCount > 0 ? `${hiddenCount} older items hidden.` : ''}`
+                            }
+                        </p>
+                        <button onClick={() => setShowTargetDateFilter(true)} className="font-semibold text-cyan-300 hover:text-cyan-200">
+                            Filter Date
+                        </button>
+                    </div>
+                ) : (
+                    <div className="space-y-2 p-2 animate-fadeIn">
+                        <div className="flex flex-col sm:flex-row items-center justify-center gap-2">
+                            <input type="date" value={targetDateRange.start} onChange={e => setTargetDateRange(p => ({...p, start: e.target.value}))} className="bg-white/20 border border-white/30 rounded-lg p-2 text-white/80 w-full text-center" style={{colorScheme: 'dark'}}/>
+                            <span className="text-white/80">to</span>
+                            <input type="date" value={targetDateRange.end} onChange={e => setTargetDateRange(p => ({...p, end: e.target.value}))} className="bg-white/20 border border-white/30 rounded-lg p-2 text-white/80 w-full text-center" style={{colorScheme: 'dark'}}/>
+                        </div>
+                        <div className="flex justify-center gap-4 pt-1">
+                            <button onClick={() => setShowTargetDateFilter(false)} className="text-white/70 hover:text-white">Cancel</button>
+                            <button onClick={handleClearTargetFilter} className="font-semibold text-amber-400 hover:text-amber-300">Clear</button>
+                        </div>
+                    </div>
+                )}
+            </div>
+        );
+    };
+    
+    const ProjectFilterControls = () => {
+        if (projectStatusFilter !== 'completed' && projectStatusFilter !== 'due') return null;
+    
+        const hiddenCount = projectStatusFilter === 'completed' ? hiddenCompletedProjectsCount : hiddenDueProjectsCount;
+    
+        const handleClearFilter = () => {
+            setProjectDateRange({ start: '', end: '' });
+            setShowProjectDateFilter(false);
+        };
+    
+        return (
+            <div className="bg-black/20 p-2 rounded-lg my-4 text-sm text-center">
+                {!showProjectDateFilter ? (
+                    <div className="flex justify-center items-center gap-4 py-1">
+                        <p className="text-white/70">
+                            {projectDateRange.start && projectDateRange.end 
+                                ? `Showing custom range.`
+                                : `Showing last 30 days. ${hiddenCount > 0 ? `${hiddenCount} older items hidden.` : ''}`
+                            }
+                        </p>
+                        <button onClick={() => setShowProjectDateFilter(true)} className="font-semibold text-cyan-300 hover:text-cyan-200">
+                            Filter Date
+                        </button>
+                    </div>
+                ) : (
+                    <div className="space-y-2 p-2 animate-fadeIn">
+                        <div className="flex flex-col sm:flex-row items-center justify-center gap-2">
+                            <input type="date" value={projectDateRange.start} onChange={e => setProjectDateRange(p => ({...p, start: e.target.value}))} className="bg-white/20 border border-white/30 rounded-lg p-2 text-white/80 w-full text-center" style={{colorScheme: 'dark'}}/>
+                            <span className="text-white/80">to</span>
+                            <input type="date" value={projectDateRange.end} onChange={e => setProjectDateRange(p => ({...p, end: e.target.value}))} className="bg-white/20 border border-white/30 rounded-lg p-2 text-white/80 w-full text-center" style={{colorScheme: 'dark'}}/>
+                        </div>
+                        <div className="flex justify-center gap-4 pt-1">
+                            <button onClick={() => setShowProjectDateFilter(false)} className="text-white/70 hover:text-white">Cancel</button>
+                            <button onClick={handleClearFilter} className="font-semibold text-amber-400 hover:text-amber-300">Clear & Show All</button>
+                        </div>
+                    </div>
+                )}
+            </div>
+        );
+    };
 
     return (
         <div>
@@ -960,7 +1177,7 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
                 </div>
             )}
             
-            <Panel title="🎯 My Core Goals">
+            <Panel title="🌟 My Core Goals">
                 <p className="text-white/80 text-center text-sm mb-4">Your guiding stars. What long-term ambitions are you working towards?</p>
                 <div className="relative mb-4">
                     <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none text-amber-300">
@@ -989,153 +1206,138 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
                     {visibleGoals.map(goal => (
                         <GoalItem key={goal.id} goal={goal} onUpdateGoal={onUpdateGoal} onDeleteGoal={onDeleteGoal} onSetCompletion={onSetGoalCompletion} />
                     ))}
-                    {goals.length === 0 && <p className="text-center text-white/60 p-4 col-span-full">Define your core purpose. What are you striving for?</p>}
+                    {goals.length === 0 && <p className="text-center text-white/60 p-4 col-span-1 lg:col-span-2">Set your first high-level goal to get started!</p>}
                 </ul>
             </Panel>
 
-            <Panel title="🏁 Key Targets">
-                 <p className="text-white/80 text-center text-sm mb-4">Specific, measurable objectives with a deadline.</p>
+            <Panel title="🎯 Key Targets">
+                <p className="text-white/80 text-center text-sm mb-4">Specific, measurable outcomes with a deadline to keep you on track.</p>
                 <div className="flex flex-col sm:flex-row gap-2 mb-4">
                     <input
                         type="text"
                         value={newTarget}
                         onChange={(e) => setNewTarget(e.target.value)}
-                        placeholder="e.g., Finish history essay draft"
+                        placeholder="Define a clear target..."
                         className="flex-grow bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50"
                     />
                     <input
                         type="date"
                         value={newDeadline}
                         onChange={(e) => setNewDeadline(e.target.value)}
-                        className="bg-white/20 border border-white/30 rounded-lg p-3 text-white/80 w-full sm:w-auto text-center"
+                        className="bg-white/20 border border-white/30 rounded-lg p-3 text-white/80 text-center"
                         style={{colorScheme: 'dark'}}
                     />
-                    <button onClick={handleAddTarget} className="p-3 sm:px-4 rounded-lg font-bold text-white transition hover:scale-105 bg-gradient-to-br from-blue-500 to-cyan-600">Add Target</button>
+                    <button onClick={handleAddTarget} className="p-3 px-6 rounded-lg font-bold text-white transition hover:scale-105 bg-gradient-to-br from-blue-500 to-sky-600">Add Target</button>
                 </div>
-                 <ul className="space-y-2 max-h-64 overflow-y-auto pr-2">
-                    {visibleSortedTargets.map(target => (
-                        <TargetItem 
-                            key={target.id}
-                            target={target}
-                            onUpdateTarget={onUpdateTarget}
-                            onDeleteTarget={onDeleteTarget}
-                        />
-                    ))}
-                    {targets.length === 0 && <p className="text-center text-white/60 p-4">No key targets defined yet.</p>}
-                </ul>
-                {hasHiddenTargets && (
-                    <p className="text-center text-xs text-white/50 pt-2 mt-2 border-t border-white/10">
-                        Completed targets older than one month are hidden for clarity.
-                    </p>
-                )}
-            </Panel>
-
-            <Panel title="📂 Project Management">
-                <div className="bg-black/20 p-4 rounded-xl mb-4 space-y-2">
-                    <input
-                        type="text"
-                        value={newProjectName}
-                        onChange={(e) => setNewProjectName(e.target.value)}
-                        placeholder="Add a new project..."
-                        className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50"
-                    />
-                    <textarea
-                        value={newProjectDescription}
-                        onChange={e => setNewProjectDescription(e.target.value)}
-                        placeholder="Optional: What is this project about?"
-                        rows={2}
-                        className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50"
-                    />
-                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                        <input
-                            type="date"
-                            value={newProjectDeadline}
-                            onChange={(e) => setNewProjectDeadline(e.target.value)}
-                            className="bg-white/20 border border-white/30 rounded-lg p-3 text-white/80 w-full text-center"
-                            style={{colorScheme: 'dark'}}
-                            title="Optional deadline"
-                        />
-                         <select value={criteriaType} onChange={e => setCriteriaType(e.target.value as any)} className="bg-white/20 border border-white/30 rounded-lg p-3 text-white focus:outline-none focus:bg-white/30 focus:border-white/50 w-full">
-                            <option value="manual" className="bg-gray-800">Manual Completion</option>
-                            <option value="task_count" className="bg-gray-800">By Task Count</option>
-                            <option value="duration_minutes" className="bg-gray-800">By Time Duration</option>
-                        </select>
-                    </div>
-                     {criteriaType !== 'manual' && (
-                         <input
-                            type="number"
-                            value={criteriaValue}
-                            onChange={(e) => setCriteriaValue(e.target.value)}
-                            placeholder={criteriaType === 'task_count' ? 'Number of tasks to complete' : 'Minutes of focus to complete'}
-                            className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50"
-                        />
-                     )}
-                     <button onClick={handleAddProject} className="w-full p-3 rounded-lg font-bold text-white transition hover:scale-105 bg-gradient-to-br from-purple-500 to-indigo-600">Add Project</button>
-                </div>
-
-                <div className="mb-4 space-y-2">
-                    <p className="text-white/80 text-center text-sm">Filter completed & due projects by date:</p>
-                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 text-sm">
-                        <button onClick={() => setProjectDateFilter('week')} className={`p-2 rounded-lg transition font-semibold ${projectDateFilter === 'week' ? 'bg-white/20 text-white' : 'bg-white/10 hover:bg-white/20 text-white/80'}`}>This Week</button>
-                        <button onClick={() => setProjectDateFilter('month')} className={`p-2 rounded-lg transition font-semibold ${projectDateFilter === 'month' ? 'bg-white/20 text-white' : 'bg-white/10 hover:bg-white/20 text-white/80'}`}>This Month</button>
-                        <button onClick={() => setProjectDateFilter('range')} className={`p-2 rounded-lg transition font-semibold ${projectDateFilter === 'range' ? 'bg-white/20 text-white' : 'bg-white/10 hover:bg-white/20 text-white/80'}`}>Date Range</button>
-                        <button onClick={() => setProjectDateFilter('all')} className={`p-2 rounded-lg transition font-semibold ${projectDateFilter === 'all' ? 'bg-white/20 text-white' : 'bg-white/10 hover:bg-white/20 text-white/80'}`}>All Time</button>
-                    </div>
-                    {projectDateFilter === 'range' && (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 animate-fadeIn">
-                            <input type="date" value={projectDateRange.start} onChange={e => setProjectDateRange(p => ({...p, start: e.target.value}))} className="bg-white/20 border border-white/30 rounded-lg p-2 text-white/80 w-full text-center" style={{colorScheme: 'dark'}}/>
-                            <input type="date" value={projectDateRange.end} onChange={e => setProjectDateRange(p => ({...p, end: e.target.value}))} className="bg-white/20 border border-white/30 rounded-lg p-2 text-white/80 w-full text-center" style={{colorScheme: 'dark'}}/>
-                        </div>
-                    )}
-                </div>
-
+                
                 <div className="flex justify-center gap-2 mb-4 bg-black/20 p-1 rounded-full">
-                    {(['active', 'completed', 'due'] as const).map(status => (
-                        <button key={status} onClick={() => setProjectStatusFilter(status)} className={`flex-1 p-2 text-sm rounded-full font-bold transition-colors ${projectStatusFilter === status ? 'bg-white/20 text-white' : 'text-white/60 hover:bg-white/10'}`}>
-                            {status.charAt(0).toUpperCase() + status.slice(1)} ({projects.filter(p => p.status === status).length})
-                        </button>
-                    ))}
+                    <button onClick={() => setTargetView('pending')} className={`flex-1 p-2 text-sm rounded-full font-bold transition-colors ${targetView === 'pending' ? 'bg-white/20 text-white' : 'text-white/60 hover:bg-white/10'}`}>
+                        Pending ({pendingTargets.length})
+                    </button>
+                    <button onClick={() => setTargetView('incomplete')} className={`flex-1 p-2 text-sm rounded-full font-bold transition-colors ${targetView === 'incomplete' ? 'bg-white/20 text-white' : 'text-white/60 hover:bg-white/10'}`}>
+                        Incomplete ({targets.filter(t => t.status === 'incomplete').length})
+                    </button>
+                    <button onClick={() => setTargetView('completed')} className={`flex-1 p-2 text-sm rounded-full font-bold transition-colors ${targetView === 'completed' ? 'bg-white/20 text-white' : 'text-white/60 hover:bg-white/10'}`}>
+                        Completed ({targets.filter(t => t.status === 'completed').length})
+                    </button>
                 </div>
 
-                 <div className="space-y-3 max-h-60 overflow-y-auto pr-2">
-                    {filteredProjects.map(project => (
-                        <ProjectItem
-                            key={project.id}
-                            project={project}
-                            tasks={allTasks.filter(t => t.project_id === project.id)}
-                            onUpdateProject={onUpdateProject}
-                            onDeleteProject={onDeleteProject}
-                        />
-                    ))}
-                    {filteredProjects.length === 0 && <p className="text-center text-sm text-white/60 py-2">No {projectStatusFilter} projects.</p>}
-                </div>
+                <TargetFilterControls />
+                
+                {targetView === 'pending' && (
+                    <ul className="space-y-2 max-h-64 overflow-y-auto pr-2">
+                        {pendingTargets.map(target => (
+                            <TargetItem key={target.id} target={target} onUpdateTarget={onUpdateTarget} onDeleteTarget={onDeleteTarget} />
+                        ))}
+                        {pendingTargets.length === 0 && <p className="text-center text-white/60 p-4">No pending targets. Great job, or add a new one!</p>}
+                    </ul>
+                )}
+                {targetView === 'incomplete' && (
+                    <ul className="space-y-2 max-h-64 overflow-y-auto pr-2">
+                        {incompleteTargets.map(target => (
+                            <TargetItem key={target.id} target={target} onUpdateTarget={onUpdateTarget} onDeleteTarget={onDeleteTarget} />
+                        ))}
+                        {incompleteTargets.length === 0 && <p className="text-center text-white/60 p-4">
+                            {targetDateRange.start && targetDateRange.end ? 'No incomplete targets in this date range.' : 'No incomplete targets in the last 30 days.'}
+                        </p>}
+                    </ul>
+                )}
+                {targetView === 'completed' && (
+                     <ul className="space-y-2 max-h-64 overflow-y-auto pr-2">
+                        {completedTargets.map(target => (
+                            <TargetItem key={target.id} target={target} onUpdateTarget={onUpdateTarget} onDeleteTarget={onDeleteTarget} />
+                        ))}
+                        {completedTargets.length === 0 && <p className="text-center text-white/60 p-4">
+                            {targetDateRange.start && targetDateRange.end ? 'No completed targets in this date range.' : 'No targets completed in the last 30 days.'}
+                        </p>}
+                    </ul>
+                )}
+
             </Panel>
             
-            {isLoadingStats ? <Spinner /> : 
-                <ProjectTimeAnalysisDashboard 
-                    allProjects={projects} 
-                    allTasks={allTasks} 
-                    allHistory={allHistory} 
-                />
-            }
-            
-            <CommitmentsPanel
+            <CommitmentsPanel 
                 commitments={commitments}
                 onAdd={onAddCommitment}
                 onUpdate={onUpdateCommitment}
                 onDelete={onDeleteCommitment}
                 onSetCompletion={onSetCommitmentCompletion}
+                onMarkAsBroken={onMarkCommitmentBroken}
             />
             
-             <style>{`
-              @keyframes pulse-slow {
-                0%, 100% { transform: scale(1); opacity: 1; }
-                50% { transform: scale(1.02); opacity: 0.95; }
-              }
-              .animate-pulse-slow { animation: pulse-slow 3s ease-in-out infinite; }
-              @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
-              .animate-fadeIn { animation: fadeIn 0.3s ease-out; }
-            `}</style>
+            <Panel title="🚀 Projects">
+                <p className="text-white/80 text-center text-sm mb-4">Group your tasks into larger projects to track overall progress.</p>
+                 <div className="bg-black/20 p-3 rounded-lg mb-4 space-y-2">
+                    <input type="text" value={newProjectName} onChange={e => setNewProjectName(e.target.value)} placeholder="New Project Name" className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50" />
+                    <textarea value={newProjectDescription} onChange={e => setNewProjectDescription(e.target.value)} placeholder="Project Description (Optional)" className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50" rows={2}></textarea>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        <input type="date" value={newProjectDeadline} onChange={e => setNewProjectDeadline(e.target.value)} className="bg-white/20 border border-white/30 rounded-lg p-3 text-white/80 w-full text-center" style={{colorScheme: 'dark'}} />
+                        <select value={criteriaType} onChange={e => setCriteriaType(e.target.value as any)} className="bg-white/20 border border-white/30 rounded-lg p-3 text-white focus:outline-none focus:bg-white/30 focus:border-white/50 w-full">
+                            <option value="manual" className="bg-gray-800">Manual Completion</option>
+                            <option value="task_count" className="bg-gray-800">Complete by Task Count</option>
+                            <option value="duration_minutes" className="bg-gray-800">Complete by Time Duration</option>
+                        </select>
+                    </div>
+                    {criteriaType !== 'manual' && (
+                        <input type="number" value={criteriaValue} onChange={e => setCriteriaValue(e.target.value)} placeholder={criteriaType === 'task_count' ? '# of tasks to complete' : 'Total minutes of focus'} className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50" />
+                    )}
+                    <button onClick={handleAddProject} className="w-full p-3 rounded-lg font-bold text-white transition hover:scale-105 bg-gradient-to-br from-blue-500 to-sky-600">Add Project</button>
+                </div>
+                
+                 <div className="flex justify-center gap-2 mb-4 bg-black/20 p-1 rounded-full">
+                    {(['active', 'completed', 'due'] as const).map(status => (
+                        <button key={status} onClick={() => setProjectStatusFilter(status)} className={`flex-1 p-2 text-sm rounded-full font-bold transition-colors ${projectStatusFilter === status ? 'bg-white/20 text-white' : 'text-white/60 hover:bg-white/10'}`}>
+                            {status.charAt(0).toUpperCase() + status.slice(1)} ({
+                                status === 'active' ? activeProjects.length :
+                                status === 'completed' ? projects.filter(p=>p.status === 'completed').length :
+                                projects.filter(p=>p.status === 'due').length
+                            })
+                        </button>
+                    ))}
+                </div>
+
+                <ProjectFilterControls />
+                
+                <ul className="space-y-2 max-h-96 overflow-y-auto pr-2">
+                    {(
+                        projectStatusFilter === 'active' ? activeProjects :
+                        projectStatusFilter === 'completed' ? visibleCompletedProjects :
+                        visibleDueProjects
+                    ).map(project => (
+                        <li key={project.id}>
+                            <ProjectItem project={project} tasks={allTasks} onUpdateProject={onUpdateProject} onDeleteProject={onDeleteProject} />
+                        </li>
+                    ))}
+                    {(
+                        projectStatusFilter === 'active' ? activeProjects :
+                        projectStatusFilter === 'completed' ? visibleCompletedProjects :
+                        visibleDueProjects
+                    ).length === 0 && <p className="text-center text-white/60 p-4">No projects match the current filter.</p>}
+                </ul>
+            </Panel>
+            
+            {isLoadingStats ? <Spinner /> : (
+                <ProjectTimeAnalysisDashboard allProjects={projects} allTasks={allTasks} allHistory={allHistory} />
+            )}
         </div>
     );
 };
