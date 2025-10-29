@@ -1,4 +1,5 @@
 
+
 import React, { useMemo, useState } from 'react';
 import Panel from './common/Panel';
 import { Task, DbDailyLog } from '../types';
@@ -150,4 +151,4 @@ const StatsPanel: React.FC<StatsPanelProps> = ({ completedToday, tasksToday, his
     );
 };
 
-export default StatsPanel;
+export default React.memo(StatsPanel);

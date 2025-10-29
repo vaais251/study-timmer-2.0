@@ -101,4 +101,4 @@ const StatsPage: React.FC = () => {
     );
 };
 
-export default StatsPage;
+export default React.memo(StatsPage);

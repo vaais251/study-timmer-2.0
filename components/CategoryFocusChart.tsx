@@ -103,4 +103,4 @@ const CategoryFocusChart: React.FC<CategoryFocusChartProps> = ({ tasks, todaysHi
     );
 };
 
-export default CategoryFocusChart;
+export default React.memo(CategoryFocusChart);

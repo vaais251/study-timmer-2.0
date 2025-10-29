@@ -47,7 +47,7 @@ const StatCard: React.FC<{title: string, children: React.ReactNode}> = ({ title,
 );
 
 // --- New Component: Consistency Tracker ---
-const ConsistencyTracker: React.FC<{ logs: DbDailyLog[] }> = ({ logs }) => {
+const ConsistencyTracker = React.memo(({ logs }: { logs: DbDailyLog[] }) => {
     const { weeks, monthLabels } = useMemo(() => {
         const activityMap: Map<string, number> = new Map(logs.map(log => [log.date, log.completed_sessions]));
         const today = new Date();
@@ -162,7 +162,7 @@ const ConsistencyTracker: React.FC<{ logs: DbDailyLog[] }> = ({ logs }) => {
             </div>
         </div>
     );
-};
+});
 
 interface CategoryTimelineChartProps {
     tasks: Task[];
@@ -170,7 +170,7 @@ interface CategoryTimelineChartProps {
     historyRange: { start: string; end: string };
 }
 
-const CategoryTimelineChart: React.FC<CategoryTimelineChartProps> = ({ tasks, history, historyRange }) => {
+const CategoryTimelineChart = React.memo(({ tasks, history, historyRange }: CategoryTimelineChartProps) => {
     const [view, setView] = useState<'month' | 'week' | 'custom'>('week');
 
     const chartData = useMemo(() => {
@@ -299,7 +299,7 @@ const CategoryTimelineChart: React.FC<CategoryTimelineChartProps> = ({ tasks, hi
             )}
         </div>
     );
-};
+});
 
 
 const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, projects, allProjects, targets, allTargets, historyRange, setHistoryRange, settings, pomodoroHistory, consistencyLogs, timelinePomodoroHistory }) => {
@@ -813,4 +813,4 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
     );
 };
 
-export default HistoryPanel;
+export default React.memo(HistoryPanel);

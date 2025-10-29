@@ -100,4 +100,4 @@ const CategoryFocusPieChart: React.FC<CategoryFocusPieChartProps> = ({ tasks, to
     );
 };
 
-export default CategoryFocusPieChart;
+export default React.memo(CategoryFocusPieChart);
