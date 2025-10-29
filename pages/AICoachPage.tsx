@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Goal, Target, Project, PomodoroHistory, Commitment, Task, ChatMessage } from '../types';
+import { Goal, Target, Project, PomodoroHistory, Commitment, Task, ChatMessage, AiMemory } from '../types';
 import { getTodayDateString } from '../utils/date';
-import { runAgent, AgentContext } from '../services/geminiService';
+import { runAgent, AgentContext, generateContent } from '../services/geminiService';
 import * as dbService from '../services/dbService';
 import Spinner from '../components/common/Spinner';
 import { FunctionDeclaration, Type } from '@google/genai';
@@ -30,6 +30,8 @@ interface AICoachPageProps {
     onAddCommitment: (text: string, dueDate: string | null) => Promise<void>;
     chatMessages: ChatMessage[];
     setChatMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
+    aiMemories: AiMemory[];
+    onMemoryChange: () => Promise<void>;
 }
 
 const getMonthAgoDateString = (): string => {
@@ -93,11 +95,46 @@ const toolDeclarations: FunctionDeclaration[] = [
             },
             required: ['text']
         }
+    },
+    {
+        name: 'saveMemory',
+        description: "Saves a new piece of important information to your long-term memory. Use this when the user shares new, contextually significant information you should remember. Use type 'personal' if the user explicitly uses @personal or shares personal facts (e.g. their field of study, a major upcoming event). Use type 'ai' if you, the AI, autonomously identify a key piece of context from the conversation that is important for future interactions.",
+        parameters: {
+            type: Type.OBJECT,
+            properties: {
+                content: { type: Type.STRING, description: 'The concise piece of information to save.' },
+                type: { type: Type.STRING, enum: ['personal', 'ai'], description: "The type of memory to save. 'personal' for user-provided facts, 'ai' for AI-inferred context."}
+            },
+            required: ['content', 'type']
+        }
+    },
+    {
+        name: 'updateMemory',
+        description: "Updates an existing piece of personal or AI-inferred information in your memory when the user provides new, conflicting information. For example, if a memory says the user's goal is 'learn history' and they now say 'my goal is to learn physics', use this to update the old memory.",
+        parameters: {
+            type: Type.OBJECT,
+            properties: {
+                memoryId: { type: Type.STRING, description: 'The ID of the memory entry to update. You MUST get this from the provided AI Memory Bank context.' },
+                newContent: { type: Type.STRING, description: 'The new, updated content for the memory.' },
+            },
+            required: ['memoryId', 'newContent']
+        }
+    },
+    {
+        name: 'deleteMemory',
+        description: "Deletes a specific memory entry from your memory bank when the user asks you to forget it. You must provide the exact ID of the memory to delete.",
+        parameters: {
+            type: Type.OBJECT,
+            properties: {
+                memoryId: { type: Type.STRING, description: 'The UUID of the memory entry to delete. You MUST get this from the provided AI Memory Bank context.' },
+            },
+            required: ['memoryId']
+        }
     }
 ];
 
 const AICoachPage: React.FC<AICoachPageProps> = (props) => {
-    const { goals, targets, projects, allCommitments, onAddTask, onAddProject, onAddTarget, onAddCommitment, chatMessages, setChatMessages } = props;
+    const { goals, targets, projects, allCommitments, onAddTask, onAddProject, onAddTarget, onAddCommitment, chatMessages, setChatMessages, aiMemories, onMemoryChange } = props;
     
     // Agent State
     const [userInput, setUserInput] = useState('');
@@ -137,15 +174,76 @@ const AICoachPage: React.FC<AICoachPageProps> = (props) => {
     useEffect(() => {
         chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [chatMessages]);
+
+    const handleSaveContextualMemory = async (content: string, type: 'personal' | 'ai') => {
+        const contextualMemories = aiMemories.filter(m => m.type === 'personal' || m.type === 'ai');
+        
+        if (contextualMemories.length < 30) {
+            await dbService.addAiMemory(type, content, null);
+        } else {
+            const sortedMemories = contextualMemories.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+            const memoryList = sortedMemories
+                .map((m, i) => `${i + 1}. (ID: ${m.id}) [${m.type.toUpperCase()}] ${m.content}`)
+                .join('\n');
+            
+            const utilityPrompt = `
+                Your contextual memory bank for this user is full (30 entries). You need to make space for a new memory by deleting the LEAST relevant existing one.
+                Review the existing memories and the new one below. Which of the existing memories is the most outdated or least important now?
+                Respond with ONLY the UUID of the memory to delete. Do not add any other text.
+
+                EXISTING MEMORIES (oldest first):
+                ${memoryList}
+
+                NEW MEMORY TO ADD:
+                [${type.toUpperCase()}] ${content}
+
+                UUID of memory to delete:
+            `;
+
+            const idToDelete = await generateContent(utilityPrompt);
+
+            if (idToDelete && idToDelete.trim().length > 10) {
+                const deleted = await dbService.deleteAiMemory(idToDelete.trim());
+                if(deleted) {
+                    await dbService.addAiMemory(type, content, null);
+                } else {
+                    console.error("Failsafe: AI-suggested memory deletion failed. New memory was not added.");
+                }
+            } else {
+                 console.warn("AI did not return a valid ID to delete. Deleting the oldest memory as a fallback.");
+                 const oldestMemoryId = sortedMemories[0]?.id;
+                 if (oldestMemoryId) {
+                     await dbService.deleteAiMemory(oldestMemoryId);
+                     await dbService.addAiMemory(type, content, null);
+                 }
+            }
+        }
+        await onMemoryChange();
+    };
     
     const handleAgentSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!userInput.trim() || isAgentLoading) return;
 
-        const newUserMessage: ChatMessage = { role: 'user', text: userInput };
+        const userText = userInput.trim();
+        setUserInput('');
+        
+        const personalRegex = /^@personal\s(.+)/i;
+        const personalMatch = userText.match(personalRegex);
+
+        if (personalMatch && personalMatch[1]) {
+            const content = personalMatch[1];
+            setIsAgentLoading(true);
+            setChatMessages(prev => [...prev, { role: 'user', text: userText }]);
+            await handleSaveContextualMemory(content, 'personal');
+            setChatMessages(prev => [...prev, { role: 'model', text: `Got it. I've saved that to my personal memory.` }]);
+            setIsAgentLoading(false);
+            return;
+        }
+
+        const newUserMessage: ChatMessage = { role: 'user', text: userText };
         const currentMessages = [...chatMessages, newUserMessage];
         setChatMessages(currentMessages);
-        setUserInput('');
         setIsAgentLoading(true);
 
         const historyForApi = currentMessages.map(msg => ({
@@ -153,9 +251,6 @@ const AICoachPage: React.FC<AICoachPageProps> = (props) => {
             parts: [{ text: msg.text }]
         }));
         
-        // The API requires conversations to start with a 'user' role.
-        // The initial greeting message is from the 'model' for UI purposes.
-        // We remove it from the history sent to the API to ensure a valid conversation sequence.
         const historyToSend = [...historyForApi];
         if (historyToSend.length > 0 && historyToSend[0].role === 'model') {
             historyToSend.shift();
@@ -163,7 +258,6 @@ const AICoachPage: React.FC<AICoachPageProps> = (props) => {
 
         const dailyLogsMap = new Map<string, { date: string, total_focus_minutes: number, completed_sessions: number }>();
 
-        // Aggregate focus time and sessions from pomodoro history
         pomodoroHistoryInRange.forEach(p => {
             const date = p.ended_at.split('T')[0];
             if (!dailyLogsMap.has(date)) {
@@ -174,7 +268,6 @@ const AICoachPage: React.FC<AICoachPageProps> = (props) => {
             log.completed_sessions += 1;
         });
 
-        // Ensure days with tasks but no focus time are included, so the AI knows about planned but unworked days.
         tasksInRange.forEach(t => {
             const date = t.due_date;
             if (!dailyLogsMap.has(date)) {
@@ -209,6 +302,7 @@ const AICoachPage: React.FC<AICoachPageProps> = (props) => {
                 total_poms: t.total_poms,
             })),
             dailyLogs,
+            aiMemories: aiMemories.map(m => ({ id: m.id, type: m.type, content: m.content, tags: m.tags, created_at: m.created_at })),
         };
 
 
@@ -218,6 +312,7 @@ const AICoachPage: React.FC<AICoachPageProps> = (props) => {
             const functionCalls = response.functionCalls;
 
             if (functionCalls && functionCalls.length > 0) {
+                // For simplicity, handling one function call at a time
                 const call = functionCalls[0];
                 const { name, args } = call;
                 let functionResultPayload;
@@ -235,6 +330,21 @@ const AICoachPage: React.FC<AICoachPageProps> = (props) => {
                     } else if (name === 'addCommitment') {
                         await onAddCommitment(args.text, args.dueDate || null);
                         functionResultPayload = { success: true, message: `Commitment "${args.text}" recorded.` };
+                    } else if (name === 'saveMemory') {
+                        await handleSaveContextualMemory(args.content, args.type);
+                        functionResultPayload = { success: true, message: `Memory saved.` };
+                    } else if (name === 'updateMemory') {
+                        await dbService.updateAiMemory(args.memoryId, { content: args.newContent });
+                        await onMemoryChange();
+                        functionResultPayload = { success: true, message: `Memory updated.` };
+                    } else if (name === 'deleteMemory') {
+                        const deleted = await dbService.deleteAiMemory(args.memoryId);
+                        if (deleted) {
+                            await onMemoryChange();
+                            functionResultPayload = { success: true, message: `Memory with ID ${args.memoryId} has been deleted.` };
+                        } else {
+                            functionResultPayload = { success: false, message: `Failed to delete memory with ID ${args.memoryId}.` };
+                        }
                     } else {
                         functionResultPayload = { success: false, message: `Unknown function: ${name}` };
                     }
@@ -304,19 +414,22 @@ const AICoachPage: React.FC<AICoachPageProps> = (props) => {
                 </div>
 
                 {/* Input Form */}
-                 <form onSubmit={handleAgentSubmit} className="relative flex gap-3 p-3 bg-slate-900/50 border-t border-slate-700/80 z-10">
-                    <input
-                        type="text"
-                        value={userInput}
-                        onChange={e => setUserInput(e.target.value)}
-                        placeholder="Message your AI Coach..."
-                        disabled={isAgentLoading || isDataLoading}
-                        className="flex-grow bg-slate-700/50 border border-slate-600 rounded-full py-2 px-4 text-white placeholder:text-white/50 focus:outline-none focus:ring-2 focus:ring-teal-400 transition"
-                    />
-                    <button type="submit" disabled={isAgentLoading || isDataLoading || !userInput.trim()} className="w-10 h-10 flex-shrink-0 bg-gradient-to-br from-teal-500 to-cyan-600 text-white rounded-full flex items-center justify-center transition-transform hover:scale-110 disabled:opacity-50 disabled:scale-100 disabled:cursor-not-allowed">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" /></svg>
-                    </button>
-                </form>
+                 <div className="p-3 bg-slate-900/50 border-t border-slate-700/80 z-10">
+                     <form onSubmit={handleAgentSubmit} className="relative flex gap-3">
+                        <input
+                            type="text"
+                            value={userInput}
+                            onChange={e => setUserInput(e.target.value)}
+                            placeholder="Message your AI Coach..."
+                            disabled={isAgentLoading || isDataLoading}
+                            className="flex-grow bg-slate-700/50 border border-slate-600 rounded-full py-2 px-4 text-white placeholder:text-white/50 focus:outline-none focus:ring-2 focus:ring-teal-400 transition"
+                        />
+                        <button type="submit" disabled={isAgentLoading || isDataLoading || !userInput.trim()} className="w-10 h-10 flex-shrink-0 bg-gradient-to-br from-teal-500 to-cyan-600 text-white rounded-full flex items-center justify-center transition-transform hover:scale-110 disabled:opacity-50 disabled:scale-100 disabled:cursor-not-allowed">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" /></svg>
+                        </button>
+                    </form>
+                    <p className="text-center text-xs text-slate-500 mt-2 px-2">Use <code>@personal</code> to save key info. E.g., <code>@personal My main goal is to finish my thesis.</code></p>
+                 </div>
             </div>
             <style>{`
               .prose-invert ul { margin-top: 0.5em; margin-bottom: 0.5em; }

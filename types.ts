@@ -1,6 +1,3 @@
-
-
-
 import { Session, User } from '@supabase/supabase-js';
 
 export type Mode = 'focus' | 'break';
@@ -124,6 +121,20 @@ export interface ChatMessage {
     role: 'user' | 'model';
     text: string;
 }
+
+// For the AI Coach memory
+export type AiMemoryType = 'learning' | 'personal' | 'ai';
+
+export interface AiMemory {
+    id: string;
+    user_id: string;
+    created_at: string;
+    type: AiMemoryType;
+    content: string;
+    tags: string[] | null;
+    source_task_id: string | null;
+}
+
 
 // Supabase session and user for auth
 export type { Session, User };

@@ -1,11 +1,8 @@
-
-
-
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
 import * as dbService from './services/dbService';
-import { Task, Settings, Mode, Page, DbDailyLog, Project, Goal, Target, AppState, PomodoroHistory, Commitment, ChatMessage } from './types';
+import { Task, Settings, Mode, Page, DbDailyLog, Project, Goal, Target, AppState, PomodoroHistory, Commitment, ChatMessage, AiMemory } from './types';
 import { getTodayDateString } from './utils/date';
 import { playFocusStartSound, playFocusEndSound, playBreakStartSound, playBreakEndSound, playAlertLoop, resumeAudioContext } from './utils/audio';
 
@@ -54,6 +51,23 @@ const getInitialAppState = (): { initialState: AppState; initialPhaseEndTime: nu
     return { initialState: defaultState, initialPhaseEndTime: null, wasRestored: false };
 };
 
+const Notification: React.FC<{ message: string; onDismiss: () => void }> = ({ message, onDismiss }) => {
+    useEffect(() => {
+        const timer = setTimeout(onDismiss, 3000);
+        return () => clearTimeout(timer);
+    }, [onDismiss]);
+
+    return (
+        <div className="fixed top-5 left-1/2 -translate-x-1/2 bg-green-500 text-white px-6 py-3 rounded-full shadow-lg z-50 animate-slideDown">
+            {message}
+             <style>{`
+              @keyframes slideDown { from { opacity: 0; transform: translate(-50%, -50px); } to { opacity: 1; transform: translate(-50%, 0); } }
+              .animate-slideDown { animation: slideDown 0.5s ease-out forwards; }
+            `}</style>
+        </div>
+    );
+};
+
 
 const App: React.FC = () => {
     const [session, setSession] = useState<Session | null>(null);
@@ -78,6 +92,8 @@ const App: React.FC = () => {
     const [allCommitments, setAllCommitments] = useState<Commitment[]>([]);
     const [todaysHistory, setTodaysHistory] = useState<PomodoroHistory[]>([]);
     const [historicalLogs, setHistoricalLogs] = useState<DbDailyLog[]>([]);
+    const [aiMemories, setAiMemories] = useState<AiMemory[]>([]);
+    const [notification, setNotification] = useState<string | null>(null);
     
     // State for AI Coach Chat - lifted up for persistence
     const [aiChatMessages, setAiChatMessages] = useState<ChatMessage[]>([
@@ -138,14 +154,15 @@ const App: React.FC = () => {
             const startDate = getTodayDateString(fourteenDaysAgo);
 
             // Fetch raw data sources first
-            const [userSettings, userTasks, userProjects, userGoals, userTargets, userCommitments, allPomodoroHistoryForRange] = await Promise.all([
+            const [userSettings, userTasks, userProjects, userGoals, userTargets, userCommitments, allPomodoroHistoryForRange, userAiMemories] = await Promise.all([
                 dbService.getSettings(),
                 dbService.getTasks(),
                 dbService.getProjects(),
                 dbService.getGoals(),
                 dbService.getTargets(),
                 dbService.getCommitments(),
-                dbService.getPomodoroHistory(startDate, today) // Fetch raw history as the source of truth
+                dbService.getPomodoroHistory(startDate, today), // Fetch raw history as the source of truth
+                dbService.getAiMemories()
             ]);
 
             // --- Process Pomodoro History to generate authoritative logs ---
@@ -199,6 +216,7 @@ const App: React.FC = () => {
             if (userGoals) setGoals(userGoals);
             if (userTargets) setTargets(userTargets);
             if (userCommitments) setAllCommitments(userCommitments);
+            if (userAiMemories) setAiMemories(userAiMemories);
             
             if (!didRestoreFromStorage) {
                 const firstTask = userTasks?.filter(t => t.due_date === getTodayDateString() && !t.completed_at)[0];
@@ -499,15 +517,38 @@ const App: React.FC = () => {
         let finalTasksState = [...tasks];
         const wasFocusSession = modalContent.showCommentBox;
 
-        // Use the tasks state from this render to find the task that just finished.
         const taskJustWorkedOn = tasks.find(t => t.due_date === getTodayDateString() && !t.completed_at);
 
+        // @learn logic
+        let taskComment = comment;
+        const learnRegex = /@learn\s(.+)/i;
+        const learnMatch = comment.match(learnRegex);
+
+        if (learnMatch && learnMatch[1] && taskJustWorkedOn) {
+            taskComment = comment.substring(0, learnMatch.index).trim();
+            const learningContentRaw = learnMatch[1].trim();
+
+            const hashtagRegex = /#(\w+)/g;
+            const tagsFromLearn: string[] = [];
+            let match;
+            while ((match = hashtagRegex.exec(learningContentRaw)) !== null) {
+                tagsFromLearn.push(match[1]);
+            }
+
+            const cleanLearningContent = learningContentRaw.replace(hashtagRegex, '').trim();
+            const combinedTags = [...new Set([...(taskJustWorkedOn.tags || []), ...tagsFromLearn])];
+
+            const newMemory = await dbService.addAiMemory('learning', cleanLearningContent, combinedTags, taskJustWorkedOn.id);
+            if (newMemory) {
+                setAiMemories(prev => [newMemory, ...prev]);
+                setNotification('🧠 AI memory updated!');
+            }
+        }
+
         if (wasFocusSession && taskJustWorkedOn) {
-            const updatedTask = await handleTaskCompletion(comment);
+            const updatedTask = await handleTaskCompletion(taskComment);
             if (updatedTask) {
-                // Create the definitive new task list for this scope
                 finalTasksState = tasks.map(t => t.id === updatedTask.id ? updatedTask : t);
-                // And commit it to React state.
                 setTasks(finalTasksState);
             }
         }
@@ -517,7 +558,6 @@ const App: React.FC = () => {
             ? (appState.currentSession >= settings.sessionsPerCycle ? 1 : appState.currentSession + 1)
             : appState.currentSession;
         
-        // Use the fresh `finalTasksState` to determine what's next
         const updatedTasksToday = finalTasksState.filter(t => t.due_date === getTodayDateString() && !t.completed_at);
         let newTime;
 
@@ -536,7 +576,7 @@ const App: React.FC = () => {
             currentSession: newCurrentSession,
             timeRemaining: newTime,
             sessionTotalTime: newTime,
-            isRunning: true, // Start timer immediately
+            isRunning: true,
         }));
         setPhaseEndTime(newEndTime);
 
@@ -722,6 +762,14 @@ const App: React.FC = () => {
         }
     };
 
+    const refreshAiMemories = async () => {
+        const memories = await dbService.getAiMemories();
+        if (memories) {
+            setAiMemories(memories);
+        }
+        setNotification('🧠 AI memory updated!');
+    };
+
     // Settings
     const handleSaveSettings = async (newSettings: Settings) => {
         await dbService.updateSettings(newSettings);
@@ -785,6 +833,8 @@ const App: React.FC = () => {
                     onAddCommitment={handleAddCommitment}
                     chatMessages={aiChatMessages}
                     setChatMessages={setAiChatMessages}
+                    aiMemories={aiMemories}
+                    onMemoryChange={refreshAiMemories}
                 />;
             case 'goals':
                 return <GoalsPage 
@@ -816,6 +866,7 @@ const App: React.FC = () => {
 
     return (
         <div className="bg-slate-900 text-slate-200 min-h-screen" style={{fontFamily: `'Inter', sans-serif`}}>
+            {notification && <Notification message={notification} onDismiss={() => setNotification(null)} />}
             <Navbar currentPage={page} setPage={setPage} onLogout={() => supabase.auth.signOut()} />
             
             <main className="md:pl-20 lg:pl-56 transition-all duration-300">

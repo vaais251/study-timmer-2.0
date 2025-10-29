@@ -1,16 +1,17 @@
-
 import { GoogleGenAI, GenerateContentResponse, FunctionDeclaration, Part } from "@google/genai";
-import { Goal, Target, Project, Commitment, Task } from '../types';
+import { Goal, Target, Project, Commitment, Task, AiMemory } from '../types';
+
+const API_KEY = "AIzaSyBT9IN5PiyqaWBdM9NekDg5d-5fWDuhZnE";
 
 export async function generateContent(prompt: string): Promise<string> {
     try {
-        const ai = new GoogleGenAI({ apiKey: "AIzaSyBT9IN5PiyqaWBdM9NekDg5d-5fWDuhZnE" });
+        const ai = new GoogleGenAI({ apiKey: API_KEY });
 
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: [{ parts: [{ text: prompt }] }],
             config: {
-                tools: [{ googleSearch: {} }],
+                // No tools for this simple utility call to avoid complexity.
             },
         });
         
@@ -39,6 +40,7 @@ export interface AgentContext {
     commitments: Pick<Commitment, 'id' | 'text' | 'due_date'>[];
     tasks: Pick<Task, 'id' | 'text' | 'due_date' | 'completed_at' | 'project_id' | 'completed_poms' | 'total_poms'>[];
     dailyLogs: { date: string; total_focus_minutes: number; completed_sessions: number }[];
+    aiMemories: Pick<AiMemory, 'id' | 'type' | 'content' | 'tags' | 'created_at'>[];
 }
 
 export async function runAgent(
@@ -46,9 +48,20 @@ export async function runAgent(
     tools: FunctionDeclaration[],
     context: AgentContext
 ): Promise<GenerateContentResponse> {
-    const ai = new GoogleGenAI({ apiKey: "AIzaSyBT9IN5PiyqaWBdM9NekDg5d-5fWDuhZnE" });
+    const ai = new GoogleGenAI({ apiKey: API_KEY });
 
     const systemInstruction = `You are PomoAI, an expert productivity coach and data analyst integrated into a Pomodoro study application. You have complete read-only access to the user's planning and performance data, which is provided below in structured format. Your primary role is to help the user understand their data, find insights, plan their work, and take action on their behalf using your available tools (like adding tasks or projects). You are conversational, encouraging, and highly analytical.
+
+You have access to a memory bank that helps you understand the user better over time. It has 3 types:
+- **'learning' memories**: Specific facts or concepts the user explicitly saved via the '@learn' command after a study session. Use these to suggest future tasks or projects.
+- **'personal' memories**: Personal context the user explicitly told you to save with '@personal' (e.g. "my goal is to learn japanese").
+- **'ai' memories**: Context that YOU, the AI, have autonomously decided is important to remember for future conversations (e.g. user mentions struggling with motivation).
+
+It is CRITICAL that you keep this information up-to-date and relevant.
+- When the user shares new, important personal information (e.g. "my weakest subject is calculus"), you MUST use your \`saveMemory\` tool with \`type: 'personal'\` to save it.
+- When you identify important context yourself from the conversation, you MUST use \`saveMemory\` with \`type: 'ai'\`.
+- If the user provides new information that contradicts an old memory (e.g., "my focus is now on physics" when an old memory says "my focus is on history"), you MUST use your \`updateMemory\` tool to update the existing memory.
+- If the user asks you to "forget" or "delete" a specific memory, you MUST use your \`deleteMemory\` tool with the corresponding \`memoryId\`.
 
 When a user asks you to perform an action (e.g., "create a task", "set up a project"), you MUST use the provided functions. After using a function, you must confirm the action in your response. For data analysis questions (e.g., "Which day was I most productive?", "How much time did I spend on project X?"), you must analyze the provided data context to give a precise answer. Do not invent data.
 
@@ -64,6 +77,10 @@ The following data is for the currently selected date range.
 - **Task**: An individual to-do item. Fields: \`id\`, \`text\`, \`due_date\`, \`completed_at\`, \`project_id\`, \`completed_poms\`, \`total_poms\`.
 - **Commitment**: A promise or accountability statement. Fields: \`id\`, \`text\`, \`due_date\`.
 - **DailyPerformanceLog**: A summary of work for a single day. Fields: \`date\`, \`total_focus_minutes\`, \`completed_sessions\` (number of pomodoros).
+- **AiMemory**: A piece of information you have stored about the user. Fields: \`id\`, \`type\` ('personal', 'learning', or 'ai'), \`content\`, \`tags\`.
+
+== AI MEMORY BANK (Learnings & Personal Context) ==
+${context.aiMemories.map(m => `- [${m.type.toUpperCase()}] (ID: ${m.id}) ${m.content} ${m.tags ? `Tags: [${m.tags.join(', ')}]` : ''}`).join('\n') || "No memories yet."}
 
 == CORE GOALS ==
 ${context.goals.map(g => `- ${g.text} (ID: ${g.id})`).join('\n') || "No core goals set."}

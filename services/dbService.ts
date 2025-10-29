@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient';
-import { Settings, Task, DbDailyLog, Project, Goal, Target, PomodoroHistory, Commitment, ProjectUpdate } from '../types';
+import { Settings, Task, DbDailyLog, Project, Goal, Target, PomodoroHistory, Commitment, ProjectUpdate, AiMemory } from '../types';
 import { getTodayDateString } from '../utils/date';
 
 // --- Settings ---
@@ -966,4 +966,79 @@ export const getConsistencyLogs = async (days = 180): Promise<DbDailyLog[]> => {
         completed_sessions: stats.total > 0 ? Math.round((stats.completed / stats.total) * 100) : 0,
         total_focus_minutes: 0, // Not used by the tracker, but required by the type
     }));
+};
+
+// --- AI Memories ---
+
+export const getAiMemories = async (): Promise<AiMemory[]> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
+
+    const { data, error } = await supabase
+        .from('ai_memories')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        console.error("Error fetching AI memories:", JSON.stringify(error, null, 2));
+        return [];
+    }
+    return data || [];
+};
+
+export const addAiMemory = async (
+    type: AiMemory['type'], 
+    content: string, 
+    tags: string[] | null, 
+    source_task_id: string | null = null
+): Promise<AiMemory | null> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    const { data, error } = await supabase
+        .from('ai_memories')
+        .insert({
+            user_id: user.id,
+            type,
+            content,
+            tags,
+            source_task_id,
+        })
+        .select()
+        .single();
+    
+    if (error) {
+        console.error(`Error adding AI memory:`, JSON.stringify(error, null, 2));
+        return null;
+    }
+    return data;
+};
+
+export const updateAiMemory = async (id: string, updates: Partial<AiMemory>): Promise<AiMemory | null> => {
+    const { data, error } = await supabase
+        .from('ai_memories')
+        .update(updates)
+        .eq('id', id)
+        .select()
+        .single();
+
+    if (error) {
+        console.error("Error updating AI memory:", JSON.stringify(error, null, 2));
+        return null;
+    }
+    return data;
+};
+
+export const deleteAiMemory = async (id: string): Promise<boolean> => {
+    const { error } = await supabase
+        .from('ai_memories')
+        .delete()
+        .eq('id', id);
+
+    if (error) {
+        console.error("Error deleting AI memory:", JSON.stringify(error, null, 2));
+        return false;
+    }
+    return true;
 };
