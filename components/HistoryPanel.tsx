@@ -1,5 +1,3 @@
-
-
 import React, { useState, useMemo } from 'react';
 import Panel from './common/Panel';
 import { DbDailyLog, Task, Project, Target, Settings, PomodoroHistory } from '../types';
@@ -13,6 +11,7 @@ interface HistoryPanelProps {
     projects: Project[];
     allProjects: Project[];
     targets: Target[];
+    allTargets: Target[];
     historyRange: { start: string; end: string };
     setHistoryRange: React.Dispatch<React.SetStateAction<{ start: string; end: string }>>;
     settings: Settings | null;
@@ -281,7 +280,7 @@ const CategoryTimelineChart: React.FC<{ tasks: Task[], history: PomodoroHistory[
 };
 
 
-const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, projects, allProjects, targets, historyRange, setHistoryRange, settings, pomodoroHistory, consistencyLogs, timelinePomodoroHistory }) => {
+const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, projects, allProjects, targets, allTargets, historyRange, setHistoryRange, settings, pomodoroHistory, consistencyLogs, timelinePomodoroHistory }) => {
     const [selectedDay, setSelectedDay] = useState<string>(getTodayDateString());
     const [detailViewType, setDetailViewType] = useState<'day' | 'week' | 'month' | 'all'>('day');
 
@@ -294,10 +293,11 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
     };
     
     const aggregatedData = useMemo(() => {
-        if (!logs || !tasks || !projects || !targets || !allTasks || !allProjects) {
+        if (!logs || !tasks || !projects || !targets || !allTasks || !allProjects || !allTargets) {
             return {
                 totalFocus: 0, completedCount: 0, totalTasks: 0, 
                 pomsDone: 0, pomsEst: 0, projectsCompleted: 0, targetsCompleted: 0,
+                totalProjectsInRange: 0, totalTargetsInRange: 0,
                 lineChartData: [], 
                 taskBreakdownData: [{ name: 'Completed', value: 0 }, { name: 'Pending', value: 0 }],
                 projectBreakdownData: [{ name: 'Completed', value: 0 }, { name: 'Pending', value: 0 }],
@@ -314,6 +314,29 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
         const pomsEst = tasks.reduce((acc, t) => acc + t.total_poms, 0);
         const projectsCompleted = projects.length;
         const targetsCompleted = targets.length;
+        
+        // --- Corrected Totals Logic ---
+        // A "relevant" project/target is one that was either DUE in the range or COMPLETED in the range.
+        
+        // Relevant Projects
+        const projectsDueInRange = new Set(
+            allProjects
+                .filter(p => p.deadline && p.deadline >= historyRange.start && p.deadline <= historyRange.end)
+                .map(p => p.id)
+        );
+        const projectsCompletedInRange = new Set(projects.map(p => p.id)); // `projects` prop is already filtered by completion date in range
+        const totalRelevantProjectIds = new Set([...projectsDueInRange, ...projectsCompletedInRange]);
+        const totalProjectsInRange = totalRelevantProjectIds.size;
+
+        // Relevant Targets
+        const targetsDueInRange = new Set(
+            allTargets
+                .filter(t => t.deadline >= historyRange.start && t.deadline <= historyRange.end)
+                .map(t => t.id)
+        );
+        const targetsCompletedInRange = new Set(targets.map(t => t.id)); // `targets` prop is already filtered by completion date in range
+        const totalRelevantTargetIds = new Set([...targetsDueInRange, ...targetsCompletedInRange]);
+        const totalTargetsInRange = totalRelevantTargetIds.size;
 
         const lineChartDataPoints = new Map<string, { total: number, completed: number }>();
         if (historyRange.start && historyRange.end) {
@@ -417,9 +440,10 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
 
         return {
             totalFocus, completedCount, totalTasks, pomsDone, pomsEst, projectsCompleted, targetsCompleted,
+            totalProjectsInRange, totalTargetsInRange,
             lineChartData, taskBreakdownData, projectBreakdownData, tagAnalysisData, focusLineChartData
         };
-    }, [logs, tasks, allTasks, projects, allProjects, targets, historyRange, settings, pomodoroHistory]);
+    }, [logs, tasks, allTasks, projects, allProjects, targets, allTargets, historyRange, settings, pomodoroHistory]);
 
     const detailedViewData = useMemo(() => {
         const today = getTodayDateString();
@@ -548,8 +572,8 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                 </StatCard>
                  <StatCard title="Achievements">
                      <div className="flex justify-around items-center h-full">
-                        <StatItem label="Projects Done" value={aggregatedData.projectsCompleted} />
-                        <StatItem label="Targets Met" value={aggregatedData.targetsCompleted} />
+                        <StatItem label="Projects Done" value={`${aggregatedData.projectsCompleted} / ${aggregatedData.totalProjectsInRange}`} />
+                        <StatItem label="Targets Met" value={`${aggregatedData.targetsCompleted} / ${aggregatedData.totalTargetsInRange}`} />
                     </div>
                 </StatCard>
             </div>

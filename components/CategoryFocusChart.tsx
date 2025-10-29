@@ -1,9 +1,7 @@
-
-
-
 import React, { useMemo } from 'react';
 import { Task, PomodoroHistory } from '../types';
 import Panel from './common/Panel';
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, LabelList } from 'recharts';
 
 interface CategoryFocusChartProps {
     tasks: Task[];
@@ -34,60 +32,73 @@ const CategoryFocusChart: React.FC<CategoryFocusChartProps> = ({ tasks, todaysHi
         });
 
         const sortedData = Array.from(tagFocusMap.entries())
-            .map(([name, minutes]) => ({ name: name.charAt(0).toUpperCase() + name.slice(1), minutes }))
+            .map(([name, minutes]) => ({ 
+                name: name.charAt(0).toUpperCase() + name.slice(1), 
+                minutes: Math.round(minutes) 
+            }))
             .sort((a, b) => b.minutes - a.minutes);
 
         return sortedData;
     }, [tasks, todaysHistory]);
 
-    const colors = [
-        '#f1f5f9', // slate-100
-        '#e2e8f0', // slate-200
-        '#cbd5e1', // slate-300
-        '#94a3b8', // slate-400
-        '#64748b', // slate-500
-    ];
-    
-    let content: React.ReactNode;
-
-    if (totalFocusMinutes > 0 && categoryData.length > 0) {
-        content = (
-            <div className="p-4 text-white" style={{ fontFamily: `'Segoe UI', 'Roboto', 'Helvetica Neue', sans-serif` }}>
-                <div className="text-6xl font-bold mb-8 text-left">{totalFocusMinutes}<span className="text-5xl font-medium align-baseline">m</span></div>
-                <div className="pl-2">
-                    {categoryData.slice(0, 5).map((item, index) => ( // Show top 5
-                        <div key={item.name} className="flex items-center" style={{ marginTop: index > 0 ? '-24px' : '0px', zIndex: categoryData.length - index, position: 'relative' }}>
-                            <div 
-                                className="w-16 h-16 rounded-full flex items-center justify-center text-slate-800 font-bold text-lg shadow-lg border-2 border-slate-800/20"
-                                style={{ backgroundColor: colors[index % colors.length] }}
-                                title={`${item.minutes} minutes`}
-                            >
-                                {item.minutes}m
-                            </div>
-                            <span className="ml-4 text-xl font-medium">{item.name}</span>
-                        </div>
-                    ))}
+    if (totalFocusMinutes === 0) {
+        return (
+             <Panel title="Today's Focus Breakdown">
+                 <div className="p-4 text-white/70 text-center h-40 flex items-center justify-center">
+                    <p>Complete a focus session to see your time breakdown by category.</p>
                 </div>
-            </div>
-        );
-    } else if (totalFocusMinutes > 0) {
-         content = (
-            <div className="p-4 text-white/70 text-center">
-                <p className="text-lg">You've focused for <span className="font-bold text-white">{totalFocusMinutes}</span> minutes today!</p>
-                <p className="mt-2 text-sm">Add tags to your tasks in the 'Plan' tab to see a breakdown here.</p>
-            </div>
-        );
-    } else {
-        content = (
-             <div className="p-4 text-white/70 text-center h-40 flex items-center justify-center">
-                <p>Complete a focus session to see your time breakdown by category.</p>
-            </div>
+             </Panel>
         );
     }
+    
+    if (categoryData.length === 0) {
+        return (
+             <Panel title="Today's Focus Breakdown">
+                <div className="p-4 text-white/70 text-center">
+                    <p className="text-lg">You've focused for <span className="font-bold text-white">{totalFocusMinutes}</span> minutes today!</p>
+                    <p className="mt-2 text-sm">Add tags to your tasks in the 'Plan' tab to see a breakdown here.</p>
+                </div>
+             </Panel>
+        );
+    }
+    
+    // Determine chart height based on number of categories to prevent squishing
+    const chartHeight = Math.max(160, categoryData.length * 35); // 35px per bar, min 160px
 
     return (
         <Panel title="Today's Focus Breakdown">
-            {content}
+            <div className="text-center mb-4">
+                <span className="text-4xl font-bold text-white">{totalFocusMinutes}</span>
+                <span className="text-lg text-white/80"> Total Minutes</span>
+            </div>
+            <div style={{ height: `${chartHeight}px` }}>
+                <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                        layout="vertical"
+                        data={categoryData}
+                        margin={{ top: 5, right: 40, left: 20, bottom: 5 }}
+                    >
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.2)" />
+                        <XAxis type="number" stroke="rgba(255,255,255,0.7)" unit="m" />
+                        <YAxis dataKey="name" type="category" stroke="rgba(255,255,255,0.7)" width={80} tick={{ fontSize: 12 }} interval={0} />
+                        <Tooltip
+                            cursor={{ fill: 'rgba(255,255,255,0.1)' }}
+                            contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }}
+                            itemStyle={{ color: 'white' }} 
+                            labelStyle={{ color: 'white', fontWeight: 'bold' }}
+                            formatter={(value: number) => [`${value} minutes`, 'Focus Time']}
+                        />
+                        <Bar dataKey="minutes" name="Focus Minutes" fill="#10B981">
+                            <LabelList 
+                                dataKey="minutes" 
+                                position="right" 
+                                style={{ fill: '#a7f3d0', fontSize: 12 }} 
+                                formatter={(value: number) => `${value}m`} 
+                            />
+                        </Bar>
+                    </BarChart>
+                </ResponsiveContainer>
+            </div>
         </Panel>
     );
 };

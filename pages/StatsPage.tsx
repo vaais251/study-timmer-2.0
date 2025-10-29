@@ -1,5 +1,3 @@
-
-
 import React, { useState, useEffect, useCallback } from 'react';
 import HistoryPanel from '../components/HistoryPanel';
 import Spinner from '../components/common/Spinner';
@@ -17,6 +15,7 @@ const StatsPage: React.FC = () => {
     const [projects, setProjects] = useState<Project[]>([]);
     const [allProjects, setAllProjects] = useState<Project[]>([]);
     const [targets, setTargets] = useState<Target[]>([]);
+    const [allTargets, setAllTargets] = useState<Target[]>([]);
     const [allTasks, setAllTasks] = useState<Task[]>([]);
     const [settings, setSettings] = useState<Settings | null>(null);
     const [pomodoroHistory, setPomodoroHistory] = useState<PomodoroHistory[]>([]);
@@ -39,7 +38,7 @@ const StatsPage: React.FC = () => {
                 fetchedLogs, fetchedTasks, fetchedProjects, fetchedTargets, 
                 fetchedAllProjects, fetchedAllTasks, fetchedSettings,
                 fetchedPomodoroHistory, fetchedConsistencyLogs,
-                fetchedTimelineHistory
+                fetchedTimelineHistory, fetchedAllTargets
             ] = await Promise.all([
                 dbService.getHistoricalLogs(start, end),
                 dbService.getHistoricalTasks(start, end),
@@ -50,13 +49,15 @@ const StatsPage: React.FC = () => {
                 dbService.getSettings(),
                 dbService.getPomodoroHistory(start, end),
                 dbService.getConsistencyLogs(180), // Fetch last 6 months
-                dbService.getPomodoroHistory(timelineStartDate, timelineEndDate)
+                dbService.getPomodoroHistory(timelineStartDate, timelineEndDate),
+                dbService.getTargets()
             ]);
             setLogs(fetchedLogs || []);
             setTasks(fetchedTasks || []);
             setProjects(fetchedProjects || []);
             setAllProjects(fetchedAllProjects || []);
             setTargets(fetchedTargets || []);
+            setAllTargets(fetchedAllTargets || []);
             setAllTasks(fetchedAllTasks || []);
             setSettings(fetchedSettings || null);
             setPomodoroHistory(fetchedPomodoroHistory || []);
@@ -88,6 +89,7 @@ const StatsPage: React.FC = () => {
             projects={projects}
             allProjects={allProjects}
             targets={targets}
+            allTargets={allTargets}
             allTasks={allTasks}
             historyRange={historyRange}
             setHistoryRange={setHistoryRange}
