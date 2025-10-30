@@ -42,10 +42,17 @@ const AuthPage: React.FC = () => {
         setError(null);
         setNotification(null);
     
+        // Re-implementing the Google Sign-In flow from scratch as requested.
+        // The key to fixing the redirect issue is providing the correct `redirectTo` URL to Supabase.
+        // This URL tells Supabase where to send the user back after they log in with Google.
+        // We will use the current page's URL (`window.location.href`) and clean it by removing
+        // any existing URL hash ('#...') which might interfere with the auth tokens that Supabase appends in the hash.
+        const redirectTo = window.location.href.split('#')[0];
+
         const { error } = await supabase.auth.signInWithOAuth({
             provider: 'google',
             options: {
-                redirectTo: window.location.href,
+                redirectTo,
             },
         });
     
@@ -53,7 +60,7 @@ const AuthPage: React.FC = () => {
             setError(error.message);
             setLoading(false);
         }
-        // If successful, Supabase handles the redirect automatically.
+        // If successful, Supabase will handle the redirect to Google, and then back to the `redirectTo` URL.
     };
 
 
