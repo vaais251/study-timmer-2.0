@@ -442,7 +442,8 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                 projectBreakdownData: [{ name: 'Completed', value: 0 }, { name: 'Pending', value: 0 }],
                 tagAnalysisData: [],
                 focusLineChartData: [],
-                dailyTaskVolumeChartData: []
+                dailyTaskVolumeChartData: [],
+                averageDailyFocus: 0
             };
         }
 
@@ -456,6 +457,12 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
         const targetsCompleted = targets.length;
         
         const { start, end } = historyRange;
+        
+        const startDate = new Date(start + 'T00:00:00');
+        const endDate = new Date(end + 'T00:00:00');
+        const timeDiff = endDate.getTime() - startDate.getTime();
+        const dayDiff = timeDiff >= 0 ? Math.round(timeDiff / (1000 * 3600 * 24)) + 1 : 1;
+        const averageDailyFocus = dayDiff > 0 ? Math.round(totalFocus / dayDiff) : 0;
         
         // --- Corrected Totals Logic ---
         // A project is relevant if its lifespan (creation to completion) intersects with the date range,
@@ -627,7 +634,8 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
         return {
             totalFocus, completedCount, totalTasks, pomsDone, pomsEst, projectsCompleted, targetsCompleted,
             totalProjectsInRange, totalTargetsInRange,
-            lineChartData, taskBreakdownData, projectBreakdownData, tagAnalysisData, focusLineChartData, dailyTaskVolumeChartData
+            lineChartData, taskBreakdownData, projectBreakdownData, tagAnalysisData, focusLineChartData, dailyTaskVolumeChartData,
+            averageDailyFocus
         };
     }, [logs, tasks, allTasks, projects, allProjects, targets, allTargets, historyRange, settings, pomodoroHistory]);
     
@@ -883,7 +891,8 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-white">
                 <StatCard title="Time & Tasks">
                     <div className="flex justify-around items-center h-full">
-                        <StatItem label="Focus Time" value={formatMinutesToHours(aggregatedData.totalFocus)} />
+                        <StatItem label="Total Focus" value={formatMinutesToHours(aggregatedData.totalFocus)} />
+                        <StatItem label="Avg Daily Focus" value={formatMinutesToHours(aggregatedData.averageDailyFocus)} />
                         <StatItem label="Tasks Done" value={`${aggregatedData.completedCount} / ${aggregatedData.totalTasks}`} />
                     </div>
                 </StatCard>

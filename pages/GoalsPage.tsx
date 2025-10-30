@@ -63,9 +63,17 @@ const ProjectTimeAnalysisDashboard: React.FC<{
             }
         });
 
+        const tasksPerProject = new Map<string, number>();
+        allTasks.forEach(task => {
+            if (task.project_id) {
+                tasksPerProject.set(task.project_id, (tasksPerProject.get(task.project_id) || 0) + 1);
+            }
+        });
+
         return allProjects.map(p => ({
             ...p,
             timeSpent: timePerProject.get(p.id) || 0,
+            taskCount: tasksPerProject.get(p.id) || 0,
             targetTime: p.completion_criteria_type === 'duration_minutes' ? p.completion_criteria_value : null
         }));
     }, [allProjects, allTasks, allHistory, dateRange]);
@@ -90,25 +98,37 @@ const ProjectTimeAnalysisDashboard: React.FC<{
     const isThisMonth = dateRange.start === getMonthStartDateString() && dateRange.end === today;
 
 
-    const ProjectTimeBar: React.FC<{project: typeof projectTimeData[0]}> = ({ project }) => {
+    const ProjectTimeBar: React.FC<{project: (typeof projectTimeData)[0]}> = ({ project }) => {
         const progress = (project.targetTime && project.targetTime > 0)
             ? Math.min(100, (project.timeSpent / project.targetTime) * 100)
             : -1;
         
         return (
              <div className="bg-black/20 p-3 rounded-lg">
-                <div className="flex justify-between items-center text-sm mb-1">
+                <div className="flex justify-between items-start text-sm mb-2">
                     <span className="font-bold text-white truncate pr-2">{project.name}</span>
-                    <span className="text-white/80 whitespace-nowrap">
-                        {project.timeSpent}m
-                        {progress !== -1 && ` / ${project.targetTime}m`}
-                    </span>
-                </div>
-                {progress !== -1 ? (
-                    <div className="w-full bg-black/30 rounded-full h-2.5 shadow-inner">
-                        <div className="bg-gradient-to-r from-cyan-400 to-blue-500 h-2.5 rounded-full" style={{width: `${progress}%`}}></div>
+                    <div className="flex flex-col items-end gap-1 text-white/80 whitespace-nowrap">
+                        <div className="flex items-center gap-2">
+                            <svg className="w-4 h-4 text-cyan-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>
+                            <span><span className="font-semibold text-white">{project.taskCount}</span> tasks</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <svg className="w-4 h-4 text-teal-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                            <span><span className="font-semibold text-white">{project.timeSpent}</span> min</span>
+                        </div>
                     </div>
-                ) : null}
+                </div>
+                {progress !== -1 && (
+                    <div>
+                        <div className="flex justify-between items-center text-xs mb-1 text-white/70">
+                            <span>Time Goal Progress</span>
+                            <span>{project.timeSpent}m / {project.targetTime}m</span>
+                        </div>
+                        <div className="w-full bg-black/30 rounded-full h-2.5 shadow-inner">
+                            <div className="bg-gradient-to-r from-cyan-400 to-blue-500 h-2.5 rounded-full" style={{width: `${progress}%`}}></div>
+                        </div>
+                    </div>
+                )}
             </div>
         )
     };
