@@ -13,7 +13,8 @@
     "react-dom": "^19.2.0",
     "@google/genai": "^1.27.0",
     "recharts": "^3.3.0",
-    "@supabase/supabase-js": "2"
+    "@supabase/supabase-js": "2",
+    "resend": "^6.3.0"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
