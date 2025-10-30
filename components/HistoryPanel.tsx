@@ -178,13 +178,33 @@ const CategoryTimelineChart = React.memo(({ tasks, history, historyRange }: Cate
         let startDate: Date;
         let endDate: Date;
 
+        const todayForComparison = new Date();
+        todayForComparison.setHours(0, 0, 0, 0);
+
         if (view === 'custom') {
             startDate = new Date(historyRange.start + 'T00:00:00');
             endDate = new Date(historyRange.end + 'T00:00:00');
+            
+            // If the selected end date is today or later, cap it at yesterday.
+            if (endDate >= todayForComparison) {
+                const yesterday = new Date();
+                yesterday.setDate(yesterday.getDate() - 1);
+                yesterday.setHours(0, 0, 0, 0);
+                endDate = yesterday;
+            }
+            
+            // If capping the end date made the start date later than the end date, adjust start date.
+            if (startDate > endDate) {
+                startDate = new Date(endDate);
+            }
+
         } else {
-            endDate = new Date();
-            startDate = new Date();
-            startDate.setDate(endDate.getDate() - (view === 'month' ? 29 : 6));
+            const yesterday = new Date();
+            yesterday.setDate(yesterday.getDate() - 1);
+            endDate = yesterday; // end date is now yesterday
+            
+            startDate = new Date(endDate);
+            startDate.setDate(startDate.getDate() - (view === 'month' ? 29 : 6));
         }
         
         const startDateString = getTodayDateString(startDate);
@@ -262,7 +282,7 @@ const CategoryTimelineChart = React.memo(({ tasks, history, historyRange }: Cate
     const COLORS = ['#F59E0B', '#10B981', '#38BDF8', '#EC4899', '#84CC16', '#F43F5E', '#6366F1'];
     
     return (
-        <div className="mt-8">
+        <div className="">
             <h3 className="text-lg font-semibold text-white text-center mb-2">Category Focus Over Time</h3>
              <div className="flex justify-center gap-2 mb-4 bg-black/20 p-1 rounded-full max-w-md mx-auto">
                 <button 
@@ -332,7 +352,7 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
     const handleLegendClick = (o: any) => {
         const { dataKey } = o;
         if (Object.keys(visibleLines).includes(dataKey)) {
-            setVisibleLines(prev => ({ ...prev, [dataKey]: !prev[dataKey as keyof typeof prev] }));
+            setVisibleLines(prev => ({ ...prev, [dataKey as keyof typeof prev]: !prev[dataKey as keyof typeof prev] }));
         }
     };
 
@@ -493,12 +513,14 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
             { name: 'Pending', value: totalPendingTasks },
         ];
 
-        const totalCompletedProjects = allProjects.filter(p => p.completed_at).length;
-        const totalPendingProjects = allProjects.length - totalCompletedProjects;
+        const totalCompletedProjects = allProjects.filter(p => p.status === 'completed').length;
+        const totalActiveProjects = allProjects.filter(p => p.status === 'active').length;
+        const totalDueProjects = allProjects.filter(p => p.status === 'due').length;
         const projectBreakdownData = [
             { name: 'Completed', value: totalCompletedProjects },
-            { name: 'Pending', value: totalPendingProjects },
-        ];
+            { name: 'Active', value: totalActiveProjects },
+            { name: 'Due', value: totalDueProjects },
+        ].filter(d => d.value > 0);
         
         const tagAnalysisData = (() => {
             // Authoritative calculation using pomodoro_history as the source of truth for time spent.
@@ -608,7 +630,7 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
     }, [detailViewType, selectedDay, tasks, pomodoroHistory, historyRange]);
     
     const COLORS_TASKS = ['#34D399', '#F87171'];
-    const COLORS_PROJECTS = ['#60A5FA', '#FBBF24'];
+    const COLORS_PROJECTS = ['#34D399', '#60A5FA', '#F87171']; // Completed, Active, Due
     const COLORS_PIE = ['#F59E0B', '#10B981', '#84CC16', '#EC4899', '#38BDF8', '#F43F5E', '#6366F1'];
 
 
@@ -728,6 +750,7 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                         </ResponsiveContainer>
                     </div>
                 </div>
+                <CategoryTimelineChart tasks={allTasks} history={timelinePomodoroHistory} historyRange={historyRange} />
             </div>
 
             {/* --- Section 5: Focus Breakdown --- */}
@@ -807,9 +830,6 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                     </div>
                 </div>
             </div>
-
-            {/* --- Section 6: Category Timeline --- */}
-            <CategoryTimelineChart tasks={allTasks} history={timelinePomodoroHistory} historyRange={historyRange} />
 
             {/* --- Section 7: Overall Stats --- */}
             <div className="mt-8 space-y-6">
