@@ -5,6 +5,7 @@ import { TrashIcon, EditIcon, StarIcon, LockIcon, CheckIcon } from '../component
 import * as dbService from '../services/dbService';
 import Spinner from '../components/common/Spinner';
 import { getTodayDateString, getMonthStartDateString } from '../utils/date';
+import PrioritySelector from '../components/common/PrioritySelector';
 
 const getDaysAgo = (days: number): string => {
     const date = new Date();
@@ -256,6 +257,12 @@ const ActivityLog: React.FC<{ projectId: string, tasks: Task[] }> = ({ projectId
     );
 };
 
+const priorityBorderColors: { [key: number]: string } = {
+    1: 'border-l-4 border-red-500',
+    2: 'border-l-4 border-amber-500',
+    3: 'border-l-4 border-sky-500',
+    4: 'border-l-4 border-slate-500',
+};
 
 interface ProjectItemProps {
     project: Project;
@@ -271,6 +278,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({ project, tasks, onUpdateProje
     const [editDeadline, setEditDeadline] = useState(project.deadline || '');
     const [editCriteriaType, setEditCriteriaType] = useState(project.completion_criteria_type);
     const [editCriteriaValue, setEditCriteriaValue] = useState(project.completion_criteria_value?.toString() || '');
+    const [editPriority, setEditPriority] = useState<number | null>(project.priority);
     const [isLogVisible, setIsLogVisible] = useState(false);
 
     const { progress, progressText, isComplete, isDue, isManual, isEditable } = useMemo(() => {
@@ -320,7 +328,8 @@ const ProjectItem: React.FC<ProjectItemProps> = ({ project, tasks, onUpdateProje
             description: editDescription.trim() || null,
             deadline: editDeadline || null,
             completion_criteria_type: editCriteriaType,
-            completion_criteria_value: value
+            completion_criteria_value: value,
+            priority: editPriority
         };
         onUpdateProject(project.id, updates);
         setIsEditing(false);
@@ -332,6 +341,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({ project, tasks, onUpdateProje
         setEditDeadline(project.deadline || '');
         setEditCriteriaType(project.completion_criteria_type);
         setEditCriteriaValue(project.completion_criteria_value?.toString() || '');
+        setEditPriority(project.priority);
         setIsEditing(false);
     };
 
@@ -351,18 +361,22 @@ const ProjectItem: React.FC<ProjectItemProps> = ({ project, tasks, onUpdateProje
                 {editCriteriaType !== 'manual' && (
                     <input type="number" value={editCriteriaValue} onChange={e => setEditCriteriaValue(e.target.value)} placeholder={editCriteriaType === 'task_count' ? '# of tasks' : 'Minutes of focus'} className="w-full bg-white/20 border border-white/30 rounded-lg p-2 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50" />
                 )}
-                <div className="flex justify-end gap-2 text-sm mt-2">
-                    <button onClick={handleCancel} className="p-2 px-4 rounded-md font-bold text-white transition hover:scale-105 bg-gradient-to-br from-gray-500 to-gray-600">Cancel</button>
-                    <button onClick={handleSave} className="p-2 px-4 rounded-md font-bold text-white transition hover:scale-105 bg-gradient-to-br from-blue-500 to-cyan-600">Save</button>
+                <div className="flex justify-between items-center mt-2">
+                    <PrioritySelector priority={editPriority} setPriority={setEditPriority} />
+                    <div className="flex justify-end gap-2 text-sm">
+                        <button onClick={handleCancel} className="p-2 px-4 rounded-md font-bold text-white transition hover:scale-105 bg-gradient-to-br from-gray-500 to-gray-600">Cancel</button>
+                        <button onClick={handleSave} className="p-2 px-4 rounded-md font-bold text-white transition hover:scale-105 bg-gradient-to-br from-blue-500 to-cyan-600">Save</button>
+                    </div>
                 </div>
             </div>
         );
     }
     
     const bgColor = isComplete ? 'bg-white/5 text-white/50' : isDue ? 'bg-red-900/40' : 'bg-white/10';
+    const priorityClass = priorityBorderColors[project.priority as number] ?? '';
 
     return (
-        <div className={`p-3 rounded-lg ${bgColor} transition-all`}>
+        <div className={`p-3 rounded-lg ${bgColor} ${priorityClass} transition-all`}>
             <div className="flex items-center justify-between">
                 <div className="flex items-start gap-3 flex-grow min-w-0">
                     {isManual && (
@@ -428,6 +442,7 @@ const TargetItem: React.FC<{
     const [isEditing, setIsEditing] = useState(false);
     const [editText, setEditText] = useState(target.text);
     const [editDeadline, setEditDeadline] = useState(target.deadline);
+    const [editPriority, setEditPriority] = useState<number | null>(target.priority);
     
     const isCompleted = target.status === 'completed';
     const isIncomplete = target.status === 'incomplete';
@@ -438,13 +453,14 @@ const TargetItem: React.FC<{
             alert("Target text and deadline cannot be empty.");
             return;
         }
-        onUpdateTarget(target.id, { text: editText.trim(), deadline: editDeadline });
+        onUpdateTarget(target.id, { text: editText.trim(), deadline: editDeadline, priority: editPriority });
         setIsEditing(false);
     };
 
     const handleCancel = () => {
         setEditText(target.text);
         setEditDeadline(target.deadline);
+        setEditPriority(target.priority);
         setIsEditing(false);
     };
 
@@ -453,9 +469,12 @@ const TargetItem: React.FC<{
             <li className="bg-white/20 p-3 rounded-lg ring-2 ring-cyan-400 space-y-2">
                 <input type="text" value={editText} onChange={e => setEditText(e.target.value)} placeholder="Target description" className="w-full bg-white/20 border border-white/30 rounded-lg p-2 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50" />
                 <input type="date" value={editDeadline} onChange={e => setEditDeadline(e.target.value)} className="bg-white/20 border border-white/30 rounded-lg p-2 text-white/80 w-full text-center" style={{colorScheme: 'dark'}} />
-                <div className="flex justify-end gap-2 text-sm mt-2">
-                    <button onClick={handleCancel} className="p-2 px-4 rounded-md font-bold text-white transition hover:scale-105 bg-gradient-to-br from-gray-500 to-gray-600">Cancel</button>
-                    <button onClick={handleSave} className="p-2 px-4 rounded-md font-bold text-white transition hover:scale-105 bg-gradient-to-br from-blue-500 to-cyan-600">Save</button>
+                <div className="flex justify-between items-center mt-2">
+                    <PrioritySelector priority={editPriority} setPriority={setEditPriority} />
+                    <div className="flex justify-end gap-2 text-sm">
+                        <button onClick={handleCancel} className="p-2 px-4 rounded-md font-bold text-white transition hover:scale-105 bg-gradient-to-br from-gray-500 to-gray-600">Cancel</button>
+                        <button onClick={handleSave} className="p-2 px-4 rounded-md font-bold text-white transition hover:scale-105 bg-gradient-to-br from-blue-500 to-cyan-600">Save</button>
+                    </div>
                 </div>
             </li>
         );
@@ -469,9 +488,10 @@ const TargetItem: React.FC<{
         bgColor = 'bg-red-900/40';
         textColor = 'text-red-300';
     }
+    const priorityClass = priorityBorderColors[target.priority as number] ?? '';
 
     return (
-        <li className={`flex items-center justify-between p-3 rounded-lg transition-all ${bgColor}`}>
+        <li className={`flex items-center justify-between p-3 rounded-lg transition-all ${bgColor} ${priorityClass}`}>
             <div className="flex items-center gap-3 flex-grow min-w-0">
                 <input 
                     type="checkbox" 
@@ -900,10 +920,10 @@ interface GoalsPageProps {
     onUpdateGoal: (id: string, text: string) => void;
     onDeleteGoal: (id: string) => void;
     onSetGoalCompletion: (id: string, isComplete: boolean) => void;
-    onAddTarget: (text: string, deadline: string) => void;
+    onAddTarget: (text: string, deadline: string, priority: number | null) => void;
     onUpdateTarget: (id: string, updates: Partial<Target>) => void;
     onDeleteTarget: (id: string) => void;
-    onAddProject: (name: string, description: string | null, deadline: string | null, criteria: {type: Project['completion_criteria_type'], value: number | null}) => Promise<string | null>;
+    onAddProject: (name: string, description: string | null, deadline: string | null, criteria: {type: Project['completion_criteria_type'], value: number | null}, priority: number | null) => Promise<string | null>;
     onUpdateProject: (id: string, updates: Partial<Project>) => void;
     onDeleteProject: (id: string) => void;
     onAddCommitment: (text: string, dueDate: string | null) => void;
@@ -919,17 +939,20 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
     const [newGoal, setNewGoal] = useState('');
     const [newTarget, setNewTarget] = useState('');
     const [newDeadline, setNewDeadline] = useState('');
+    const [newTargetPriority, setNewTargetPriority] = useState<number | null>(null);
     const [showArchivedGoals, setShowArchivedGoals] = useState(false);
     
     // Target states
     const [targetView, setTargetView] = useState<'pending' | 'incomplete' | 'completed'>('pending');
     const [targetDateRange, setTargetDateRange] = useState<{ start: string; end: string }>({ start: '', end: '' });
     const [showTargetDateFilter, setShowTargetDateFilter] = useState(false);
+    const [targetSortBy, setTargetSortBy] = useState<'default' | 'priority'>('default');
     
     // Project form state
     const [newProjectName, setNewProjectName] = useState('');
     const [newProjectDescription, setNewProjectDescription] = useState('');
     const [newProjectDeadline, setNewProjectDeadline] = useState('');
+    const [newProjectPriority, setNewProjectPriority] = useState<number | null>(null);
     const [criteriaType, setCriteriaType] = useState<Project['completion_criteria_type']>('manual');
     const [criteriaValue, setCriteriaValue] = useState('');
     
@@ -942,6 +965,7 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
     const [projectStatusFilter, setProjectStatusFilter] = useState<'active' | 'completed' | 'due'>('active');
     const [projectDateRange, setProjectDateRange] = useState({ start: '', end: '' });
     const [showProjectDateFilter, setShowProjectDateFilter] = useState(false);
+    const [projectSortBy, setProjectSortBy] = useState<'default' | 'priority'>('default');
 
 
     useEffect(() => {
@@ -966,12 +990,13 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
                 return;
             }
 
-            onAddProject(newProjectName.trim(), newProjectDescription.trim() || null, newProjectDeadline || null, { type: criteriaType, value });
+            onAddProject(newProjectName.trim(), newProjectDescription.trim() || null, newProjectDeadline || null, { type: criteriaType, value }, newProjectPriority);
             
             // Reset form
             setNewProjectName('');
             setNewProjectDescription('');
             setNewProjectDeadline('');
+            setNewProjectPriority(null);
             setCriteriaType('manual');
             setCriteriaValue('');
         }
@@ -986,9 +1011,10 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
 
     const handleAddTarget = () => {
         if (newTarget.trim() && newDeadline) {
-            onAddTarget(newTarget.trim(), newDeadline);
+            onAddTarget(newTarget.trim(), newDeadline, newTargetPriority);
             setNewTarget('');
             setNewDeadline('');
+            setNewTargetPriority(null);
         }
     };
     
@@ -1025,6 +1051,18 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
         const allCompleted = projects.filter(p => p.status === 'completed');
         const allDue = projects.filter(p => p.status === 'due');
 
+        if (projectSortBy === 'priority') {
+            const sortByPriority = (a: Project, b: Project) => {
+                const priorityA = a.priority ?? 5;
+                const priorityB = b.priority ?? 5;
+                if (priorityA !== priorityB) return priorityA - priorityB;
+                return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+            };
+            allActive.sort(sortByPriority);
+            allDue.sort(sortByPriority);
+        }
+        // Default sort by created_at is handled by the dbService fetch
+
         let visibleCompleted, visibleDue;
 
         if (projectDateRange.start && projectDateRange.end) {
@@ -1045,10 +1083,8 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
         const hiddenCompleted = allCompleted.length - visibleCompleted.length;
         const hiddenDue = allDue.length - visibleDue.length;
 
-        allActive.sort((a, b) => (a.deadline || 'z').localeCompare(b.deadline || 'z'));
         visibleCompleted.sort((a,b) => (b.completed_at || '').localeCompare(a.completed_at || ''));
-        visibleDue.sort((a,b) => (a.deadline || '').localeCompare(b.deadline || ''));
-
+        
         return {
             activeProjects: allActive,
             visibleCompletedProjects: visibleCompleted,
@@ -1056,7 +1092,7 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
             hiddenCompletedProjectsCount: hiddenCompleted,
             hiddenDueProjectsCount: hiddenDue,
         };
-    }, [projects, projectDateRange]);
+    }, [projects, projectDateRange, projectSortBy]);
     
     const {
         pendingTargets,
@@ -1072,8 +1108,18 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
         const allIncomplete = targets.filter(t => t.status === 'incomplete');
         const allCompleted = targets.filter(t => t.status === 'completed');
 
-        // Pending targets are always visible, no filtering.
-        const pending = allActive.sort((a, b) => new Date(a.deadline).getTime() - new Date(b.deadline).getTime());
+        if (targetSortBy === 'priority') {
+             const sortByPriority = (a: Target, b: Target) => {
+                const priorityA = a.priority ?? 5;
+                const priorityB = b.priority ?? 5;
+                if (priorityA !== priorityB) return priorityA - priorityB;
+                return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+            };
+            allActive.sort(sortByPriority);
+            allIncomplete.sort(sortByPriority);
+        }
+
+        const pending = allActive;
 
         let visibleIncomplete = allIncomplete;
         let visibleCompleted = allCompleted;
@@ -1091,7 +1137,7 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
             visibleCompleted = allCompleted.filter(t => t.completed_at && new Date(t.completed_at) >= thirtyDaysAgo);
         }
 
-        const incomplete = visibleIncomplete.sort((a, b) => new Date(a.deadline).getTime() - new Date(b.deadline).getTime());
+        const incomplete = visibleIncomplete;
         const completed = visibleCompleted.sort((a, b) => new Date(b.completed_at || 0).getTime() - new Date(a.completed_at || 0).getTime());
 
         return {
@@ -1101,7 +1147,7 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
             hiddenIncompleteCount: allIncomplete.length - visibleIncomplete.length,
             hiddenCompletedCount: allCompleted.length - visibleCompleted.length,
         };
-    }, [targets, targetDateRange]);
+    }, [targets, targetDateRange, targetSortBy]);
 
     const upcomingDeadlines = useMemo(() => {
         const tomorrow = new Date();
@@ -1244,22 +1290,27 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
 
             <Panel title="🎯 Key Targets">
                 <p className="text-white/80 text-center text-sm mb-4">Specific, measurable outcomes with a deadline to keep you on track.</p>
-                <div className="flex flex-col sm:flex-row gap-2 mb-4">
-                    <input
-                        type="text"
-                        value={newTarget}
-                        onChange={(e) => setNewTarget(e.target.value)}
-                        placeholder="Define a clear target..."
-                        className="flex-grow bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50"
-                    />
-                    <input
-                        type="date"
-                        value={newDeadline}
-                        onChange={(e) => setNewDeadline(e.target.value)}
-                        className="bg-white/20 border border-white/30 rounded-lg p-3 text-white/80 text-center"
-                        style={{colorScheme: 'dark'}}
-                    />
-                    <button onClick={handleAddTarget} className="p-3 px-6 rounded-lg font-bold text-white transition hover:scale-105 bg-gradient-to-br from-blue-500 to-sky-600">Add Target</button>
+                <div className="flex flex-col gap-2 mb-4">
+                    <div className="flex flex-col sm:flex-row gap-2">
+                        <input
+                            type="text"
+                            value={newTarget}
+                            onChange={(e) => setNewTarget(e.target.value)}
+                            placeholder="Define a clear target..."
+                            className="flex-grow bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50"
+                        />
+                        <input
+                            type="date"
+                            value={newDeadline}
+                            onChange={(e) => setNewDeadline(e.target.value)}
+                            className="bg-white/20 border border-white/30 rounded-lg p-3 text-white/80 text-center"
+                            style={{colorScheme: 'dark'}}
+                        />
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-2 justify-between items-center">
+                        <PrioritySelector priority={newTargetPriority} setPriority={setNewTargetPriority} />
+                        <button onClick={handleAddTarget} className="w-full sm:w-auto p-3 px-6 rounded-lg font-bold text-white transition hover:scale-105 bg-gradient-to-br from-blue-500 to-sky-600">Add Target</button>
+                    </div>
                 </div>
                 
                 <div className="flex justify-center gap-2 mb-4 bg-black/20 p-1 rounded-full">
@@ -1275,6 +1326,16 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
                 </div>
 
                 <TargetFilterControls />
+
+                <div className="flex justify-end mb-2 -mt-2">
+                    <button
+                        onClick={() => setTargetSortBy(s => s === 'default' ? 'priority' : 'default')}
+                        className="text-xs text-cyan-300 hover:text-cyan-200 font-semibold px-3 py-1 rounded-full hover:bg-white/10 transition"
+                        aria-label={`Sort targets by ${targetSortBy === 'default' ? 'priority' : 'date'}`}
+                    >
+                        Sort by: {targetSortBy === 'default' ? 'Default' : 'Priority'}
+                    </button>
+                </div>
                 
                 {targetView === 'pending' && (
                     <ul className="space-y-2 max-h-64 overflow-y-auto pr-2">
@@ -1332,7 +1393,10 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
                     {criteriaType !== 'manual' && (
                         <input type="number" value={criteriaValue} onChange={e => setCriteriaValue(e.target.value)} placeholder={criteriaType === 'task_count' ? '# of tasks to complete' : 'Total minutes of focus'} className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50" />
                     )}
-                    <button onClick={handleAddProject} className="w-full p-3 rounded-lg font-bold text-white transition hover:scale-105 bg-gradient-to-br from-blue-500 to-sky-600">Add Project</button>
+                    <div className="flex flex-col sm:flex-row gap-2 justify-between items-center pt-1">
+                        <PrioritySelector priority={newProjectPriority} setPriority={setNewProjectPriority} />
+                        <button onClick={handleAddProject} className="w-full sm:w-auto p-3 rounded-lg font-bold text-white transition hover:scale-105 bg-gradient-to-br from-blue-500 to-sky-600">Add Project</button>
+                    </div>
                 </div>
                 
                  <div className="flex justify-center gap-2 mb-4 bg-black/20 p-1 rounded-full">
@@ -1348,6 +1412,16 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
                 </div>
 
                 <ProjectFilterControls />
+                
+                <div className="flex justify-end mb-2 -mt-2">
+                    <button
+                        onClick={() => setProjectSortBy(s => s === 'default' ? 'priority' : 'default')}
+                        className="text-xs text-cyan-300 hover:text-cyan-200 font-semibold px-3 py-1 rounded-full hover:bg-white/10 transition"
+                        aria-label={`Sort projects by ${projectSortBy === 'default' ? 'priority' : 'date'}`}
+                    >
+                        Sort by: {projectSortBy === 'default' ? 'Default' : 'Priority'}
+                    </button>
+                </div>
                 
                 <ul className="space-y-2 max-h-96 overflow-y-auto pr-2">
                     {(

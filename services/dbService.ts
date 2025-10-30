@@ -57,7 +57,7 @@ export const getTasks = async (): Promise<Task[] | null> => {
         .eq('user_id', user.id)
         .gte('due_date', today)
         .order('due_date', { ascending: true }) // Sort by date first
-        .order('task_order', { ascending: true, nullsFirst: true }) // Then by custom order, putting unordered tasks first
+        .order('task_order', { ascending: true, nullsFirst: true }) // Then by custom order
         .order('created_at', { ascending: true }); // Fallback sort
 
     if (error) {
@@ -68,7 +68,7 @@ export const getTasks = async (): Promise<Task[] | null> => {
     return data;
 };
 
-export const addTask = async (text: string, poms: number, dueDate: string, projectId: string | null, tags: string[]): Promise<Task[] | null> => {
+export const addTask = async (text: string, poms: number, dueDate: string, projectId: string | null, tags: string[], priority: number | null): Promise<Task[] | null> => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
         return null;
@@ -101,6 +101,7 @@ export const addTask = async (text: string, poms: number, dueDate: string, proje
         project_id: projectId,
         tags: tags,
         task_order: newOrder,
+        priority,
     };
     
     // Pass an array to insert, and remove the unnecessary .select()
@@ -290,6 +291,7 @@ export const moveTask = async (id: string, action: 'postpone' | 'duplicate'): Pr
             custom_focus_duration: original.custom_focus_duration,
             custom_break_duration: original.custom_break_duration,
             task_order: newOrderForTomorrow,
+            priority: original.priority,
         });
          if (insertError) console.error("Error duplicating task:", JSON.stringify(insertError, null, 2));
     }
@@ -374,7 +376,7 @@ export const getProjects = async (): Promise<Project[] | null> => {
         .from('projects')
         .select('*')
         .eq('user_id', user.id)
-        .order('name', { ascending: true });
+        .order('created_at', { ascending: true });
     if (error) console.error("Error fetching projects:", JSON.stringify(error, null, 2));
     return error ? null : data;
 }
@@ -384,7 +386,8 @@ export const addProject = async (
     description: string | null,
     deadline: string | null, 
     criteriaType: Project['completion_criteria_type'],
-    criteriaValue: number | null
+    criteriaValue: number | null,
+    priority: number | null
 ): Promise<Project | null> => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return null;
@@ -398,7 +401,8 @@ export const addProject = async (
             completion_criteria_type: criteriaType,
             completion_criteria_value: criteriaValue,
             status: 'active',
-            progress_value: 0
+            progress_value: 0,
+            priority,
         })
         .select()
         .single();
@@ -489,6 +493,7 @@ export const rescheduleProject = async (projectId: string, newDeadline: string |
         deadline: newDeadline,
         progress_value: 0,
         completed_at: null,
+        priority: originalProject.priority,
     };
 
     const { error: insertError } = await supabase.from('projects').insert(newProjectData);
@@ -631,14 +636,14 @@ export const deleteGoal = async (id: string): Promise<Goal[] | null> => {
 export const getTargets = async (): Promise<Target[] | null> => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return null;
-    const { data, error } = await supabase.from('targets').select('*').eq('user_id', user.id).order('deadline');
+    const { data, error } = await supabase.from('targets').select('*').eq('user_id', user.id).order('created_at', { ascending: true });
     return error ? null : data;
 }
 
-export const addTarget = async (text: string, deadline: string): Promise<Target[] | null> => {
+export const addTarget = async (text: string, deadline: string, priority: number | null): Promise<Target[] | null> => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return null;
-    const { error } = await supabase.from('targets').insert({ text, deadline, user_id: user.id });
+    const { error } = await supabase.from('targets').insert({ text, deadline, user_id: user.id, priority });
     return error ? null : await getTargets();
 }
 
@@ -674,6 +679,7 @@ export const rescheduleTarget = async (targetId: string, newDeadline: string): P
         text: `${originalTarget.text} (rescheduled)`,
         deadline: newDeadline,
         completed_at: null,
+        priority: originalTarget.priority,
     };
 
     const { error: insertError } = await supabase.from('targets').insert(newTargetData);

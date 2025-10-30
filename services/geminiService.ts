@@ -35,10 +35,10 @@ export async function generateContent(prompt: string): Promise<string> {
 
 export interface AgentContext {
     goals: Pick<Goal, 'id' | 'text'>[];
-    targets: Pick<Target, 'id' | 'text' | 'deadline' | 'completed_at'>[];
-    projects: Pick<Project, 'id' | 'name' | 'description' | 'status' | 'deadline' | 'completion_criteria_type' | 'completion_criteria_value' | 'progress_value'>[];
+    targets: Pick<Target, 'id' | 'text' | 'deadline' | 'completed_at' | 'priority'>[];
+    projects: Pick<Project, 'id' | 'name' | 'description' | 'status' | 'deadline' | 'completion_criteria_type' | 'completion_criteria_value' | 'progress_value' | 'priority'>[];
     commitments: Pick<Commitment, 'id' | 'text' | 'due_date'>[];
-    tasks: Pick<Task, 'id' | 'text' | 'due_date' | 'completed_at' | 'project_id' | 'completed_poms' | 'total_poms' | 'comments'>[];
+    tasks: Pick<Task, 'id' | 'text' | 'due_date' | 'completed_at' | 'project_id' | 'completed_poms' | 'total_poms' | 'comments' | 'priority'>[];
     dailyLogs: { date: string; total_focus_minutes: number; completed_sessions: number }[];
     aiMemories: Pick<AiMemory, 'id' | 'type' | 'content' | 'tags' | 'created_at'>[];
 }
@@ -84,6 +84,7 @@ You have access to the user's data, structured in the following tables. Use this
     *   \`text\` (string): The description of the target.
     *   \`deadline\` (date string, YYYY-MM-DD): The target's due date.
     *   \`completed_at\` (timestamp | null): Timestamp of completion.
+    *   \`priority\` (integer | null): Optional priority from 1 (highest) to 4 (lowest).
 
 3.  **projects** - Large initiatives that group related tasks.
     *   \`id\` (string, PK): Unique identifier.
@@ -94,11 +95,12 @@ You have access to the user's data, structured in the following tables. Use this
     *   \`completion_criteria_type\` (string): How completion is measured: 'manual', 'task_count', 'duration_minutes'.
     *   \`completion_criteria_value\` (number | null): The target value for the criteria (e.g., 10 for task_count).
     *   \`progress_value\` (number): Current progress towards the criteria value.
+    *   \`priority\` (integer | null): Optional priority from 1 (highest) to 4 (lowest).
 
 4.  **tasks** - Individual, actionable to-do items. The core unit of work.
     *   \`id\` (string, PK): Unique identifier.
     *   \`text\` (string): The task description.
-    *   \`total_poms\` (number): Estimated Pomodoro sessions needed.
+    *   \`total_poms\` (number): Estimated Pomodoro sessions needed. A negative number (e.g., -1) indicates a "stopwatch" task where the timer counts up from zero instead of down.
     *   \`completed_poms\` (number): Pomodoro sessions completed for this task.
     *   \`comments\` (array of strings): **CRITICAL**: User's notes/comments added after each focus session. This contains valuable qualitative data on what was accomplished or learned.
     *   \`due_date\` (date string, YYYY-MM-DD): The task's due date.
@@ -106,6 +108,7 @@ You have access to the user's data, structured in the following tables. Use this
     *   \`project_id\` (string | null, FK -> projects.id): The project this task belongs to.
     *   \`tags\` (array of strings): User-defined tags for categorization.
     *   \`custom_focus_duration\` (number | null): Override for default focus time (in minutes).
+    *   \`priority\` (integer | null): Optional priority from 1 (highest) to 4 (lowest).
 
 5.  **pomodoro_history** - The authoritative log of all completed focus sessions.
     *   \`id\` (string, PK): Unique identifier.
@@ -148,21 +151,21 @@ ${context.aiMemories.map(m => `- [${m.type.toUpperCase()}] (ID: ${m.id}) ${m.con
 ${context.goals.map(g => `- ${g.text} (ID: ${g.id})`).join('\n') || "No core goals set."}
 
 == KEY TARGETS ==
-${context.targets.map(t => `- [${t.completed_at ? 'X' : ' '}] ${t.text} (Due: ${t.deadline}, ID: ${t.id})`).join('\n') || 'No key targets set.'}
+${context.targets.map(t => `- [${t.completed_at ? 'X' : ' '}] ${t.text} (Due: ${t.deadline}, P:${t.priority || 'N'}, ID: ${t.id})`).join('\n') || 'No key targets set.'}
 
 == PROJECTS ==
 ${context.projects.map(p => {
     let progress = '';
     if (p.completion_criteria_type === 'task_count') progress = `(${p.progress_value}/${p.completion_criteria_value} tasks)`;
     if (p.completion_criteria_type === 'duration_minutes') progress = `(${p.progress_value}/${p.completion_criteria_value} min)`;
-    return `- ${p.name} [${p.status}] ${progress} (Due: ${p.deadline || 'N/A'}, ID: ${p.id})`;
+    return `- ${p.name} [${p.status}] ${progress} (Due: ${p.deadline || 'N/A'}, P:${p.priority || 'N'}, ID: ${p.id})`;
 }).join('\n') || 'No projects.'}
 Note: When adding a task to a project, you MUST use the project's ID.
 
 == TASKS (within date range) ==
 ${context.tasks.map(t => {
     const comments = t.comments && t.comments.length > 0 ? ` Comments: [${t.comments.join('; ')}]` : '';
-    return `- [${t.completed_at ? 'X' : ' '}] ${t.text} (${t.completed_poms}/${t.total_poms} poms, Due: ${t.due_date}, ProjectID: ${t.project_id || 'None'}, ID: ${t.id})${comments}`;
+    return `- [${t.completed_at ? 'X' : ' '}] ${t.text} (${t.completed_poms}/${t.total_poms} poms, Due: ${t.due_date}, P:${t.priority || 'N'}, ProjectID: ${t.project_id || 'None'}, ID: ${t.id})${comments}`;
 }).join('\n') || 'No tasks in this period.'}
 
 == COMMITMENTS ==

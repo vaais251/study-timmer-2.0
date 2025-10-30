@@ -10,14 +10,14 @@ interface PlanPageProps {
     completedToday: Task[];
     projects: Project[];
     settings: Settings;
-    onAddTask: (text: string, poms: number, dueDate: string, projectId: string | null, tags: string[]) => void;
+    onAddTask: (text: string, poms: number, dueDate: string, projectId: string | null, tags: string[], priority: number | null) => void;
     onAddProject: (name: string) => Promise<string | null>;
     onDeleteTask: (id: string) => void;
     onMoveTask: (id: string, action: 'postpone' | 'duplicate') => void;
     onBringTaskForward: (id: string) => void;
     onReorderTasks: (reorderedTasks: Task[]) => void;
     onUpdateTaskTimers: (id: string, newTimers: { focus: number | null, break: number | null }) => void;
-    onUpdateTask: (id: string, newText: string, newTags: string[], newPoms: number, projectId: string | null) => void;
+    onUpdateTask: (id: string, newText: string, newTags: string[], newPoms: number, projectId: string | null, priority: number | null) => void;
     onMarkTaskIncomplete: (id: string) => void;
 }
 

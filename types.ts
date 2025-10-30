@@ -16,6 +16,7 @@ export interface Project {
     completion_criteria_type: 'manual' | 'task_count' | 'duration_minutes';
     completion_criteria_value: number | null;
     progress_value: number; // stores completed tasks or minutes
+    priority: number | null;
 }
 
 // Corresponds to the `project_updates` table
@@ -59,6 +60,7 @@ export interface Target {
     deadline: string;
     completed_at: string | null;
     status: 'active' | 'completed' | 'incomplete';
+    priority: number | null;
 }
 
 // Corresponds to the `tasks` table
@@ -78,6 +80,7 @@ export interface Task {
     projects?: { name: string } | null; // For joined data
     custom_focus_duration: number | null;
     custom_break_duration: number | null;
+    priority: number | null;
 }
 
 // Corresponds to the `settings` table (without user_id)

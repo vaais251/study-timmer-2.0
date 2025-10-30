@@ -1,5 +1,3 @@
-
-
 import React, { useMemo } from 'react';
 import { AppState, Settings, Task, DbDailyLog, PomodoroHistory } from '../types';
 import Header from '../components/Header';
@@ -25,6 +23,8 @@ interface TimerPageProps {
     currentTask?: Task;
     todaysHistory: PomodoroHistory[];
     historicalLogs: DbDailyLog[];
+    isStopwatchMode: boolean;
+    onSaveStopwatchTask: () => void;
 }
 
 const formatMinutes = (minutes: number): string => {
@@ -59,12 +59,15 @@ const CurrentTaskDisplay: React.FC<{ task?: Task }> = ({ task }) => {
 };
 
 const TimerPage: React.FC<TimerPageProps> = (props) => {
-    const { appState, settings, tasksToday, completedToday, dailyLog, startTimer, stopTimer, resetTimer, navigateToSettings, currentTask, todaysHistory, historicalLogs } = props;
+    const { appState, settings, tasksToday, completedToday, dailyLog, startTimer, stopTimer, resetTimer, navigateToSettings, currentTask, todaysHistory, historicalLogs, isStopwatchMode, onSaveStopwatchTask } = props;
     
     const allTodaysTasks = useMemo(() => [...tasksToday, ...completedToday], [tasksToday, completedToday]);
 
     const focusTimeRemainingMinutes = useMemo(() => {
         return tasksToday.reduce((total, task) => {
+            // Ignore stopwatch tasks for remaining time calculation
+            if (task.total_poms < 0) return total;
+
             const remainingPoms = task.total_poms - task.completed_poms;
             if (remainingPoms <= 0) return total;
 
@@ -91,7 +94,7 @@ const TimerPage: React.FC<TimerPageProps> = (props) => {
             <div className="bg-slate-800/60 rounded-xl p-4 sm:p-6 border border-slate-700/80">
                 <div className="text-center mb-4">
                     <h2 className={`text-lg font-semibold uppercase tracking-wider ${isFocus ? 'text-teal-400' : 'text-purple-400'}`}>
-                        {isFocus ? 'Focus Session' : 'Break Time'}
+                        {isStopwatchMode ? 'Stopwatch' : isFocus ? 'Focus Session' : 'Break Time'}
                     </h2>
                 </div>
                 
@@ -100,6 +103,7 @@ const TimerPage: React.FC<TimerPageProps> = (props) => {
                     totalTime={appState.sessionTotalTime}
                     isRunning={appState.isRunning}
                     mode={appState.mode}
+                    isStopwatchMode={isStopwatchMode}
                 />
 
                 <Controls
@@ -111,6 +115,17 @@ const TimerPage: React.FC<TimerPageProps> = (props) => {
                     sessionTotalTime={appState.sessionTotalTime}
                     mode={appState.mode}
                 />
+                {isStopwatchMode && appState.isRunning && (
+                    <div className="text-center -mt-2 mb-4">
+                        <button
+                            onClick={onSaveStopwatchTask}
+                            className="text-white font-semibold py-3 px-8 rounded-full shadow-lg transition-all transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-green-400 bg-green-500 hover:bg-green-600"
+                            aria-label="Save stopwatch session and complete task"
+                        >
+                            Save &amp; Complete Session
+                        </button>
+                    </div>
+                )}
             </div>
             
             <AmbientSounds />
