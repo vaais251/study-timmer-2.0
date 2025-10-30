@@ -5,8 +5,7 @@ import { runAgent, AgentContext, generateContent } from '../services/geminiServi
 import * as dbService from '../services/dbService';
 import Spinner from '../components/common/Spinner';
 import { FunctionDeclaration, Type } from '@google/genai';
-import Panel from '../components/common/Panel';
-import { TrashIcon } from '../components/common/Icons';
+import { TrashIcon, BrainIcon, UserIcon, SparklesIcon, SendIcon } from '../components/common/Icons';
 
 // Helper to format AI response from Markdown to HTML
 function formatAIResponse(text: string): string {
@@ -167,39 +166,46 @@ const AiMemoryManager: React.FC<{ memories: AiMemory[], onDelete: (id: string) =
     }, [memories]);
 
     const typeInfo = {
-        learning: { title: "🧠 Learnings", description: "Facts you've explicitly saved with @learn after a focus session." },
-        personal: { title: "👤 Personal Context", description: "Information you've told the AI to remember about you with @personal." },
-        ai: { title: "🤖 AI Inferences", description: "Context the AI has autonomously saved to improve conversations." }
+        learning: { title: "Learnings", icon: <BrainIcon />, description: "Facts you've saved with @learn." },
+        personal: { title: "Personal Context", icon: <UserIcon />, description: "Info you've told the AI to remember." },
+        ai: { title: "AI Inferences", icon: <SparklesIcon />, description: "Context the AI has saved." }
     };
 
     return (
-        <Panel title="AI Memory Bank">
-            <p className="text-white/80 text-center text-sm mb-4">Here is what I remember to provide you with personalized coaching. You can ask me to forget things at any time.</p>
-            {(['learning', 'personal', 'ai'] as const).map(type => (
-                <div key={type} className="mb-4">
-                    <h3 className="text-lg font-bold text-white mb-1">{typeInfo[type].title}</h3>
-                    <p className="text-xs text-white/60 mb-2">{typeInfo[type].description}</p>
-                    <ul className="space-y-2 max-h-48 overflow-y-auto pr-2">
-                        {groupedMemories[type].length > 0 ? groupedMemories[type].map(memory => (
-                            <li key={memory.id} className="bg-black/20 p-3 rounded-lg flex justify-between items-start gap-2 group">
-                                <div>
-                                    <p className="text-sm text-white/90">{memory.content}</p>
-                                    <span className="text-xs text-white/50">{new Date(memory.created_at).toLocaleDateString()}</span>
-                                    {memory.tags && memory.tags.length > 0 && (
-                                        <div className="flex flex-wrap gap-1 mt-1">
-                                            {memory.tags.map(tag => <span key={tag} className="text-xs bg-purple-500/30 text-purple-300 px-1.5 py-0.5 rounded-full">{tag}</span>)}
+        <div className="bg-slate-800/50 rounded-xl border border-slate-700/80 p-4 sm:p-6">
+            <h2 className="text-xl font-bold text-white text-center mb-2">🧠 AI Memory Bank</h2>
+            <p className="text-white/80 text-center text-xs mb-4">Here is what I remember to provide you with personalized coaching. You can ask me to forget things at any time.</p>
+            <div className="space-y-4 max-h-[calc(100vh-18rem)] overflow-y-auto pr-2">
+                {(['learning', 'personal', 'ai'] as const).map(type => (
+                    <div key={type}>
+                        <h3 className="text-md font-bold text-white mb-2 flex items-center gap-2">
+                            <span className="text-teal-400">{typeInfo[type].icon}</span>
+                            <span>{typeInfo[type].title}</span>
+                        </h3>
+                        <ul className="space-y-2">
+                            {groupedMemories[type].length > 0 ? groupedMemories[type].map(memory => (
+                                <li key={memory.id} className="bg-black/20 p-3 rounded-lg flex justify-between items-start gap-2 group transition-colors hover:bg-black/40">
+                                    <div className="flex-grow">
+                                        <p className="text-sm text-white/90">{memory.content}</p>
+                                        <div className="flex items-center gap-2 mt-1">
+                                            <span className="text-xs text-white/50">{new Date(memory.created_at).toLocaleDateString()}</span>
+                                            {memory.tags && memory.tags.length > 0 && (
+                                                <div className="flex flex-wrap gap-1">
+                                                    {memory.tags.map(tag => <span key={tag} className="text-xs bg-purple-500/30 text-purple-300 px-1.5 py-0.5 rounded-full">{tag}</span>)}
+                                                </div>
+                                            )}
                                         </div>
-                                    )}
-                                </div>
-                                <button onClick={() => onDelete(memory.id)} className="p-1 text-red-400 hover:text-red-300 transition opacity-0 group-hover:opacity-100 flex-shrink-0" title="Delete Memory">
-                                    <TrashIcon />
-                                </button>
-                            </li>
-                        )) : <p className="text-center text-sm text-white/50 p-2 italic">No {type} memories yet.</p>}
-                    </ul>
-                </div>
-            ))}
-        </Panel>
+                                    </div>
+                                    <button onClick={() => onDelete(memory.id)} className="p-1 text-red-400 hover:text-red-300 transition opacity-0 group-hover:opacity-100 flex-shrink-0" title="Delete Memory">
+                                        <TrashIcon />
+                                    </button>
+                                </li>
+                            )) : <p className="text-center text-xs text-white/50 p-2 italic bg-black/10 rounded-lg">No {type} memories yet.</p>}
+                        </ul>
+                    </div>
+                ))}
+            </div>
+        </div>
     );
 };
 
@@ -209,8 +215,9 @@ const AICoachPage: React.FC<AICoachPageProps> = (props) => {
     // Agent State
     const [userInput, setUserInput] = useState('');
     const [isAgentLoading, setIsAgentLoading] = useState(false);
-    const [isMemoriesVisible, setIsMemoriesVisible] = useState(false);
+    const [isMemoryBankVisible, setIsMemoryBankVisible] = useState(false);
     const chatEndRef = useRef<HTMLDivElement>(null);
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
     
     // Context Data State
     const [historyRange, setHistoryRange] = useState(() => ({
@@ -244,7 +251,14 @@ const AICoachPage: React.FC<AICoachPageProps> = (props) => {
 
     useEffect(() => {
         chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, [chatMessages]);
+    }, [chatMessages, isAgentLoading]);
+    
+     useEffect(() => {
+        if (textareaRef.current) {
+            textareaRef.current.style.height = 'auto';
+            textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
+        }
+    }, [userInput]);
 
     const handleDeleteMemory = async (id: string) => {
         if (window.confirm("Are you sure you want the AI to forget this memory? This action cannot be undone.")) {
@@ -460,90 +474,113 @@ const AICoachPage: React.FC<AICoachPageProps> = (props) => {
         }
     };
 
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            handleAgentSubmit(e as any);
+        }
+    };
+
 
     return (
-        <>
-            <Panel title="🤖 AI Coach">
-                 <div className="flex flex-col h-[calc(80vh-120px)] md:h-[calc(100vh-200px)] -m-4 sm:-m-6">
-                    {/* Context Header */}
-                    <div className="relative p-4 pt-0 bg-slate-900/30 border-b border-slate-700/80 z-10">
-                        <p className="text-center text-xs text-white/60 mb-2">Provide a date range for performance context.</p>
-                         <div className="flex flex-col sm:flex-row items-center justify-center gap-2">
-                            <input type="date" value={historyRange.start} onChange={e => setHistoryRange(p => ({...p, start: e.target.value}))} className="bg-slate-700/50 border border-slate-600 rounded-lg p-2 text-white/80 w-full text-center text-xs" style={{colorScheme: 'dark'}}/>
-                            <span className="text-white/80 text-xs">to</span>
-                            <input type="date" value={historyRange.end} onChange={e => setHistoryRange(p => ({...p, end: e.target.value}))} className="bg-slate-700/50 border border-slate-600 rounded-lg p-2 text-white/80 w-full text-center text-xs" style={{colorScheme: 'dark'}}/>
-                        </div>
-                         {isDataLoading && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-teal-400 animate-pulse"></div>}
+        <div>
+            <div className="bg-slate-800/50 rounded-xl border border-slate-700/80 flex flex-col h-[calc(100vh-10rem)] max-h-[800px]">
+                <div className="p-4 border-b border-slate-700/80 flex justify-between items-center">
+                    <h2 className="text-xl font-bold text-white">🤖 AI Coach</h2>
+                    <button
+                        onClick={() => setIsMemoryBankVisible(v => !v)}
+                        className="flex items-center gap-2 text-sm text-slate-300 hover:text-white bg-slate-700/50 px-3 py-2 rounded-lg transition-colors"
+                        aria-expanded={isMemoryBankVisible}
+                    >
+                        <BrainIcon />
+                        <span>{isMemoryBankVisible ? 'Hide Memory' : 'Show Memory'}</span>
+                    </button>
+                </div>
+                {/* Context Header */}
+                <div className="relative p-3 bg-slate-900/30 border-b border-slate-700/80 z-10">
+                    <p className="text-center text-xs text-white/60 mb-2">Provide a date range for performance context.</p>
+                     <div className="flex flex-col sm:flex-row items-center justify-center gap-2">
+                        <input type="date" value={historyRange.start} onChange={e => setHistoryRange(p => ({...p, start: e.target.value}))} className="bg-slate-700/50 border border-slate-600 rounded-lg p-2 text-white/80 w-full text-center text-xs" style={{colorScheme: 'dark'}}/>
+                        <span className="text-white/80 text-xs">to</span>
+                        <input type="date" value={historyRange.end} onChange={e => setHistoryRange(p => ({...p, end: e.target.value}))} className="bg-slate-700/50 border border-slate-600 rounded-lg p-2 text-white/80 w-full text-center text-xs" style={{colorScheme: 'dark'}}/>
                     </div>
-                    
-                    {/* Chat History */}
-                    <div className="flex-grow overflow-y-auto p-4 space-y-4">
-                        {chatMessages.map((msg, index) => (
-                             <div key={index} className={`flex items-end gap-3 animate-slideUp ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                {msg.role === 'model' && (
-                                    <div className="w-8 h-8 rounded-full bg-teal-500 flex items-center justify-center shadow-lg flex-shrink-0">🤖</div>
-                                )}
-                                <div className={`max-w-xs md:max-w-md p-3 rounded-2xl text-white shadow-md ${msg.role === 'user' ? 'bg-teal-600 rounded-br-none' : 'bg-slate-700 rounded-bl-none'}`}>
+                     {isDataLoading && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-teal-400 animate-pulse"></div>}
+                </div>
+                
+                {/* Chat History */}
+                <div className="flex-grow overflow-y-auto p-4 space-y-6">
+                    {chatMessages.map((msg, index) => {
+                        if (msg.role === 'user') {
+                            return (
+                                <div key={index} className="flex items-start gap-3 justify-end animate-slideUp">
+                                    <div className="max-w-xs md:max-w-md lg:max-w-lg p-3 rounded-b-xl rounded-tl-xl text-white shadow-md bg-teal-600">
+                                        <div className="prose prose-sm prose-invert" dangerouslySetInnerHTML={{ __html: formatAIResponse(msg.text) }} />
+                                    </div>
+                                    <div className="w-8 h-8 rounded-full bg-slate-600 flex items-center justify-center shadow-lg flex-shrink-0 text-lg">👤</div>
+                                </div>
+                            );
+                        }
+                        return (
+                            <div key={index} className="flex items-start gap-3 animate-slideUp">
+                                <div className="w-8 h-8 rounded-full bg-teal-500/80 flex items-center justify-center shadow-lg flex-shrink-0 text-lg">🤖</div>
+                                <div className="max-w-xs md:max-w-md lg:max-w-lg p-3 rounded-b-xl rounded-tr-xl text-white shadow-md bg-slate-700">
                                     <div className="prose prose-sm prose-invert" dangerouslySetInnerHTML={{ __html: formatAIResponse(msg.text) }} />
                                 </div>
                             </div>
-                        ))}
-                        {isAgentLoading && (
-                             <div className="flex items-end gap-3 justify-start">
-                                <div className="w-8 h-8 rounded-full bg-teal-500 flex items-center justify-center shadow-lg flex-shrink-0">🤖</div>
-                                <div className="p-3 rounded-2xl bg-slate-700 rounded-bl-none text-white">
-                                    <div className="flex items-center gap-1">
-                                        <span className="w-2 h-2 bg-white/70 rounded-full animate-bounce-dots" style={{ animationDelay: '0s' }}></span>
-                                        <span className="w-2 h-2 bg-white/70 rounded-full animate-bounce-dots" style={{ animationDelay: '0.2s' }}></span>
-                                        <span className="w-2 h-2 bg-white/70 rounded-full animate-bounce-dots" style={{ animationDelay: '0.4s' }}></span>
-                                    </div>
+                        );
+                    })}
+                    {isAgentLoading && (
+                         <div className="flex items-start gap-3 animate-slideUp">
+                            <div className="w-8 h-8 rounded-full bg-teal-500/80 flex items-center justify-center shadow-lg flex-shrink-0 text-lg">🤖</div>
+                            <div className="p-3 rounded-b-xl rounded-tr-xl bg-slate-700 text-white">
+                                <div className="flex items-center gap-1.5">
+                                    <span className="w-2.5 h-2.5 bg-white/70 rounded-full animate-bounce-dots" style={{ animationDelay: '0s' }}></span>
+                                    <span className="w-2.5 h-2.5 bg-white/70 rounded-full animate-bounce-dots" style={{ animationDelay: '0.2s' }}></span>
+                                    <span className="w-2.5 h-2.5 bg-white/70 rounded-full animate-bounce-dots" style={{ animationDelay: '0.4s' }}></span>
                                 </div>
                             </div>
-                        )}
-                        <div ref={chatEndRef} />
-                    </div>
-
-                    {/* Input Form */}
-                     <div className="p-3 bg-slate-900/50 border-t border-slate-700/80 z-10">
-                         <form onSubmit={handleAgentSubmit} className="relative flex gap-3">
-                            <input
-                                type="text"
-                                value={userInput}
-                                onChange={e => setUserInput(e.target.value)}
-                                placeholder="Message your AI Coach..."
-                                disabled={isAgentLoading || isDataLoading}
-                                className="flex-grow bg-slate-700/50 border border-slate-600 rounded-full py-2 px-4 text-white placeholder:text-white/50 focus:outline-none focus:ring-2 focus:ring-teal-400 transition"
-                            />
-                            <button type="submit" disabled={isAgentLoading || isDataLoading || !userInput.trim()} className="w-10 h-10 flex-shrink-0 bg-gradient-to-br from-teal-500 to-cyan-600 text-white rounded-full flex items-center justify-center transition-transform hover:scale-110 disabled:opacity-50 disabled:scale-100 disabled:cursor-not-allowed">
-                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" /></svg>
-                            </button>
-                        </form>
-                        <p className="text-center text-xs text-slate-500 mt-2 px-2">Use <code>@personal</code> to save key info. E.g., <code>@personal My main goal is to finish my thesis.</code></p>
-                     </div>
+                        </div>
+                    )}
+                    <div ref={chatEndRef} />
                 </div>
-                <style>{`
-                  .prose-invert ul { margin-top: 0.5em; margin-bottom: 0.5em; }
-                  .prose-invert li { margin-top: 0.2em; margin-bottom: 0.2em; }
-                `}</style>
-            </Panel>
-            
-            <div className="text-center my-4">
-                <button
-                    onClick={() => setIsMemoriesVisible(v => !v)}
-                    className="text-sm text-cyan-300 hover:text-cyan-200 font-semibold px-4 py-2 rounded-full hover:bg-white/10 transition flex items-center gap-2 mx-auto"
-                    aria-expanded={isMemoriesVisible}
-                >
-                    {isMemoriesVisible ? '▼ Hide Memory Bank' : '► Show Memory Bank'}
-                </button>
-            </div>
 
-            {isMemoriesVisible && (
-                <div className="animate-fadeIn">
+                {/* Input Form */}
+                 <div className="p-4 bg-slate-900/50 border-t border-slate-700/80">
+                     <form onSubmit={handleAgentSubmit} className="relative flex items-end gap-2">
+                        <textarea
+                            ref={textareaRef}
+                            value={userInput}
+                            onChange={e => setUserInput(e.target.value)}
+                            onKeyDown={handleKeyDown}
+                            placeholder="Message your AI Coach..."
+                            rows={1}
+                            disabled={isAgentLoading || isDataLoading}
+                            className="flex-grow bg-slate-700/50 border border-slate-600 rounded-2xl py-3 px-4 text-white placeholder:text-white/50 focus:outline-none focus:ring-2 focus:ring-teal-400 transition resize-none max-h-40 overflow-y-auto"
+                        />
+                        <button
+                            type="submit"
+                            disabled={isAgentLoading || isDataLoading || !userInput.trim()}
+                            className="w-12 h-12 flex-shrink-0 bg-gradient-to-br from-teal-500 to-cyan-600 text-white rounded-full flex items-center justify-center transition-transform hover:scale-110 disabled:opacity-50 disabled:scale-100 disabled:cursor-not-allowed"
+                            aria-label="Send message"
+                        >
+                            <SendIcon />
+                        </button>
+                    </form>
+                    <p className="text-center text-xs text-slate-500 mt-2 px-2">Use <code>@personal</code> to save key info. E.g., <code>@personal My main goal is to finish my thesis.</code></p>
+                 </div>
+            </div>
+             <style>{`
+              .prose-invert ul { margin-top: 0.5em; margin-bottom: 0.5em; }
+              .prose-invert li { margin-top: 0.2em; margin-bottom: 0.2em; }
+            `}</style>
+            
+            {isMemoryBankVisible && (
+                <div className="mt-6 animate-slideUp">
                     <AiMemoryManager memories={aiMemories} onDelete={handleDeleteMemory} />
                 </div>
             )}
             
-        </>
+        </div>
     );
 };
 
