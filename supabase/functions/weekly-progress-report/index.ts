@@ -1,5 +1,6 @@
 // Fix: Add Deno types reference to resolve "Cannot find name 'Deno'" errors.
-/// <reference types="https://deno.land/x/deno/cli/types/deno.ns.d.ts" />
+// FIX: Updated the Deno types reference to a valid URL to resolve 'Cannot find name Deno' errors.
+/// <reference types="https://raw.githubusercontent.com/denoland/deno/v1.44.4/runtime/dts/lib.deno.d.ts" />
 
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';

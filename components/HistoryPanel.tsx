@@ -514,7 +514,7 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                 endDateForChart = yesterday;
             }
             while(currentDate <= endDateForChart) {
-                const dateString = currentDate.toISOString().split('T')[0];
+                const dateString = getTodayDateString(currentDate);
                 lineChartDataPoints.set(dateString, { total: 0, completed: 0 });
                 currentDate.setDate(currentDate.getDate() + 1);
             }
@@ -548,7 +548,7 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                 endDateForChart = yesterday;
             }
             while(currentDate <= endDateForChart) {
-                const dateString = currentDate.toISOString().split('T')[0];
+                const dateString = getTodayDateString(currentDate);
                 focusMinutesPerDay.set(dateString, 0);
                 currentDate.setDate(currentDate.getDate() + 1);
             }
@@ -580,7 +580,7 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                 endDateForChart = yesterday;
             }
             while(currentDate <= endDateForChart) {
-                const dateString = currentDate.toISOString().split('T')[0];
+                const dateString = getTodayDateString(currentDate);
                 dailyTaskStats.set(dateString, { total: 0, completed: 0 });
                 currentDate.setDate(currentDate.getDate() + 1);
             }
