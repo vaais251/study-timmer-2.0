@@ -46,12 +46,12 @@ const getMonthAgoDateString = (): string => {
 const toolDeclarations: FunctionDeclaration[] = [
     {
         name: 'addTask',
-        description: `Adds a new task to the user's to-do list. When a due date is not specified, it defaults to today. When poms (pomodoro sessions) are not specified, it defaults to 1.`,
+        description: `Adds a new task to the user's to-do list. Tasks can be either standard countdown Pomodoros or count-up 'stopwatch' timers. When a due date is not specified, it defaults to today.`,
         parameters: {
             type: Type.OBJECT,
             properties: {
                 text: { type: Type.STRING, description: 'The content or description of the task. Must be descriptive.' },
-                poms: { type: Type.INTEGER, description: 'The estimated number of Pomodoro sessions required. Defaults to 1. Use a negative number (e.g., -1) to create a "stopwatch" task that counts up from zero.' },
+                poms: { type: Type.INTEGER, description: 'The estimated number of Pomodoro sessions required. Defaults to 1 for a standard task. For a stopwatch task that counts up, use a negative number (e.g., -1).' },
                 dueDate: { type: Type.STRING, description: `The date the task is due, in YYYY-MM-DD format. Defaults to today if not specified.` },
                 projectId: { type: Type.STRING, description: 'The ID of an existing project this task belongs to. Use null if no project.' },
                 tags: { type: Type.ARRAY, description: 'A list of tags to categorize the task, e.g., ["research", "writing"].', items: { type: Type.STRING } },
