@@ -146,6 +146,7 @@ const ProjectTimeAnalysisDashboard: React.FC<{
 
 const ActivityLog: React.FC<{ projectId: string, tasks: Task[] }> = ({ projectId, tasks }) => {
     const [updates, setUpdates] = useState<ProjectUpdate[]>([]);
+    const [taskFocusTimes, setTaskFocusTimes] = useState<Map<string, number>>(new Map());
     const [isLoading, setIsLoading] = useState(true);
     const [newUpdateDesc, setNewUpdateDesc] = useState('');
     const [newUpdateDate, setNewUpdateDate] = useState(getTodayDateString());
@@ -154,7 +155,29 @@ const ActivityLog: React.FC<{ projectId: string, tasks: Task[] }> = ({ projectId
     const fetchUpdates = useCallback(async () => {
         setIsLoading(true);
         const fetchedUpdates = await dbService.getProjectUpdates(projectId);
-        setUpdates(fetchedUpdates || []);
+        
+        if (fetchedUpdates && fetchedUpdates.length > 0) {
+            const taskIds = fetchedUpdates
+                .map(u => u.task_id)
+                .filter((id): id is string => id !== null);
+            
+            const newFocusTimes = new Map<string, number>();
+            if (taskIds.length > 0) {
+                const historyForTasks = await dbService.getPomodoroHistoryForTasks(taskIds);
+                historyForTasks.forEach(h => {
+                    if (h.task_id) {
+                        const current = newFocusTimes.get(h.task_id) || 0;
+                        newFocusTimes.set(h.task_id, current + (Number(h.duration_minutes) || 0));
+                    }
+                });
+            }
+            setTaskFocusTimes(newFocusTimes);
+            setUpdates(fetchedUpdates);
+        } else {
+            setTaskFocusTimes(new Map());
+            setUpdates([]);
+        }
+        
         setIsLoading(false);
     }, [projectId]);
 
@@ -206,17 +229,26 @@ const ActivityLog: React.FC<{ projectId: string, tasks: Task[] }> = ({ projectId
             
             {isLoading ? <Spinner/> : (
                 <ul className="space-y-2 max-h-48 overflow-y-auto pr-2">
-                    {updates.map(update => (
-                        <li key={update.id} className="bg-black/20 p-2 rounded-md text-sm group relative">
-                            <div className="flex justify-between items-start">
-                                <div>
-                                    <p className="text-white/90">{update.description}</p>
-                                    <p className="text-xs text-white/60 mt-1">{new Date(update.update_date + 'T00:00:00').toLocaleDateString()}{update.tasks ? ` - Ref: ${update.tasks.text}`:''}</p>
+                    {updates.map(update => {
+                        const focusTime = update.task_id ? taskFocusTimes.get(update.task_id) : null;
+                        const focusTimeString = focusTime && focusTime > 0 ? ` - Focus: ${focusTime}m` : '';
+
+                        return (
+                            <li key={update.id} className="bg-black/20 p-2 rounded-md text-sm group relative">
+                                <div className="flex justify-between items-start">
+                                    <div>
+                                        <p className="text-white/90">{update.description}</p>
+                                        <p className="text-xs text-white/60 mt-1">
+                                            {new Date(update.update_date + 'T00:00:00').toLocaleDateString()}
+                                            {update.tasks ? ` - Ref: ${update.tasks.text}`:''}
+                                            {focusTimeString && <span className="text-cyan-400 font-semibold">{focusTimeString}</span>}
+                                        </p>
+                                    </div>
+                                    <button onClick={() => handleDeleteUpdate(update.id)} className="p-1 text-red-400 hover:text-red-300 transition opacity-0 group-hover:opacity-100 flex-shrink-0" title="Delete Log Entry"><TrashIcon /></button>
                                 </div>
-                                <button onClick={() => handleDeleteUpdate(update.id)} className="p-1 text-red-400 hover:text-red-300 transition opacity-0 group-hover:opacity-100 flex-shrink-0" title="Delete Log Entry"><TrashIcon /></button>
-                            </div>
-                        </li>
-                    ))}
+                            </li>
+                        );
+                    })}
                     {updates.length === 0 && <p className="text-center text-xs text-white/60 py-2">No activity logged yet.</p>}
                 </ul>
             )}

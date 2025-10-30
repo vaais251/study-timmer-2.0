@@ -977,6 +977,23 @@ export const getPomodoroHistory = async (startDate: string, endDate: string): Pr
     return data || [];
 };
 
+export const getPomodoroHistoryForTasks = async (taskIds: string[]): Promise<PomodoroHistory[]> => {
+    if (!taskIds || taskIds.length === 0) return [];
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
+
+    const { data, error } = await supabase
+        .from('pomodoro_history')
+        .select('*')
+        .in('task_id', taskIds);
+
+    if (error) {
+        console.error("Error fetching pomodoro history for tasks:", JSON.stringify(error, null, 2));
+        return [];
+    }
+    return data || [];
+};
+
 export const getAllPomodoroHistory = async (): Promise<PomodoroHistory[]> => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return [];
