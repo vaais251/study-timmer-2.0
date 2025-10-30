@@ -75,7 +75,7 @@ const TimerDisplay: React.FC<TimerDisplayProps> = ({ timeRemaining, totalTime, i
                     }}
                 />
             </svg>
-            <div className={`text-7xl sm:text-8xl font-light ${theme.text} tracking-wider`} style={{ fontVariantNumeric: 'tabular-nums', textShadow: theme.textShadow }}>
+            <div className={`relative text-7xl sm:text-8xl font-light ${theme.text} tracking-wider`} style={{ fontVariantNumeric: 'tabular-nums', textShadow: theme.textShadow }}>
                 {minutes}:{seconds}
             </div>
         </div>
