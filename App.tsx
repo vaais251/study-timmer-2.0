@@ -813,6 +813,54 @@ const App: React.FC = () => {
         if (newCommitments) setAllCommitments(newCommitments);
     };
 
+    // --- Reschedule Handlers ---
+    const handleRescheduleProject = async (id: string, newDeadline: string | null) => {
+        const newProjects = await dbService.rescheduleProject(id, newDeadline);
+        if (newProjects) {
+            setProjects(newProjects);
+            setNotification('Project rescheduled successfully!');
+        }
+    };
+
+    const handleRescheduleTarget = async (id: string, newDeadline: string) => {
+        const newTargets = await dbService.rescheduleTarget(id, newDeadline);
+        if (newTargets) {
+            const today = getTodayDateString();
+            const augmentedTargets = newTargets.map(t => ({
+                ...t,
+                status: t.completed_at ? 'completed' as const : t.deadline < today ? 'incomplete' as const : 'active' as const,
+            }));
+            setTargets(augmentedTargets);
+            setNotification('Target rescheduled successfully!');
+        }
+    };
+
+    const handleRescheduleCommitment = async (id: string, newDueDate: string | null) => {
+        const newCommitments = await dbService.rescheduleCommitment(id, newDueDate);
+        if (newCommitments) {
+            setAllCommitments(newCommitments);
+            setNotification('Commitment rescheduled successfully!');
+        }
+    };
+
+    const handleRescheduleItemFromAI = async (itemId: string, itemType: 'project' | 'target' | 'commitment', newDate: string | null): Promise<void> => {
+        switch (itemType) {
+            case 'project':
+                await handleRescheduleProject(itemId, newDate);
+                break;
+            case 'target':
+                if (!newDate) throw new Error("A new deadline is required to reschedule a target.");
+                await handleRescheduleTarget(itemId, newDate);
+                break;
+            case 'commitment':
+                await handleRescheduleCommitment(itemId, newDate);
+                break;
+            default:
+                throw new Error(`Unknown item type for rescheduling: ${itemType}`);
+        }
+    };
+
+
     // --- AI Coach Specific Task Adder (for promise-based flow) ---
     const handleAddTaskFromAI = async (text: string, poms: number, dueDate: string, projectId: string | null, tags: string[]): Promise<void> => {
         const newTasks = await dbService.addTask(text, poms, dueDate, projectId, tags);
@@ -890,6 +938,7 @@ const App: React.FC = () => {
                     onAddProject={handleAddProject}
                     onAddTarget={handleAddTarget}
                     onAddCommitment={handleAddCommitment}
+                    onRescheduleItem={handleRescheduleItemFromAI}
                     chatMessages={aiChatMessages}
                     setChatMessages={setAiChatMessages}
                     aiMemories={aiMemories}
@@ -916,6 +965,9 @@ const App: React.FC = () => {
                     onDeleteCommitment={handleDeleteCommitment}
                     onSetCommitmentCompletion={handleSetCommitmentCompletion}
                     onMarkCommitmentBroken={handleMarkCommitmentBroken}
+                    onRescheduleProject={handleRescheduleProject}
+                    onRescheduleTarget={handleRescheduleTarget}
+                    onRescheduleCommitment={handleRescheduleCommitment}
                 />;
             case 'settings':
                 return <SettingsPage settings={settings} onSave={handleSaveSettings} />;

@@ -29,6 +29,7 @@ interface AICoachPageProps {
     onAddProject: (name: string, description: string | null, deadline: string | null, criteria?: {type: Project['completion_criteria_type'], value: number | null}) => Promise<string | null>;
     onAddTarget: (text: string, deadline: string) => Promise<void>;
     onAddCommitment: (text: string, dueDate: string | null) => Promise<void>;
+    onRescheduleItem: (itemId: string, itemType: 'project' | 'target' | 'commitment', newDate: string | null) => Promise<void>;
     chatMessages: ChatMessage[];
     setChatMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
     aiMemories: AiMemory[];
@@ -95,6 +96,19 @@ const toolDeclarations: FunctionDeclaration[] = [
                 dueDate: { type: Type.STRING, description: 'An optional due date for the commitment in YYYY-MM-DD format.' }
             },
             required: ['text']
+        }
+    },
+    {
+        name: 'rescheduleItem',
+        description: `Reschedules a due project, broken commitment, or incomplete target. This keeps the original failed item as a record and creates a new, active copy with a new deadline. The new item's name/text will be suffixed with '(rescheduled)'.`,
+        parameters: {
+            type: Type.OBJECT,
+            properties: {
+                itemId: { type: Type.STRING, description: 'The ID of the project, target, or commitment to reschedule.' },
+                itemType: { type: Type.STRING, enum: ['project', 'target', 'commitment'], description: 'The type of item being rescheduled.' },
+                newDate: { type: Type.STRING, description: `The new deadline or due date in YYYY-MM-DD format. This is required for targets, optional for projects and commitments.` }
+            },
+            required: ['itemId', 'itemType']
         }
     },
     {
@@ -187,7 +201,7 @@ const AiMemoryManager: React.FC<{ memories: AiMemory[], onDelete: (id: string) =
 };
 
 const AICoachPage: React.FC<AICoachPageProps> = (props) => {
-    const { goals, targets, projects, allCommitments, onAddTask, onAddProject, onAddTarget, onAddCommitment, chatMessages, setChatMessages, aiMemories, onMemoryChange } = props;
+    const { goals, targets, projects, allCommitments, onAddTask, onAddProject, onAddTarget, onAddCommitment, onRescheduleItem, chatMessages, setChatMessages, aiMemories, onMemoryChange } = props;
     
     // Agent State
     const [userInput, setUserInput] = useState('');
@@ -397,6 +411,9 @@ const AICoachPage: React.FC<AICoachPageProps> = (props) => {
                     } else if (name === 'addCommitment') {
                         await onAddCommitment(args.text as string, (args.dueDate as string) || null);
                         functionResultPayload = { success: true, message: `Commitment "${args.text as string}" recorded.` };
+                    } else if (name === 'rescheduleItem') {
+                        await onRescheduleItem(args.itemId as string, args.itemType as 'project' | 'target' | 'commitment', (args.newDate as string) || null);
+                        functionResultPayload = { success: true, message: `The ${args.itemType as string} has been successfully rescheduled.` };
                     } else if (name === 'saveMemory') {
                         await handleSaveContextualMemory(args.content as string, args.type as 'personal' | 'ai');
                         functionResultPayload = { success: true, message: `Memory saved.` };

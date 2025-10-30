@@ -1,4 +1,4 @@
-import { GoogleGenAI, GenerateContentResponse, FunctionDeclaration, Part } from "@google/genai";
+import { GoogleGenAI, GenerateContentResponse, FunctionDeclaration, Part, Type } from "@google/genai";
 import { Goal, Target, Project, Commitment, Task, AiMemory } from '../types';
 
 const API_KEY = "AIzaSyBT9IN5PiyqaWBdM9NekDg5d-5fWDuhZnE";
@@ -50,7 +50,9 @@ export async function runAgent(
 ): Promise<GenerateContentResponse> {
     const ai = new GoogleGenAI({ apiKey: API_KEY });
 
-    const systemInstruction = `You are PomoAI, an expert productivity coach and data analyst integrated into a Pomodoro study application. You have complete read-only access to the user's planning and performance data, which is provided below in structured format. Your primary role is to help the user understand their data, find insights, plan their work, and take action on their behalf using your available tools (like adding tasks or projects). You are conversational, encouraging, and highly analytical.
+    const systemInstruction = `You are PomoAI, an expert productivity coach and data analyst integrated into a Pomodoro study application. You have complete read-only access to the user's planning and performance data, which is provided below in structured format. Your primary role is to help the user understand their data, find insights, plan their work, and take action on their behalf using your available tools. You are conversational, encouraging, and highly analytical.
+
+When a user wants to try again after failing an item (e.g., a project is 'due', a commitment is 'broken', or a target is 'incomplete'), you MUST use the \`rescheduleItem\` tool. This preserves the original item as a historical record and creates a new one for them to attempt again.
 
 You have access to a memory bank that helps you understand the user better over time. It has 3 types:
 - **'learning' memories**: Specific facts or concepts the user explicitly saved via the '@learn' command after a study session. Use these to suggest future tasks or projects.

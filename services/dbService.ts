@@ -468,6 +468,39 @@ export const deleteProject = async (id: string): Promise<{ success: boolean; dat
     return { success: true, data: { projects: newProjects, tasks: newTasks }, error: null };
 }
 
+export const rescheduleProject = async (projectId: string, newDeadline: string | null): Promise<Project[] | null> => {
+    const { data: originalProject, error: fetchError } = await supabase
+        .from('projects')
+        .select('*')
+        .eq('id', projectId)
+        .single();
+
+    if (fetchError || !originalProject) {
+        console.error('Error fetching project to reschedule:', fetchError);
+        return null;
+    }
+
+    const { id, created_at, ...rest } = originalProject;
+
+    const newProjectData = {
+        ...rest,
+        name: `${originalProject.name} (rescheduled)`,
+        status: 'active' as const,
+        deadline: newDeadline,
+        progress_value: 0,
+        completed_at: null,
+    };
+
+    const { error: insertError } = await supabase.from('projects').insert(newProjectData);
+
+    if (insertError) {
+        console.error('Error inserting rescheduled project:', insertError);
+        return null;
+    }
+
+    return getProjects();
+};
+
 
 export const checkAndUpdateDueProjects = async (): Promise<Project[] | null> => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -622,6 +655,37 @@ export const deleteTarget = async (id: string): Promise<Target[] | null> => {
     return error ? null : await getTargets();
 }
 
+export const rescheduleTarget = async (targetId: string, newDeadline: string): Promise<Target[] | null> => {
+    const { data: originalTarget, error: fetchError } = await supabase
+        .from('targets')
+        .select('*')
+        .eq('id', targetId)
+        .single();
+    
+    if (fetchError || !originalTarget) {
+        console.error('Error fetching target to reschedule:', fetchError);
+        return null;
+    }
+
+    const { id, created_at, status, ...rest } = originalTarget;
+
+    const newTargetData = {
+        ...rest,
+        text: `${originalTarget.text} (rescheduled)`,
+        deadline: newDeadline,
+        completed_at: null,
+    };
+
+    const { error: insertError } = await supabase.from('targets').insert(newTargetData);
+
+    if (insertError) {
+        console.error('Error inserting rescheduled target:', insertError);
+        return null;
+    }
+
+    return getTargets();
+};
+
 export const checkAndUpdatePastDueTargets = async (): Promise<Target[] | null> => {
     // This function was causing an error because the 'targets.status' column does not exist.
     // The logic to determine a target's status is now handled on the client-side
@@ -704,6 +768,39 @@ export const deleteCommitment = async (id: string): Promise<Commitment[] | null>
     }
     return getCommitments();
 }
+
+export const rescheduleCommitment = async (commitmentId: string, newDueDate: string | null): Promise<Commitment[] | null> => {
+    const { data: originalCommitment, error: fetchError } = await supabase
+        .from('commitments')
+        .select('*')
+        .eq('id', commitmentId)
+        .single();
+
+    if (fetchError || !originalCommitment) {
+        console.error('Error fetching commitment to reschedule:', fetchError);
+        return null;
+    }
+
+    const { id, created_at, ...rest } = originalCommitment;
+
+    const newCommitmentData = {
+        ...rest,
+        text: `${originalCommitment.text} (rescheduled)`,
+        status: 'active' as const,
+        due_date: newDueDate,
+        completed_at: null,
+        broken_at: null,
+    };
+
+    const { error: insertError } = await supabase.from('commitments').insert(newCommitmentData);
+
+    if (insertError) {
+        console.error('Error inserting rescheduled commitment:', insertError);
+        return null;
+    }
+
+    return getCommitments();
+};
 
 export const checkAndUpdatePastDueCommitments = async (): Promise<Commitment[] | null> => {
     const { data: { user } } = await supabase.auth.getUser();
