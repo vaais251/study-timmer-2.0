@@ -86,7 +86,8 @@ const TaskItem = React.forwardRef<HTMLLIElement, TaskItemProps>(({ task, isCompl
     const [isEditing, setIsEditing] = useState(false);
     const [editText, setEditText] = useState(task.text);
     const [editTags, setEditTags] = useState(task.tags?.join(', ') || '');
-    const [editPoms, setEditPoms] = useState(task.total_poms.toString());
+    const [editPoms, setEditPoms] = useState(Math.abs(task.total_poms).toString());
+    const [editIsStopwatch, setEditIsStopwatch] = useState(task.total_poms < 0);
     const [editProjectId, setEditProjectId] = useState<string>(task.project_id || 'none');
     const [editPriority, setEditPriority] = useState<number>(task.priority ?? 3);
     const isDraggable = !isCompleted && dragProps;
@@ -94,7 +95,8 @@ const TaskItem = React.forwardRef<HTMLLIElement, TaskItemProps>(({ task, isCompl
     useEffect(() => {
         setEditText(task.text);
         setEditTags(task.tags?.join(', ') || '');
-        setEditPoms(task.total_poms.toString());
+        setEditPoms(Math.abs(task.total_poms).toString());
+        setEditIsStopwatch(task.total_poms < 0);
         setEditProjectId(task.project_id || 'none');
         setEditPriority(task.priority ?? 3);
     }, [task]);
@@ -104,9 +106,13 @@ const TaskItem = React.forwardRef<HTMLLIElement, TaskItemProps>(({ task, isCompl
             alert("Task text cannot be empty.");
             return;
         }
-        const newPoms = parseInt(editPoms, 10);
+        const newPoms = editIsStopwatch ? -1 : parseInt(editPoms, 10);
         if (isNaN(newPoms)) {
             alert("Pomodoros must be a number.");
+            return;
+        }
+        if (!editIsStopwatch && newPoms <= 0) {
+            alert("Pomodoros must be a positive number for regular tasks.");
             return;
         }
 
@@ -119,7 +125,8 @@ const TaskItem = React.forwardRef<HTMLLIElement, TaskItemProps>(({ task, isCompl
     const handleCancel = () => {
         setEditText(task.text);
         setEditTags(task.tags?.join(', ') || '');
-        setEditPoms(task.total_poms.toString());
+        setEditPoms(Math.abs(task.total_poms).toString());
+        setEditIsStopwatch(task.total_poms < 0);
         setEditProjectId(task.project_id || 'none');
         setEditPriority(task.priority ?? 3);
         setIsEditing(false);
@@ -150,17 +157,27 @@ const TaskItem = React.forwardRef<HTMLLIElement, TaskItemProps>(({ task, isCompl
                         {activeProjects.map(p => <option key={p.id} value={p.id} className="bg-gray-800">{p.name}</option>)}
                     </select>
                      <div className="flex justify-between items-center gap-2 text-sm mt-2">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-4">
                             <label htmlFor={`edit-poms-${task.id}`} className="text-white/70">Poms:</label>
                             <input
                                 id={`edit-poms-${task.id}`}
                                 type="number"
                                 value={editPoms}
                                 onChange={e => setEditPoms(e.target.value)}
-                                title="Number of Pomodoros. Use -1 for a stopwatch task."
-                                className="w-20 text-center bg-white/20 border border-white/30 rounded-lg p-2 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50"
+                                title="Number of Pomodoros"
+                                className="w-20 text-center bg-white/20 border border-white/30 rounded-lg p-2 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50 disabled:opacity-50"
                                 aria-label="Edit pomodoros"
+                                disabled={editIsStopwatch}
                             />
+                            <label className="flex items-center gap-2 text-white/80 cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={editIsStopwatch}
+                                    onChange={e => setEditIsStopwatch(e.target.checked)}
+                                    className="h-4 w-4 rounded bg-slate-600 border-slate-500 text-teal-400 focus:ring-teal-400/50"
+                                />
+                                Stopwatch
+                            </label>
                         </div>
                         <PrioritySelector priority={editPriority} setPriority={setEditPriority} />
                     </div>
@@ -269,6 +286,7 @@ const TaskInputGroup: React.FC<TaskInputGroupProps> = ({ onAddTask, placeholder,
     const [selectedProject, setSelectedProject] = useState<string>('none');
     const [tags, setTags] = useState('');
     const [priority, setPriority] = useState<number>(3);
+    const [isStopwatch, setIsStopwatch] = useState(false);
     
     const getTomorrow = () => {
         const d = new Date();
@@ -280,7 +298,7 @@ const TaskInputGroup: React.FC<TaskInputGroupProps> = ({ onAddTask, placeholder,
     const activeProjects = projects.filter(p => p.status === 'active');
 
     const handleAdd = () => {
-        const pomsInt = parseInt(poms, 10);
+        const pomsInt = isStopwatch ? -1 : parseInt(poms, 10);
         if (text.trim() && !isNaN(pomsInt)) {
             const projectId = selectedProject === 'none' ? null : selectedProject;
             const tagList = tags.split(',').map(t => t.trim()).filter(Boolean);
@@ -290,6 +308,7 @@ const TaskInputGroup: React.FC<TaskInputGroupProps> = ({ onAddTask, placeholder,
             setPoms('1');
             setTags('');
             setPriority(3);
+            setIsStopwatch(false);
         }
     };
     
@@ -331,8 +350,9 @@ const TaskInputGroup: React.FC<TaskInputGroupProps> = ({ onAddTask, placeholder,
                     onChange={(e) => setPoms(e.target.value)}
                     onKeyPress={(e) => e.key === 'Enter' && handleAdd()}
                     placeholder="Poms"
-                    title="Number of Pomodoros. Use -1 for a stopwatch task."
-                    className="w-full sm:w-20 text-center bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50"
+                    title="Number of Pomodoros"
+                    className="w-full sm:w-20 text-center bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50 disabled:opacity-50"
+                    disabled={isStopwatch}
                 />
             </div>
             <div className="flex flex-col sm:flex-row flex-wrap gap-2">
@@ -360,7 +380,18 @@ const TaskInputGroup: React.FC<TaskInputGroupProps> = ({ onAddTask, placeholder,
                  )}
             </div>
              <div className="flex flex-col sm:flex-row flex-wrap gap-2 justify-between">
-                <PrioritySelector priority={priority} setPriority={setPriority} />
+                <div className="flex items-center gap-4">
+                    <PrioritySelector priority={priority} setPriority={setPriority} />
+                    <label className="flex items-center gap-2 text-white/80 cursor-pointer text-sm">
+                        <input
+                            type="checkbox"
+                            checked={isStopwatch}
+                            onChange={e => setIsStopwatch(e.target.checked)}
+                            className="h-4 w-4 rounded bg-slate-600 border-slate-500 text-teal-400 focus:ring-teal-400/50"
+                        />
+                        Stopwatch
+                    </label>
+                </div>
                 <button onClick={handleAdd} className={`p-3 sm:px-4 rounded-lg font-bold text-white transition hover:scale-105 ${buttonClass}`}>{buttonText}</button>
              </div>
         </div>
