@@ -504,8 +504,16 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
         const lineChartDataPoints = new Map<string, { total: number, completed: number }>();
         if (historyRange.start && historyRange.end) {
             let currentDate = new Date(historyRange.start + 'T00:00:00');
-            const endDate = new Date(historyRange.end + 'T00:00:00');
-            while(currentDate <= endDate) {
+            let endDateForChart = new Date(historyRange.end + 'T00:00:00');
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            if (endDateForChart >= today) {
+                const yesterday = new Date();
+                yesterday.setDate(yesterday.getDate() - 1);
+                yesterday.setHours(0, 0, 0, 0);
+                endDateForChart = yesterday;
+            }
+            while(currentDate <= endDateForChart) {
                 const dateString = currentDate.toISOString().split('T')[0];
                 lineChartDataPoints.set(dateString, { total: 0, completed: 0 });
                 currentDate.setDate(currentDate.getDate() + 1);
@@ -530,8 +538,16 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
         const focusMinutesPerDay = new Map<string, number>();
         if (historyRange.start && historyRange.end) {
             let currentDate = new Date(historyRange.start + 'T00:00:00');
-            const endDate = new Date(historyRange.end + 'T00:00:00');
-            while(currentDate <= endDate) {
+            let endDateForChart = new Date(historyRange.end + 'T00:00:00');
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            if (endDateForChart >= today) {
+                const yesterday = new Date();
+                yesterday.setDate(yesterday.getDate() - 1);
+                yesterday.setHours(0, 0, 0, 0);
+                endDateForChart = yesterday;
+            }
+            while(currentDate <= endDateForChart) {
                 const dateString = currentDate.toISOString().split('T')[0];
                 focusMinutesPerDay.set(dateString, 0);
                 currentDate.setDate(currentDate.getDate() + 1);
@@ -554,8 +570,16 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
         const dailyTaskStats = new Map<string, { total: number, completed: number }>();
         if (historyRange.start && historyRange.end) {
             let currentDate = new Date(historyRange.start + 'T00:00:00');
-            const endDate = new Date(historyRange.end + 'T00:00:00');
-            while(currentDate <= endDate) {
+            let endDateForChart = new Date(historyRange.end + 'T00:00:00');
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            if (endDateForChart >= today) {
+                const yesterday = new Date();
+                yesterday.setDate(yesterday.getDate() - 1);
+                yesterday.setHours(0, 0, 0, 0);
+                endDateForChart = yesterday;
+            }
+            while(currentDate <= endDateForChart) {
                 const dateString = currentDate.toISOString().split('T')[0];
                 dailyTaskStats.set(dateString, { total: 0, completed: 0 });
                 currentDate.setDate(currentDate.getDate() + 1);
@@ -752,7 +776,15 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
 
         if (historyRange.start && historyRange.end) {
             let currentDate = new Date(historyRange.start + 'T00:00:00');
-            const endDate = new Date(historyRange.end + 'T00:00:00');
+            let endDate = new Date(historyRange.end + 'T00:00:00');
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            if (endDate >= today) {
+                const yesterday = new Date();
+                yesterday.setDate(yesterday.getDate() - 1);
+                yesterday.setHours(0, 0, 0, 0);
+                endDate = yesterday;
+            }
             while(currentDate <= endDate) {
                 const dateString = getTodayDateString(currentDate);
                 dataByDate.set(dateString, {
@@ -796,7 +828,15 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
     
         if (historyRange.start && historyRange.end) {
             let currentDate = new Date(historyRange.start + 'T00:00:00');
-            const endDate = new Date(historyRange.end + 'T00:00:00');
+            let endDate = new Date(historyRange.end + 'T00:00:00');
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            if (endDate >= today) {
+                const yesterday = new Date();
+                yesterday.setDate(yesterday.getDate() - 1);
+                yesterday.setHours(0, 0, 0, 0);
+                endDate = yesterday;
+            }
             while(currentDate <= endDate) {
                 const dateString = getTodayDateString(currentDate);
                 dataByDate.set(dateString, {
