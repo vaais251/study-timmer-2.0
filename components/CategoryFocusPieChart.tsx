@@ -1,5 +1,3 @@
-
-
 import React, { useMemo } from 'react';
 import { Task, PomodoroHistory } from '../types';
 import Panel from './common/Panel';
@@ -13,36 +11,53 @@ interface CategoryFocusPieChartProps {
 const COLORS = ['#F59E0B', '#10B981', '#84CC16', '#EC4899', '#38BDF8', '#F43F5E', '#6366F1'];
 
 const CategoryFocusPieChart: React.FC<CategoryFocusPieChartProps> = ({ tasks, todaysHistory }) => {
+    const totalFocusMinutes = useMemo(() => {
+        return Math.round(todaysHistory.reduce((sum, item) => sum + (Number(item.duration_minutes) || 0), 0));
+    }, [todaysHistory]);
+
     const chartData = useMemo(() => {
         const taskMap = new Map<string, Task>();
         tasks.forEach(task => taskMap.set(task.id, task));
         
         const tagFocusMap = new Map<string, number>();
+        let untaggedMinutes = 0;
         
         todaysHistory.forEach(historyItem => {
+            const duration = Number(historyItem.duration_minutes) || 0;
+            let isTagged = false;
+
             if (historyItem.task_id) {
                 const task = taskMap.get(historyItem.task_id);
                 if (task && task.tags && task.tags.length > 0) {
+                    isTagged = true;
                     task.tags.forEach(tag => {
                         const normalizedTag = tag.trim().toLowerCase();
                         if (normalizedTag) {
-                            tagFocusMap.set(normalizedTag, (tagFocusMap.get(normalizedTag) || 0) + (Number(historyItem.duration_minutes) || 0));
+                            tagFocusMap.set(normalizedTag, (tagFocusMap.get(normalizedTag) || 0) + duration);
                         }
                     });
                 }
             }
+            if (!isTagged) {
+                untaggedMinutes += duration;
+            }
         });
 
-        return Array.from(tagFocusMap.entries())
+        const finalData = Array.from(tagFocusMap.entries())
             .map(([name, minutes]) => ({ 
                 name: name.charAt(0).toUpperCase() + name.slice(1), 
-                value: minutes,
-            }))
+                value: Math.round(minutes),
+            }));
+
+        if (untaggedMinutes > 0) {
+            finalData.push({ name: 'Untagged', value: Math.round(untaggedMinutes) });
+        }
+        
+        return finalData
+            .filter(d => d.value > 0) // Don't show categories with 0 minutes
             .sort((a, b) => b.value - a.value);
 
     }, [tasks, todaysHistory]);
-    
-    const totalFocusMinutes = useMemo(() => chartData.reduce((sum, item) => sum + item.value, 0), [chartData]);
 
     if (totalFocusMinutes === 0) {
         return null; // Don't render the panel at all if there's no data to show.

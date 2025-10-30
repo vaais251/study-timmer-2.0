@@ -24,7 +24,7 @@ interface TimerPageProps {
     todaysHistory: PomodoroHistory[];
     historicalLogs: DbDailyLog[];
     isStopwatchMode: boolean;
-    onSaveStopwatchTask: () => void;
+    completeStopwatchTask: () => void;
 }
 
 const formatMinutes = (minutes: number): string => {
@@ -59,7 +59,7 @@ const CurrentTaskDisplay: React.FC<{ task?: Task }> = ({ task }) => {
 };
 
 const TimerPage: React.FC<TimerPageProps> = (props) => {
-    const { appState, settings, tasksToday, completedToday, dailyLog, startTimer, stopTimer, resetTimer, navigateToSettings, currentTask, todaysHistory, historicalLogs, isStopwatchMode, onSaveStopwatchTask } = props;
+    const { appState, settings, tasksToday, completedToday, dailyLog, startTimer, stopTimer, resetTimer, navigateToSettings, currentTask, todaysHistory, historicalLogs, isStopwatchMode, completeStopwatchTask } = props;
     
     const allTodaysTasks = useMemo(() => [...tasksToday, ...completedToday], [tasksToday, completedToday]);
 
@@ -77,7 +77,19 @@ const TimerPage: React.FC<TimerPageProps> = (props) => {
     }, [tasksToday, settings.focusDuration]);
 
     const isFocus = appState.mode === 'focus';
+    
+    const stopwatchBaseTime = useMemo(() => {
+        if (isStopwatchMode && currentTask && appState.mode === 'focus') {
+            // Use todaysHistory as the source of truth for accumulated time.
+            return todaysHistory
+                .filter(h => h.task_id === currentTask.id)
+                .reduce((total, h) => total + (Number(h.duration_minutes) || 0), 0) * 60;
+        }
+        return 0;
+    }, [isStopwatchMode, currentTask, appState.mode, todaysHistory]);
 
+    const displayTime = isStopwatchMode ? stopwatchBaseTime + appState.timeRemaining : appState.timeRemaining;
+    
     return (
         <div className="space-y-6">
             <Header />
@@ -99,11 +111,12 @@ const TimerPage: React.FC<TimerPageProps> = (props) => {
                 </div>
                 
                 <TimerDisplay
-                    timeRemaining={appState.timeRemaining}
+                    timeRemaining={displayTime}
                     totalTime={appState.sessionTotalTime}
                     isRunning={appState.isRunning}
                     mode={appState.mode}
                     isStopwatchMode={isStopwatchMode}
+                    timeForProgress={appState.timeRemaining}
                 />
 
                 <Controls
@@ -115,14 +128,14 @@ const TimerPage: React.FC<TimerPageProps> = (props) => {
                     sessionTotalTime={appState.sessionTotalTime}
                     mode={appState.mode}
                 />
-                {isStopwatchMode && appState.isRunning && (
-                    <div className="text-center -mt-2 mb-4">
+                 {isStopwatchMode && currentTask && (
+                    <div className="text-center -mt-2 mb-2">
                         <button
-                            onClick={onSaveStopwatchTask}
-                            className="text-white font-semibold py-3 px-8 rounded-full shadow-lg transition-all transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-green-400 bg-green-500 hover:bg-green-600"
-                            aria-label="Save stopwatch session and complete task"
+                            onClick={completeStopwatchTask}
+                            className="bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-8 rounded-full shadow-lg transition-all transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-green-500/50"
+                            aria-label="Save progress and complete task"
                         >
-                            Save &amp; Complete Session
+                            Save & Complete Task
                         </button>
                     </div>
                 )}

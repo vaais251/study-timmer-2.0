@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
@@ -244,12 +245,12 @@ const App: React.FC = () => {
             if (!didRestoreFromStorage) {
                 const firstTask = userTasks?.filter(t => t.due_date === getTodayDateString() && !t.completed_at)[0];
                 const isStopwatch = firstTask?.total_poms < 0;
-                const initialFocusTime = isStopwatch ? 0 : (firstTask?.custom_focus_duration || userSettings?.focusDuration || 25);
-                const initialTotalTime = isStopwatch ? Infinity : initialFocusTime * 60;
+                const initialFocusTime = isStopwatch ? 0 : (firstTask?.custom_focus_duration || userSettings?.focusDuration || 25) * 60;
+                const initialTotalTime = isStopwatch ? (firstTask?.custom_focus_duration || userSettings?.focusDuration || 25) * 60 : initialFocusTime;
 
                 setAppState(prev => ({
                     ...prev,
-                    timeRemaining: initialFocusTime * 60,
+                    timeRemaining: initialFocusTime,
                     sessionTotalTime: initialTotalTime,
                 }));
             }
@@ -280,17 +281,13 @@ const App: React.FC = () => {
         const currentTask = tasksToday[0];
         const isCurrentStopwatch = currentTask?.total_poms < 0;
 
-        // If it's a paused countdown timer, don't reset it
-        if (!isCurrentStopwatch && appState.timeRemaining < appState.sessionTotalTime) return;
+        // If a session (countdown or stopwatch chunk) is paused mid-way, don't reset it.
+        if (appState.timeRemaining > 0 && appState.timeRemaining < appState.sessionTotalTime) return;
         
-        // If it's a genuinely paused stopwatch timer (state isn't stale from a countdown), don't reset it
-        if (isCurrentStopwatch && appState.timeRemaining > 0 && appState.sessionTotalTime === Infinity) return;
-
-        // At this point, the timer is pristine (full for countdown, or 0 for stopwatch), or state is stale.
-        // We can safely sync it with the current task.
+        // Sync a pristine timer with the current task.
         if (appState.mode === 'focus') {
             const newTime = isCurrentStopwatch ? 0 : (currentTask?.custom_focus_duration || settings.focusDuration) * 60;
-            const newTotalTime = isCurrentStopwatch ? Infinity : newTime;
+            const newTotalTime = isCurrentStopwatch ? (currentTask?.custom_focus_duration || settings.focusDuration) * 60 : newTime;
 
             if (appState.timeRemaining !== newTime || appState.sessionTotalTime !== newTotalTime) {
                 setAppState(prev => ({
@@ -306,6 +303,8 @@ const App: React.FC = () => {
     // Stop Timer Logic
     const stopTimer = useCallback(() => {
         setAppState(prev => ({ ...prev, isRunning: false }));
+        // For countdown timers, we clear the end time when pausing.
+        // For stopwatch, there's no end time to clear.
         if (!isStopwatchMode) {
             setPhaseEndTime(null);
         }
@@ -317,8 +316,14 @@ const App: React.FC = () => {
         const firstTask = tasksToday.find(t => !t.completed_at);
         const isStopwatch = firstTask?.total_poms < 0;
         
-        const time = isStopwatch ? 0 : (firstTask?.custom_focus_duration || settings.focusDuration) * 60;
-        const totalTime = isStopwatch ? Infinity : time;
+        let time, totalTime;
+        if (isStopwatch) {
+            time = 0; // Stopwatch resets to 0
+            totalTime = (firstTask?.custom_focus_duration || settings.focusDuration) * 60;
+        } else {
+            time = (firstTask?.custom_focus_duration || settings.focusDuration) * 60;
+            totalTime = time;
+        }
 
         setAppState(prev => ({
             ...prev,
@@ -333,13 +338,12 @@ const App: React.FC = () => {
     const startTimer = useCallback(async () => {
         if (appState.isRunning) return;
         resumeAudioContext();
-
-        if (isStopwatchMode) {
-             setAppState(prev => ({ ...prev, isRunning: true }));
-        } else {
+        
+        if (!isStopwatchMode) {
             setPhaseEndTime(Date.now() + appState.timeRemaining * 1000);
-            setAppState(prev => ({ ...prev, isRunning: true }));
         }
+        
+        setAppState(prev => ({ ...prev, isRunning: true }));
     }, [appState.isRunning, appState.timeRemaining, isStopwatchMode]);
     
     const playStartSound = useCallback(() => {
@@ -375,7 +379,9 @@ const App: React.FC = () => {
         if (appState.mode === 'focus') {
             playFocusEndSound();
             const currentTask = tasksToday.find(t => !t.completed_at);
-            const focusDuration = currentTask?.custom_focus_duration || settings.focusDuration;
+            
+            // For both stopwatch and regular, the duration of the completed chunk is the sessionTotalTime.
+            const focusDuration = Math.round(appState.sessionTotalTime / 60);
 
             // Optimistic UI update for daily log
             const newLog = {
@@ -436,11 +442,27 @@ const App: React.FC = () => {
     }, [appState, settings, stopTimer, tasksToday, dailyLog, session, todayString]);
     
     useEffect(() => {
-        if (appState.isRunning && appState.timeRemaining <= 0 && !isStopwatchMode) {
-            completePhase();
+        const currentTask = tasksToday[0];
+        const isCurrentTaskStopwatch = appState.mode === 'focus' && currentTask?.total_poms < 0;
+
+        if (appState.isRunning) {
+            if (!isCurrentTaskStopwatch && appState.timeRemaining <= 0) {
+                completePhase();
+            } else if (isCurrentTaskStopwatch && appState.sessionTotalTime > 0 && appState.timeRemaining >= appState.sessionTotalTime) {
+                completePhase();
+            }
         }
-        document.title = `${Math.floor(appState.timeRemaining / 60).toString().padStart(2, '0')}:${(appState.timeRemaining % 60).toString().padStart(2, '0')} - ${appState.mode === 'focus' ? 'Focus' : 'Break'} | FocusFlow`;
-    }, [appState.timeRemaining, appState.isRunning, appState.mode, completePhase, isStopwatchMode]);
+        
+        let totalTimeForTitle = appState.timeRemaining;
+        if (isCurrentTaskStopwatch && currentTask) {
+             const baseTime = todaysHistory
+                .filter(h => h.task_id === currentTask.id)
+                .reduce((total, h) => total + (Number(h.duration_minutes) || 0), 0) * 60;
+            totalTimeForTitle = baseTime + appState.timeRemaining;
+        }
+
+        document.title = `${Math.floor(totalTimeForTitle / 60).toString().padStart(2, '0')}:${(totalTimeForTitle % 60).toString().padStart(2, '0')} - ${appState.mode === 'focus' ? 'Focus' : 'Break'} | FocusFlow`;
+    }, [appState, settings.focusDuration, completePhase, tasksToday, todaysHistory]);
     
     // --- STATE PERSISTENCE LOGIC ---
     // Save state to localStorage whenever it changes
@@ -515,13 +537,17 @@ const App: React.FC = () => {
         const currentTask = tasksToday.find(t => t.completed_at === null);
         if (!currentTask) return null;
 
+        const isStopwatch = currentTask.total_poms < 0;
+
         const updatedFields: Partial<Task> = {
-            completed_poms: currentTask.completed_poms + 1,
+            // Only increment poms for non-stopwatch tasks
+            completed_poms: isStopwatch ? currentTask.completed_poms : currentTask.completed_poms + 1,
             comments: comment ? [...(currentTask.comments || []), comment] : currentTask.comments,
         };
         
         let taskIsNowComplete = false;
-        if (updatedFields.completed_poms >= currentTask.total_poms) {
+        // For stopwatch tasks, this condition will never be met.
+        if (!isStopwatch && updatedFields.completed_poms >= currentTask.total_poms) {
             updatedFields.completed_at = new Date().toISOString();
             taskIsNowComplete = true;
         }
@@ -552,6 +578,89 @@ const App: React.FC = () => {
         }
         
         return updatedTask;
+    };
+
+    const handleCompleteStopwatchTask = async () => {
+        const currentTask = tasksToday.find(t => !t.completed_at);
+        if (!currentTask || currentTask.total_poms >= 0) {
+            console.warn("Attempted to complete a non-stopwatch task via stopwatch handler.");
+            return;
+        }
+    
+        stopTimer();
+        const sessionDurationMinutes = Math.round(appState.timeRemaining / 60);
+    
+        // 1. If there's time on the clock, save it as a focus session.
+        if (sessionDurationMinutes > 0) {
+            const newLog = {
+                ...dailyLog,
+                completed_sessions: dailyLog.completed_sessions + 1,
+                total_focus_minutes: dailyLog.total_focus_minutes + sessionDurationMinutes
+            };
+            setDailyLog(newLog);
+            
+            await dbService.addPomodoroHistory(currentTask.id, sessionDurationMinutes);
+            await checkProjectDurationCompletion(currentTask.id, sessionDurationMinutes);
+            
+            if (session) {
+                const newHistoryRecord: PomodoroHistory = {
+                    id: `temp-${Date.now()}`,
+                    user_id: session.user.id,
+                    task_id: currentTask.id,
+                    ended_at: new Date().toISOString(),
+                    duration_minutes: sessionDurationMinutes,
+                };
+                setTodaysHistory(prev => [...prev, newHistoryRecord]);
+                 setHistoricalLogs(prevLogs => {
+                    const newLogs = [...prevLogs];
+                    const todayLogIndex = newLogs.findIndex(l => l.date === todayString);
+                    if (todayLogIndex > -1) newLogs[todayLogIndex] = newLog;
+                    else newLogs.push(newLog);
+                    return newLogs;
+                });
+            }
+            await dbService.upsertDailyLog(newLog);
+        }
+        
+        // 2. Mark the task as complete
+        const updatedTask = await dbService.updateTask(currentTask.id, { completed_at: new Date().toISOString() });
+        
+        let finalTasksState = tasks;
+        if (updatedTask) {
+            finalTasksState = tasks.map(t => (t.id === updatedTask.id ? updatedTask : t));
+            setTasks(finalTasksState);
+    
+            if (updatedTask.project_id) {
+                await dbService.addProjectUpdate(updatedTask.project_id, todayString, `Completed task: "${updatedTask.text}"`, updatedTask.id);
+                const project = projects.find(p => p.id === updatedTask.project_id);
+                if (project && project.status === 'active' && project.completion_criteria_type === 'task_count') {
+                    const newProgress = project.progress_value + 1;
+                    let projectUpdates: Partial<Project> = { progress_value: newProgress };
+                    if (project.completion_criteria_value && newProgress >= project.completion_criteria_value) {
+                        projectUpdates.status = 'completed';
+                        projectUpdates.completed_at = new Date().toISOString();
+                    }
+                    const updatedProjects = await dbService.updateProject(project.id, projectUpdates);
+                    if (updatedProjects) setProjects(updatedProjects);
+                }
+            }
+        }
+        
+        // 3. Reset the timer for the next task
+        const nextTask = finalTasksState.filter(t => t.due_date === todayString && !t.completed_at)[0];
+        const isNextStopwatch = nextTask?.total_poms < 0;
+        const newTime = isNextStopwatch ? 0 : (nextTask?.custom_focus_duration || settings.focusDuration) * 60;
+        const newTotalTime = isNextStopwatch ? (nextTask?.custom_focus_duration || settings.focusDuration) * 60 : newTime;
+    
+        setAppState({
+            mode: 'focus',
+            currentSession: 1,
+            timeRemaining: newTime,
+            sessionTotalTime: newTotalTime,
+            isRunning: false,
+        });
+        setPhaseEndTime(null);
+        setNotification('Task completed and time saved!');
     };
 
     // Modal Continue Handler
@@ -612,8 +721,13 @@ const App: React.FC = () => {
         } else {
             const nextTask = updatedTasksToday[0];
             const isNextStopwatch = nextTask?.total_poms < 0;
-            newTime = isNextStopwatch ? 0 : (nextTask?.custom_focus_duration || settings.focusDuration) * 60;
-            newTotalTime = isNextStopwatch ? Infinity : newTime;
+            if (isNextStopwatch) {
+                newTime = 0; // Start new stopwatch chunk from 0
+                newTotalTime = (nextTask?.custom_focus_duration || settings.focusDuration) * 60;
+            } else {
+                newTime = (nextTask?.custom_focus_duration || settings.focusDuration) * 60;
+                newTotalTime = newTime;
+            }
         }
 
         const newEndTime = nextMode === 'break' ? Date.now() + newTime * 1000 : null;
@@ -630,54 +744,6 @@ const App: React.FC = () => {
 
         setIsModalVisible(false);
         playStartSound();
-    };
-
-    const handleSaveStopwatchTask = async () => {
-        if (!isStopwatchMode) return;
-
-        stopTimer();
-        playFocusEndSound();
-
-        const durationInSeconds = appState.timeRemaining;
-        const durationInMinutes = durationInSeconds < 60 && durationInSeconds > 0 ? 1 : Math.round(durationInSeconds / 60);
-        const currentTask = tasksToday.find(t => !t.completed_at);
-        if (!currentTask || durationInMinutes <= 0) {
-            resetTimer(); // Reset if no time was logged.
-            return;
-        };
-
-        // DB Operations
-        await dbService.addPomodoroHistory(currentTask.id, durationInMinutes);
-        const updatedTask = await dbService.updateTask(currentTask.id, {
-            completed_at: new Date().toISOString(),
-            completed_poms: 1, // Normalize for stats
-            total_poms: 1,
-        });
-        const newLog = {
-            ...dailyLog,
-            total_focus_minutes: dailyLog.total_focus_minutes + durationInMinutes
-        };
-        await dbService.upsertDailyLog(newLog);
-        
-        // State Updates
-        if (updatedTask) {
-             const finalTasksState = tasks.map(t => t.id === updatedTask.id ? updatedTask : t);
-             setTasks(finalTasksState);
-        }
-        setDailyLog(newLog);
-        setNotification('Focus session saved!');
-        
-        // Transition to break
-        playBreakStartSound();
-        const breakTime = (currentTask?.custom_break_duration || settings.breakDuration) * 60;
-        setAppState({
-            mode: 'break',
-            currentSession: 1, // Reset session count
-            timeRemaining: breakTime,
-            sessionTotalTime: breakTime,
-            isRunning: true,
-        });
-        setPhaseEndTime(Date.now() + breakTime * 1000);
     };
     
     const handleUpdateTaskTimers = async (id: string, newTimers: { focus: number | null, break: number | null }) => {
@@ -984,7 +1050,7 @@ const App: React.FC = () => {
                     todaysHistory={todaysHistory}
                     historicalLogs={historicalLogs}
                     isStopwatchMode={isStopwatchMode}
-                    onSaveStopwatchTask={handleSaveStopwatchTask}
+                    completeStopwatchTask={handleCompleteStopwatchTask}
                 />;
             case 'plan':
                 return <PlanPage
