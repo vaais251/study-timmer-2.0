@@ -30,6 +30,8 @@ export const CheckIcon: React.FC = () => <svg {...iconWithStrokeProps}><polyline
 export const BringForwardIcon: React.FC = () => <svg {...commonProps}><path d="M10 19l-7-7 7-7v14zM21 19V5h-2v14h2z"/></svg>;
 export const CalendarIcon: React.FC = () => <svg {...iconWithStrokeProps}><rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>;
 export const RescheduleIcon: React.FC = () => <svg {...iconWithStrokeProps}><path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>;
+// FIX: Add SearchIcon for command palette.
+export const SearchIcon: React.FC = () => <svg {...iconWithStrokeProps}><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>;
 
 
 // Navbar Icons

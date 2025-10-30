@@ -20,7 +20,7 @@ const CompletionModal: React.FC<CompletionModalProps> = ({ title, message, nextM
     return (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex justify-center items-center z-50 animate-fadeIn">
             <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 sm:p-8 max-w-sm w-11/12 text-center shadow-2xl animate-slideUp">
-                <div className="text-6xl mb-4 animate-bounce">{nextMode === 'focus' ? '🎯' : '☕'}</div>
+                <div className="text-6xl mb-4 animate-bounce-subtle">{nextMode === 'focus' ? '🎯' : '☕'}</div>
                 <h2 className={`text-2xl font-bold text-white mb-2`}>{title}</h2>
                 <p className="text-slate-300 mb-6" dangerouslySetInnerHTML={{ __html: message }} />
                 
@@ -40,14 +40,6 @@ const CompletionModal: React.FC<CompletionModalProps> = ({ title, message, nextM
                     Start Next Phase
                 </button>
             </div>
-             <style>{`
-              @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-              .animate-fadeIn { animation: fadeIn 0.3s ease; }
-              @keyframes slideUp { from { opacity: 0; transform: translateY(50px); } to { opacity: 1; transform: translateY(0); } }
-              .animate-slideUp { animation: slideUp 0.4s ease; }
-              @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
-              .animate-bounce { animation: bounce 1.5s ease infinite; }
-            `}</style>
         </div>
     );
 };

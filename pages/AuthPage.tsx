@@ -119,7 +119,7 @@ const AuthPage: React.FC = () => {
     return (
         <div className="min-h-screen flex items-center justify-center bg-slate-900 text-slate-200" style={{fontFamily: `'Inter', sans-serif`}}>
             <div className="w-full max-w-md mx-auto px-4">
-                <div className="bg-slate-800/50 backdrop-blur-lg rounded-2xl p-8 shadow-2xl border border-slate-700/80 animate-slideIn">
+                <div className="bg-slate-800/50 backdrop-blur-lg rounded-2xl p-8 shadow-2xl border border-slate-700/80 animate-slideUp">
                     <h1 className="text-white text-3xl font-bold text-center mb-2 tracking-tight">FocusFlow</h1>
                     <p className="text-slate-400 text-center mb-6">{isLogin ? 'Sign in to continue' : 'Create an account to start'}</p>
 
@@ -177,13 +177,6 @@ const AuthPage: React.FC = () => {
                         </button>
                     </p>
                 </div>
-                 <style>{`
-                  @keyframes slideIn {
-                      from { opacity: 0; transform: translateY(-30px); }
-                      to { opacity: 1; transform: translateY(0); }
-                  }
-                  .animate-slideIn { animation: slideIn 0.5s ease-out; }
-                `}</style>
             </div>
         </div>
     );

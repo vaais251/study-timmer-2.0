@@ -71,27 +71,13 @@ const TimerDisplay: React.FC<TimerDisplayProps> = ({ timeRemaining, totalTime, i
                     style={{
                         transform: 'rotate(-90deg)',
                         transformOrigin: '50% 50%',
-                        transition: 'stroke-dashoffset 0.35s linear'
+                        transition: 'stroke-dashoffset 1s cubic-bezier(0.25, 1, 0.5, 1)'
                     }}
                 />
             </svg>
             <div className={`text-7xl sm:text-8xl font-light ${theme.text} tracking-wider`} style={{ fontVariantNumeric: 'tabular-nums', textShadow: theme.textShadow }}>
                 {minutes}:{seconds}
             </div>
-            {/* Style tag for dynamic animation class */}
-            <style>{`
-                @keyframes pulse-glow {
-                    0%, 100% {
-                        filter: drop-shadow(0 0 8px var(--glow-color, transparent));
-                    }
-                    50% {
-                        filter: drop-shadow(0 0 16px var(--glow-color, transparent));
-                    }
-                }
-                .timer-running {
-                    animation: pulse-glow 2.5s ease-in-out infinite;
-                }
-            `}</style>
         </div>
     );
 };

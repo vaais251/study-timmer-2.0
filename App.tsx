@@ -17,6 +17,7 @@ import CompletionModal from './components/CompletionModal';
 import AuthPage from './pages/AuthPage';
 import LoadingAnimation from './components/common/LoadingAnimation';
 import GoalsPage from './pages/GoalsPage';
+import CommandPalette from './components/CommandPalette';
 
 // Reads from localStorage to initialize the timer state synchronously.
 const getInitialAppState = (): { initialState: AppState; initialPhaseEndTime: number | null; wasRestored: boolean } => {
@@ -73,6 +74,7 @@ const Notification: React.FC<{ message: string; onDismiss: () => void }> = ({ me
 const App: React.FC = () => {
     const [session, setSession] = useState<Session | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const fetchedForUserId = useRef<string | null>(null); // Prevents re-fetching data on tab focus
 
     // Initialize state synchronously from localStorage to prevent race conditions.
     const memoizedInitialState = useMemo(() => getInitialAppState(), []);
@@ -110,6 +112,7 @@ const App: React.FC = () => {
     const [page, setPage] = useState<Page>('timer');
     const [isModalVisible, setIsModalVisible] = useState(false);
     const [modalContent, setModalContent] = useState({ title: '', message: '', nextMode: 'focus' as Mode, showCommentBox: false });
+    const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
 
     const timerInterval = useRef<number | null>(null);
     const notificationInterval = useRef<number | null>(null);
@@ -263,10 +266,36 @@ const App: React.FC = () => {
     }, [session, didRestoreFromStorage]);
 
     useEffect(() => {
-        if (session) {
+        if (session?.user?.id && session.user.id !== fetchedForUserId.current) {
+            // User is logged in, and we haven't fetched for this user yet.
+            fetchedForUserId.current = session.user.id;
             fetchData();
-        } else {
-            setIsLoading(false); // Not logged in, stop loading
+        } else if (!session && fetchedForUserId.current) {
+            // User logged out. Clear all user-specific data and reset the flag.
+            fetchedForUserId.current = null;
+            setIsLoading(false);
+            
+            // Clear state
+            const { initialState } = getInitialAppState();
+            setAppState(initialState);
+            setPhaseEndTime(null);
+            setDidRestoreFromStorage(false);
+            setSettings({ focusDuration: 25, breakDuration: 5, sessionsPerCycle: 2 });
+            setTasks([]);
+            setProjects([]);
+            setGoals([]);
+            setTargets([]);
+            setAllCommitments([]);
+            setTodaysHistory([]);
+            setHistoricalLogs([]);
+            setAiMemories([]);
+            setAiChatMessages([{ role: 'model', text: 'Hello! I am your AI Coach. I have access to your goals, projects, and performance data. Ask me for insights, a weekly plan, or to add tasks for you!' }]);
+            setDailyLog({ date: getTodayDateString(), completed_sessions: 0, total_focus_minutes: 0 });
+            localStorage.removeItem('pomodoroAppState');
+
+        } else if (!session) {
+            // Initial state, no session, not loading.
+            setIsLoading(false);
         }
     }, [session, fetchData]);
     
@@ -298,6 +327,29 @@ const App: React.FC = () => {
             }
         }
     }, [isLoading, isInitialLoad, appState.isRunning, appState.mode, appState.timeRemaining, appState.sessionTotalTime, tasksToday, settings.focusDuration]);
+
+    // Animate background color on mode change
+    useEffect(() => {
+        const isFocus = appState.mode === 'focus';
+        // Focus: slate-800, Break: a deep, calm purple
+        document.body.style.backgroundColor = isFocus ? '#1e293b' : '#312e81';
+    }, [appState.mode]);
+
+    // Keyboard listener for command palette
+    useEffect(() => {
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if ((event.metaKey || event.ctrlKey) && event.key === 'k') {
+                event.preventDefault();
+                setIsCommandPaletteOpen(o => !o);
+            }
+            if (event.key === 'Escape') {
+                setIsCommandPaletteOpen(false);
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, []);
 
 
     // Stop Timer Logic
@@ -780,11 +832,9 @@ const App: React.FC = () => {
     };
 
     const handleDeleteTask = async (id: string) => {
-        if (window.confirm("Are you sure you want to delete this task? This cannot be undone.")) {
-            const result = await dbService.deleteTask(id);
-            if (result.tasks) setTasks(result.tasks);
-            if (result.projects) setProjects(result.projects); // Also update projects if progress was rolled back
-        }
+        const result = await dbService.deleteTask(id);
+        if (result.tasks) setTasks(result.tasks);
+        if (result.projects) setProjects(result.projects); // Also update projects if progress was rolled back
     };
 
     const handleMoveTask = async (id: string, action: 'postpone' | 'duplicate') => {
@@ -865,10 +915,8 @@ const App: React.FC = () => {
     };
 
     const handleDeleteGoal = async (id: string) => {
-        if (window.confirm("Delete this goal?")) {
-            const newGoals = await dbService.deleteGoal(id);
-            if (newGoals) setGoals(newGoals);
-        }
+        const newGoals = await dbService.deleteGoal(id);
+        if (newGoals) setGoals(newGoals);
     };
 
     const handleSetGoalCompletion = async (id: string, isComplete: boolean) => {
@@ -910,20 +958,18 @@ const App: React.FC = () => {
     };
 
     const handleDeleteTarget = async (id: string) => {
-         if (window.confirm("Delete this target?")) {
-            const newTargets = await dbService.deleteTarget(id);
-            if (newTargets) {
-                 const today = getTodayDateString();
-                const augmentedTargets = newTargets.map(t => {
-                    const status: Target['status'] = t.completed_at
-                        ? 'completed'
-                        : t.deadline < today
-                        ? 'incomplete'
-                        : 'active';
-                    return { ...t, status };
-                });
-                setTargets(augmentedTargets);
-            }
+        const newTargets = await dbService.deleteTarget(id);
+        if (newTargets) {
+             const today = getTodayDateString();
+            const augmentedTargets = newTargets.map(t => {
+                const status: Target['status'] = t.completed_at
+                    ? 'completed'
+                    : t.deadline < today
+                    ? 'incomplete'
+                    : 'active';
+                return { ...t, status };
+            });
+            setTargets(augmentedTargets);
         }
     };
 
@@ -939,10 +985,8 @@ const App: React.FC = () => {
     };
 
     const handleDeleteCommitment = async (id: string) => {
-        if (window.confirm("Delete this commitment?")) {
-            const newCommitments = await dbService.deleteCommitment(id);
-            if (newCommitments) setAllCommitments(newCommitments);
-        }
+        const newCommitments = await dbService.deleteCommitment(id);
+        if (newCommitments) setAllCommitments(newCommitments);
     };
 
     const handleSetCommitmentCompletion = async (id: string, isComplete: boolean) => {
@@ -1120,10 +1164,14 @@ const App: React.FC = () => {
     return (
         <div className="bg-slate-900 text-slate-200 min-h-screen" style={{fontFamily: `'Inter', sans-serif`}}>
             {notification && <Notification message={notification} onDismiss={() => setNotification(null)} />}
-            <Navbar currentPage={page} setPage={setPage} onLogout={() => supabase.auth.signOut()} />
+            <Navbar 
+                currentPage={page} 
+                setPage={setPage} 
+                onLogout={() => supabase.auth.signOut()}
+            />
             
             <main className="md:pl-20 lg:pl-56 transition-all duration-300">
-                <div className="p-4 sm:p-6 pb-20 md:pb-6 max-w-4xl mx-auto">
+                <div key={page} className="p-4 sm:p-6 pb-20 md:pb-6 max-w-4xl mx-auto animate-fadeIn">
                     {renderPage()}
                 </div>
             </main>
@@ -1135,6 +1183,17 @@ const App: React.FC = () => {
                     nextMode={modalContent.nextMode}
                     showCommentBox={modalContent.showCommentBox}
                     onContinue={handleModalContinue}
+                />
+            )}
+
+            {isCommandPaletteOpen && (
+                <CommandPalette
+                    onClose={() => setIsCommandPaletteOpen(false)}
+                    setPage={setPage}
+                    tasks={[...tasksToday, ...tasksForTomorrow, ...tasksFuture]}
+                    projects={projects}
+                    goals={goals}
+                    targets={targets}
                 />
             )}
         </div>

@@ -25,6 +25,58 @@
   body {
     background-color: #111827; /* A dark slate/blue */
   }
+  /* --- Animation Keyframes --- */
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes slideUp { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes slideInFromLeft { from { opacity: 0; transform: translateX(-15px); } to { opacity: 1; transform: translateX(0); } }
+  @keyframes pulse-glow {
+      0%, 100% { filter: drop-shadow(0 0 8px var(--glow-color, transparent)); }
+      50% { filter: drop-shadow(0 0 16px var(--glow-color, transparent)); }
+  }
+  @keyframes pulse-once {
+      0% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.4); }
+      70% { box-shadow: 0 0 0 10px rgba(56, 189, 248, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0); }
+  }
+  @keyframes bounce-subtle {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-10px); }
+  }
+   @keyframes bounce-dots {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-4px); }
+  }
+  @keyframes pulse-subtle-scale {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.05); opacity: 0.95; }
+  }
+  @keyframes scaleIn {
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
+  }
+  @keyframes item-add {
+    from { opacity: 0; transform: scale(0.95) translateY(10px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+  }
+  @keyframes item-delete {
+    from { opacity: 1; transform: scale(1); max-height: 200px; }
+    to { opacity: 0; transform: scale(0.95); max-height: 0; padding-top: 0; padding-bottom: 0; margin-top: 0; margin-bottom: 0; border: 0; }
+  }
+  /* --- Animation Classes --- */
+  .animate-fadeIn { animation: fadeIn 0.4s ease-out forwards; }
+  .animate-slideUp { animation: slideUp 0.4s ease-out forwards; }
+  .animate-slideInFromLeft { animation: slideInFromLeft 0.4s ease-out forwards; }
+  .animate-pulse-once { animation: pulse-once 1s forwards; }
+  .animate-bounce-subtle { animation: bounce-subtle 1.5s ease-in-out infinite; }
+  .animate-bounce-dots { animation: bounce-dots 1s infinite ease-in-out; }
+  .animate-pulse-subtle-scale { animation: pulse-subtle-scale 2.5s ease-in-out infinite; }
+  .timer-running { animation: pulse-glow 2.5s ease-in-out infinite; }
+  .animate-scaleIn { animation: scaleIn 0.2s ease-out forwards; }
+  .animate-item-add { animation: item-add 0.4s ease-out forwards; }
+  .animate-item-delete {
+    animation: item-delete 0.4s ease-out forwards;
+    overflow: hidden; /* Important for height transition */
+  }
 </style>
 </head>
 <body class="transition-colors duration-500 ease-in-out">

@@ -479,7 +479,7 @@ const AICoachPage: React.FC<AICoachPageProps> = (props) => {
                     {/* Chat History */}
                     <div className="flex-grow overflow-y-auto p-4 space-y-4">
                         {chatMessages.map((msg, index) => (
-                             <div key={index} className={`flex items-end gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                             <div key={index} className={`flex items-end gap-3 animate-slideUp ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                                 {msg.role === 'model' && (
                                     <div className="w-8 h-8 rounded-full bg-teal-500 flex items-center justify-center shadow-lg flex-shrink-0">🤖</div>
                                 )}
@@ -493,9 +493,9 @@ const AICoachPage: React.FC<AICoachPageProps> = (props) => {
                                 <div className="w-8 h-8 rounded-full bg-teal-500 flex items-center justify-center shadow-lg flex-shrink-0">🤖</div>
                                 <div className="p-3 rounded-2xl bg-slate-700 rounded-bl-none text-white">
                                     <div className="flex items-center gap-1">
-                                        <span className="w-2 h-2 bg-white/70 rounded-full animate-bounce" style={{ animationDelay: '0s' }}></span>
-                                        <span className="w-2 h-2 bg-white/70 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></span>
-                                        <span className="w-2 h-2 bg-white/70 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></span>
+                                        <span className="w-2 h-2 bg-white/70 rounded-full animate-bounce-dots" style={{ animationDelay: '0s' }}></span>
+                                        <span className="w-2 h-2 bg-white/70 rounded-full animate-bounce-dots" style={{ animationDelay: '0.2s' }}></span>
+                                        <span className="w-2 h-2 bg-white/70 rounded-full animate-bounce-dots" style={{ animationDelay: '0.4s' }}></span>
                                     </div>
                                 </div>
                             </div>
@@ -524,11 +524,6 @@ const AICoachPage: React.FC<AICoachPageProps> = (props) => {
                 <style>{`
                   .prose-invert ul { margin-top: 0.5em; margin-bottom: 0.5em; }
                   .prose-invert li { margin-top: 0.2em; margin-bottom: 0.2em; }
-                  @keyframes bounce {
-                    0%, 100% { transform: translateY(0); }
-                    50% { transform: translateY(-4px); }
-                  }
-                  .animate-bounce { animation: bounce 1s infinite ease-in-out; }
                 `}</style>
             </Panel>
             
@@ -548,10 +543,6 @@ const AICoachPage: React.FC<AICoachPageProps> = (props) => {
                 </div>
             )}
             
-            <style>{`
-              @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-              .animate-fadeIn { animation: fadeIn 0.5s ease-out forwards; }
-            `}</style>
         </>
     );
 };

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Task, Project, Settings } from '../types';
 import Panel from './common/Panel';
 import { PostponeIcon, DuplicateIcon, MoreVerticalIcon, UndoIcon, EditIcon, BringForwardIcon, CalendarIcon } from './common/Icons';
@@ -48,10 +48,6 @@ const TaskSettingsDropdown: React.FC<TaskSettingsDropdownProps> = ({ task, setti
                 <button onClick={handleSave} className="flex-1 p-2 rounded-md font-bold text-white transition hover:scale-105 bg-gradient-to-br from-blue-500 to-cyan-600">Save</button>
                 <button onClick={handleReset} className="flex-1 p-2 rounded-md font-bold text-white transition hover:scale-105 bg-gradient-to-br from-gray-500 to-gray-600">Reset</button>
             </div>
-             <style>{`
-              @keyframes slideUp { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
-              .animate-slideUp { animation: slideUp 0.2s ease-out; }
-            `}</style>
         </div>
     );
 };
@@ -72,6 +68,7 @@ interface TaskItemProps {
     onBringForward?: (id: string) => void;
     dragProps?: object;
     ref?: React.Ref<HTMLLIElement>;
+    isJustAdded?: boolean;
 }
 
 const priorityBorderColors: { [key: number]: string } = {
@@ -81,7 +78,7 @@ const priorityBorderColors: { [key: number]: string } = {
     4: 'border-l-4 border-slate-500',
 };
 
-const TaskItem = React.forwardRef<HTMLLIElement, TaskItemProps>(({ task, isCompleted, settings, projects, onDelete, onMove, onUpdateTaskTimers, onUpdateTask, onMarkTaskIncomplete, dragProps, isTomorrowTask, onBringForward, displayDate }, ref) => {
+const TaskItem = React.forwardRef<HTMLLIElement, TaskItemProps>(({ task, isCompleted, settings, projects, onDelete, onMove, onUpdateTaskTimers, onUpdateTask, onMarkTaskIncomplete, dragProps, isTomorrowTask, onBringForward, displayDate, isJustAdded }, ref) => {
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
     const [editText, setEditText] = useState(task.text);
@@ -90,6 +87,7 @@ const TaskItem = React.forwardRef<HTMLLIElement, TaskItemProps>(({ task, isCompl
     const [editIsStopwatch, setEditIsStopwatch] = useState(task.total_poms < 0);
     const [editProjectId, setEditProjectId] = useState<string>(task.project_id || 'none');
     const [editPriority, setEditPriority] = useState<number>(task.priority ?? 3);
+    const [isDeleting, setIsDeleting] = useState(false);
     const isDraggable = !isCompleted && dragProps;
 
     useEffect(() => {
@@ -130,6 +128,13 @@ const TaskItem = React.forwardRef<HTMLLIElement, TaskItemProps>(({ task, isCompl
         setEditProjectId(task.project_id || 'none');
         setEditPriority(task.priority ?? 3);
         setIsEditing(false);
+    };
+
+    const handleDelete = () => {
+        setIsDeleting(true);
+        setTimeout(() => {
+            onDelete(task.id);
+        }, 400); // Corresponds to animation duration
     };
     
     if (isEditing) {
@@ -186,19 +191,12 @@ const TaskItem = React.forwardRef<HTMLLIElement, TaskItemProps>(({ task, isCompl
                         <button onClick={handleSave} className="p-2 px-4 rounded-md font-bold text-white transition hover:scale-105 bg-gradient-to-br from-blue-500 to-cyan-600">Save</button>
                     </div>
                 </div>
-                 <style>{`
-                  @keyframes pulse-once {
-                    0% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.4); }
-                    70% { box-shadow: 0 0 0 10px rgba(56, 189, 248, 0); }
-                    100% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0); }
-                  }
-                  .animate-pulse-once { animation: pulse-once 1s; }
-                `}</style>
             </li>
         )
     }
 
     const priorityClass = priorityBorderColors[task.priority as number] ?? '';
+    const animationClass = isDeleting ? 'animate-item-delete' : isJustAdded ? 'animate-item-add' : '';
 
     return (
     <li
@@ -209,7 +207,7 @@ const TaskItem = React.forwardRef<HTMLLIElement, TaskItemProps>(({ task, isCompl
                 : isDraggable
                 ? 'bg-white/10 hover:bg-white/20'
                 : 'bg-white/5 border border-dashed border-amber-400/30'
-        } ${priorityClass}`}
+        } ${priorityClass} ${animationClass}`}
         {...dragProps}
     >
         <div className="flex items-start gap-3 flex-grow min-w-0 w-full">
@@ -259,7 +257,7 @@ const TaskItem = React.forwardRef<HTMLLIElement, TaskItemProps>(({ task, isCompl
                 </button>
             )}
             {!isCompleted && (
-                <button onClick={() => onDelete(task.id)} className="text-red-400 hover:text-red-300 text-2xl font-bold leading-none p-1 transition" title="Delete Task">&times;</button>
+                <button onClick={handleDelete} className="text-red-400 hover:text-red-300 text-2xl font-bold leading-none p-1 transition" title="Delete Task">&times;</button>
             )}
 
             {isSettingsOpen && (
@@ -466,10 +464,6 @@ const CategoryFocusDropdown: React.FC<CategoryFocusDropdownProps> = ({ tasks, se
                     </ul>
                 </div>
             )}
-            <style>{`
-              @keyframes slideUp { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
-              .animate-slideUp { animation: slideUp 0.2s ease-out; }
-            `}</style>
         </div>
     );
 };
@@ -497,6 +491,25 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasksToday, tasksForTomorrow,
     
     const dragItemToday = React.useRef<number | null>(null);
     const dragOverItemToday = React.useRef<number | null>(null);
+
+    const allTasks = useMemo(() => [...tasksToday, ...tasksForTomorrow, ...tasksFuture, ...completedToday], [tasksToday, tasksForTomorrow, tasksFuture, completedToday]);
+    const [justAddedTaskId, setJustAddedTaskId] = useState<string | null>(null);
+    const prevTasksCount = useRef(allTasks.length);
+
+    useEffect(() => {
+        if (allTasks.length > prevTasksCount.current) {
+            const sortedTasks = [...allTasks].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+            if (sortedTasks.length > 0) {
+                const latestTask = sortedTasks[0];
+                if (latestTask) {
+                    setJustAddedTaskId(latestTask.id);
+                    const timer = setTimeout(() => setJustAddedTaskId(null), 500);
+                    return () => clearTimeout(timer);
+                }
+            }
+        }
+        prevTasksCount.current = allTasks.length;
+    }, [allTasks]);
 
     const sortedTasksToday = useMemo(() => {
         if (sortTodayBy === 'priority') {
@@ -602,6 +615,7 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasksToday, tasksForTomorrow,
                             onMove={onMoveTask}
                             onUpdateTaskTimers={onUpdateTaskTimers}
                             onUpdateTask={onUpdateTask}
+                            isJustAdded={task.id === justAddedTaskId}
                             dragProps={{ 
                                 draggable: true, 
                                 onDragStart: (e: React.DragEvent<HTMLLIElement>) => handleDragStartToday(e, tasksToday.findIndex(t => t.id === task.id)),
@@ -649,6 +663,7 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasksToday, tasksForTomorrow,
                            onUpdateTaskTimers={onUpdateTaskTimers}
                            onUpdateTask={onUpdateTask}
                            isTomorrowTask={true}
+                           isJustAdded={task.id === justAddedTaskId}
                            onBringForward={onBringTaskForward}
                            dragProps={{
                                draggable: true,
@@ -676,6 +691,7 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasksToday, tasksForTomorrow,
                            onUpdateTask={onUpdateTask}
                            isTomorrowTask={true}
                            displayDate={task.due_date}
+                           isJustAdded={task.id === justAddedTaskId}
                            // FIX: Corrected typo from onBringForward to onBringTaskForward
                            onBringForward={onBringTaskForward}
                            dragProps={{

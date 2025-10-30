@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Page } from '../../types';
 import { TimerIcon, PlanIcon, StatsIcon, AIIcon, SettingsIcon, LogoutIcon, TargetIcon, CircleIcon, PlanIconFilled, StatsIconFilled, AIIconFilled } from '../common/Icons';
@@ -22,7 +23,7 @@ const NavItem: React.FC<NavItemProps> = ({ label, icon, isActive, onClick }) => 
         >
             {icon}
             <span className="hidden lg:inline text-sm font-medium capitalize">{label}</span>
-            {isActive && <div className="absolute left-0 top-1/2 -translate-y-1/2 h-6 w-1 bg-teal-400 rounded-r-full hidden md:block"></div>}
+            {isActive && <div className="absolute left-0 top-1/2 -translate-y-1/2 h-6 w-1 bg-teal-400 rounded-r-full hidden md:block animate-slideInFromLeft"></div>}
             
             {/* Tooltip for md only */}
             <div className="absolute left-full ml-4 hidden md:group-hover:block lg:hidden bg-slate-800 text-white text-xs font-bold p-2 rounded-md shadow-lg z-20 whitespace-nowrap">
