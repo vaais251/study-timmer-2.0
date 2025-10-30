@@ -348,11 +348,41 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
         incompleteTasks: false,
         totalTasks: false,
     });
+    
+    const [visiblePriorities, setVisiblePriorities] = useState({
+        P1: true,
+        P2: true,
+        P3: true,
+        P4: true,
+        Neutral: true,
+    });
+    
+    const [visibleCompletionRates, setVisibleCompletionRates] = useState({
+        P1: true,
+        P2: true,
+        P3: true,
+        P4: true,
+        Neutral: true,
+    });
 
     const handleLegendClick = (o: any) => {
         const { dataKey } = o;
         if (Object.keys(visibleLines).includes(dataKey)) {
             setVisibleLines(prev => ({ ...prev, [dataKey as keyof typeof prev]: !prev[dataKey as keyof typeof prev] }));
+        }
+    };
+    
+    const handlePriorityLegendClick = (o: any) => {
+        const { dataKey } = o;
+        if (dataKey in visiblePriorities) {
+            setVisiblePriorities(prev => ({ ...prev, [dataKey as keyof typeof prev]: !prev[dataKey as keyof typeof prev] }));
+        }
+    };
+    
+    const handleCompletionRateLegendClick = (o: any) => {
+        const { dataKey } = o;
+        if (dataKey in visibleCompletionRates) {
+            setVisibleCompletionRates(prev => ({ ...prev, [dataKey as keyof typeof prev]: !prev[dataKey as keyof typeof prev] }));
         }
     };
 
@@ -629,6 +659,112 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
         };
     }, [detailViewType, selectedDay, tasks, pomodoroHistory, historyRange]);
     
+    const priorityFocusData = useMemo(() => {
+        const taskMap = new Map<string, Task>();
+        allTasks.forEach(task => taskMap.set(task.id, task));
+
+        const dataByDate = new Map<string, { date: string, P1: number, P2: number, P3: number, P4: number, Neutral: number }>();
+
+        if (historyRange.start && historyRange.end) {
+            let currentDate = new Date(historyRange.start + 'T00:00:00');
+            const endDate = new Date(historyRange.end + 'T00:00:00');
+            while(currentDate <= endDate) {
+                const dateString = getTodayDateString(currentDate);
+                dataByDate.set(dateString, {
+                    date: new Date(dateString + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+                    P1: 0,
+                    P2: 0,
+                    P3: 0,
+                    P4: 0,
+                    Neutral: 0,
+                });
+                currentDate.setDate(currentDate.getDate() + 1);
+            }
+        }
+
+        pomodoroHistory.forEach(h => {
+            const dateStr = h.ended_at.split('T')[0];
+            const dayData = dataByDate.get(dateStr);
+            if (dayData) {
+                const task = h.task_id ? taskMap.get(h.task_id) : null;
+                const duration = Number(h.duration_minutes) || 0;
+                
+                if (task && task.priority) {
+                    const priorityKey = `P${task.priority}` as 'P1' | 'P2' | 'P3' | 'P4';
+                    dayData[priorityKey] += duration;
+                } else {
+                    dayData.Neutral += duration;
+                }
+            }
+        });
+
+        return Array.from(dataByDate.values());
+
+    }, [allTasks, pomodoroHistory, historyRange]);
+    
+    const taskCompletionByPriorityData = useMemo(() => {
+        const dataByDate = new Map<string, {
+            date: string;
+            P1_total: number; P1_completed: number;
+            P2_total: number; P2_completed: number;
+            P3_total: number; P3_completed: number;
+            P4_total: number; P4_completed: number;
+            Neutral_total: number; Neutral_completed: number;
+        }>();
+    
+        if (historyRange.start && historyRange.end) {
+            let currentDate = new Date(historyRange.start + 'T00:00:00');
+            const endDate = new Date(historyRange.end + 'T00:00:00');
+            while(currentDate <= endDate) {
+                const dateString = getTodayDateString(currentDate);
+                dataByDate.set(dateString, {
+                    date: new Date(dateString + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+                    P1_total: 0, P1_completed: 0,
+                    P2_total: 0, P2_completed: 0,
+                    P3_total: 0, P3_completed: 0,
+                    P4_total: 0, P4_completed: 0,
+                    Neutral_total: 0, Neutral_completed: 0,
+                });
+                currentDate.setDate(currentDate.getDate() + 1);
+            }
+        }
+    
+        tasks.forEach(task => {
+            const dateStr = task.due_date;
+            const dayData = dataByDate.get(dateStr);
+            if (dayData) {
+                const priority = task.priority;
+                const isCompleted = !!task.completed_at;
+    
+                if (priority === 1) {
+                    dayData.P1_total++;
+                    if (isCompleted) dayData.P1_completed++;
+                } else if (priority === 2) {
+                    dayData.P2_total++;
+                    if (isCompleted) dayData.P2_completed++;
+                } else if (priority === 3) {
+                    dayData.P3_total++;
+                    if (isCompleted) dayData.P3_completed++;
+                } else if (priority === 4) {
+                    dayData.P4_total++;
+                    if (isCompleted) dayData.P4_completed++;
+                } else { // Null priority
+                    dayData.Neutral_total++;
+                    if (isCompleted) dayData.Neutral_completed++;
+                }
+            }
+        });
+    
+        return Array.from(dataByDate.values()).map(dayData => ({
+            date: dayData.date,
+            P1: dayData.P1_total > 0 ? (dayData.P1_completed / dayData.P1_total) * 100 : 0,
+            P2: dayData.P2_total > 0 ? (dayData.P2_completed / dayData.P2_total) * 100 : 0,
+            P3: dayData.P3_total > 0 ? (dayData.P3_completed / dayData.P3_total) * 100 : 0,
+            P4: dayData.P4_total > 0 ? (dayData.P4_completed / dayData.P4_total) * 100 : 0,
+            Neutral: dayData.Neutral_total > 0 ? (dayData.Neutral_completed / dayData.Neutral_total) * 100 : 0,
+        }));
+    }, [tasks, historyRange]);
+
     const COLORS_TASKS = ['#34D399', '#F87171'];
     const COLORS_PROJECTS = ['#34D399', '#60A5FA', '#F87171']; // Completed, Active, Due
     const COLORS_PIE = ['#F59E0B', '#10B981', '#84CC16', '#EC4899', '#38BDF8', '#F43F5E', '#6366F1'];
@@ -714,6 +850,49 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                                 <Tooltip contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }} itemStyle={{ color: 'white' }} labelStyle={{ color: 'white', fontWeight: 'bold' }} />
                                 <Legend wrapperStyle={{fontSize: "12px"}}/>
                                 <Line type="monotone" dataKey="focusMinutes" name="Focus Minutes" stroke="#34D399" activeDot={{ r: 8 }} />
+                            </LineChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
+                 <div>
+                    <h3 className="text-lg font-semibold text-white text-center mb-2">Priority Focus Distribution</h3>
+                    <div className="h-72">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <LineChart data={priorityFocusData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.2)" />
+                                <XAxis dataKey="date" stroke="rgba(255,255,255,0.7)" tick={{ fontSize: 10 }} />
+                                <YAxis stroke="rgba(255,255,255,0.7)" unit="m" />
+                                <Tooltip contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }} itemStyle={{ color: 'white' }} labelStyle={{ color: 'white', fontWeight: 'bold' }} />
+                                <Legend wrapperStyle={{fontSize: "12px", cursor: 'pointer'}} onClick={handlePriorityLegendClick} />
+                                <Line type="monotone" dataKey="P1" name="P1 (Highest)" stroke="#F87171" activeDot={{ r: 8 }} hide={!visiblePriorities.P1} />
+                                <Line type="monotone" dataKey="P2" name="P2 (High)" stroke="#F59E0B" activeDot={{ r: 8 }} hide={!visiblePriorities.P2} />
+                                <Line type="monotone" dataKey="P3" name="P3 (Medium)" stroke="#38BDF8" activeDot={{ r: 8 }} hide={!visiblePriorities.P3} />
+                                <Line type="monotone" dataKey="P4" name="P4 (Low)" stroke="#64748B" activeDot={{ r: 8 }} hide={!visiblePriorities.P4} />
+                                <Line type="monotone" dataKey="Neutral" name="Neutral" stroke="#9CA3AF" activeDot={{ r: 8 }} hide={!visiblePriorities.Neutral} />
+                            </LineChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
+                 <div>
+                    <h3 className="text-lg font-semibold text-white text-center mb-2">Task Completion Rate by Priority</h3>
+                    <div className="h-72">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <LineChart data={taskCompletionByPriorityData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.2)" />
+                                <XAxis dataKey="date" stroke="rgba(255,255,255,0.7)" tick={{ fontSize: 10 }} />
+                                <YAxis stroke="rgba(255,255,255,0.7)" unit="%" domain={[0, 100]} />
+                                <Tooltip
+                                    contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }}
+                                    itemStyle={{ color: 'white' }}
+                                    labelStyle={{ color: 'white', fontWeight: 'bold' }}
+                                    formatter={(value: number) => [`${value.toFixed(1)}%`, 'Completion']}
+                                />
+                                <Legend wrapperStyle={{fontSize: "12px", cursor: 'pointer'}} onClick={handleCompletionRateLegendClick} />
+                                <Line type="monotone" dataKey="P1" name="P1 (Highest)" stroke="#F87171" activeDot={{ r: 8 }} hide={!visibleCompletionRates.P1} />
+                                <Line type="monotone" dataKey="P2" name="P2 (High)" stroke="#F59E0B" activeDot={{ r: 8 }} hide={!visibleCompletionRates.P2} />
+                                <Line type="monotone" dataKey="P3" name="P3 (Medium)" stroke="#38BDF8" activeDot={{ r: 8 }} hide={!visibleCompletionRates.P3} />
+                                <Line type="monotone" dataKey="P4" name="P4 (Low)" stroke="#64748B" activeDot={{ r: 8 }} hide={!visibleCompletionRates.P4} />
+                                <Line type="monotone" dataKey="Neutral" name="Neutral" stroke="#9CA3AF" activeDot={{ r: 8 }} hide={!visibleCompletionRates.Neutral} />
                             </LineChart>
                         </ResponsiveContainer>
                     </div>
