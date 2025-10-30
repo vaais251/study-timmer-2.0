@@ -151,21 +151,21 @@ ${context.aiMemories.map(m => `- [${m.type.toUpperCase()}] (ID: ${m.id}) ${m.con
 ${context.goals.map(g => `- ${g.text} (ID: ${g.id})`).join('\n') || "No core goals set."}
 
 == KEY TARGETS ==
-${context.targets.map(t => `- [${t.completed_at ? 'X' : ' '}] ${t.text} (Due: ${t.deadline}, P:${t.priority || 'N'}, ID: ${t.id})`).join('\n') || 'No key targets set.'}
+${context.targets.map(t => `- [${t.completed_at ? 'X' : ' '}] ${t.text} (Due: ${t.deadline}, P:${t.priority || 3}, ID: ${t.id})`).join('\n') || 'No key targets set.'}
 
 == PROJECTS ==
 ${context.projects.map(p => {
     let progress = '';
     if (p.completion_criteria_type === 'task_count') progress = `(${p.progress_value}/${p.completion_criteria_value} tasks)`;
     if (p.completion_criteria_type === 'duration_minutes') progress = `(${p.progress_value}/${p.completion_criteria_value} min)`;
-    return `- ${p.name} [${p.status}] ${progress} (Due: ${p.deadline || 'N/A'}, P:${p.priority || 'N'}, ID: ${p.id})`;
+    return `- ${p.name} [${p.status}] ${progress} (Due: ${p.deadline || 'N/A'}, P:${p.priority || 3}, ID: ${p.id})`;
 }).join('\n') || 'No projects.'}
 Note: When adding a task to a project, you MUST use the project's ID.
 
 == TASKS (within date range) ==
 ${context.tasks.map(t => {
     const comments = t.comments && t.comments.length > 0 ? ` Comments: [${t.comments.join('; ')}]` : '';
-    return `- [${t.completed_at ? 'X' : ' '}] ${t.text} (${t.completed_poms}/${t.total_poms} poms, Due: ${t.due_date}, P:${t.priority || 'N'}, ProjectID: ${t.project_id || 'None'}, ID: ${t.id})${comments}`;
+    return `- [${t.completed_at ? 'X' : ' '}] ${t.text} (${t.completed_poms}/${t.total_poms} poms, Due: ${t.due_date}, P:${t.priority || 3}, ProjectID: ${t.project_id || 'None'}, ID: ${t.id})${comments}`;
 }).join('\n') || 'No tasks in this period.'}
 
 == COMMITMENTS ==

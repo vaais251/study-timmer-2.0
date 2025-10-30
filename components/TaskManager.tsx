@@ -88,7 +88,7 @@ const TaskItem = React.forwardRef<HTMLLIElement, TaskItemProps>(({ task, isCompl
     const [editTags, setEditTags] = useState(task.tags?.join(', ') || '');
     const [editPoms, setEditPoms] = useState(task.total_poms.toString());
     const [editProjectId, setEditProjectId] = useState<string>(task.project_id || 'none');
-    const [editPriority, setEditPriority] = useState<number | null>(task.priority);
+    const [editPriority, setEditPriority] = useState<number>(task.priority ?? 3);
     const isDraggable = !isCompleted && dragProps;
 
     useEffect(() => {
@@ -96,7 +96,7 @@ const TaskItem = React.forwardRef<HTMLLIElement, TaskItemProps>(({ task, isCompl
         setEditTags(task.tags?.join(', ') || '');
         setEditPoms(task.total_poms.toString());
         setEditProjectId(task.project_id || 'none');
-        setEditPriority(task.priority);
+        setEditPriority(task.priority ?? 3);
     }, [task]);
     
     const handleSave = () => {
@@ -121,7 +121,7 @@ const TaskItem = React.forwardRef<HTMLLIElement, TaskItemProps>(({ task, isCompl
         setEditTags(task.tags?.join(', ') || '');
         setEditPoms(task.total_poms.toString());
         setEditProjectId(task.project_id || 'none');
-        setEditPriority(task.priority);
+        setEditPriority(task.priority ?? 3);
         setIsEditing(false);
     };
     
@@ -268,7 +268,7 @@ const TaskInputGroup: React.FC<TaskInputGroupProps> = ({ onAddTask, placeholder,
     const [poms, setPoms] = useState('1');
     const [selectedProject, setSelectedProject] = useState<string>('none');
     const [tags, setTags] = useState('');
-    const [priority, setPriority] = useState<number | null>(null);
+    const [priority, setPriority] = useState<number>(3);
     
     const getTomorrow = () => {
         const d = new Date();
@@ -289,7 +289,7 @@ const TaskInputGroup: React.FC<TaskInputGroupProps> = ({ onAddTask, placeholder,
             setText('');
             setPoms('1');
             setTags('');
-            setPriority(null);
+            setPriority(3);
         }
     };
     

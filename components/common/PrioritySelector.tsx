@@ -1,8 +1,8 @@
 import React from 'react';
 
 interface PrioritySelectorProps {
-    priority: number | null;
-    setPriority: (priority: number | null) => void;
+    priority: number;
+    setPriority: (priority: number) => void;
 }
 
 const priorityLevels = [
@@ -20,7 +20,7 @@ const PrioritySelector: React.FC<PrioritySelectorProps> = ({ priority, setPriori
                     <button
                         key={level}
                         type="button"
-                        onClick={() => setPriority(priority === level ? null : level)}
+                        onClick={() => setPriority(level)}
                         className={`w-8 h-8 rounded-full text-xs font-bold border-2 transition-all ${priority === level ? selectedColor : color}`}
                         title={`Priority ${level}`}
                     >
@@ -28,14 +28,6 @@ const PrioritySelector: React.FC<PrioritySelectorProps> = ({ priority, setPriori
                     </button>
                 ))}
             </div>
-             {priority !== null && (
-                <button 
-                    type="button" 
-                    onClick={() => setPriority(null)} 
-                    className="text-slate-400 hover:text-white text-xl font-bold leading-none p-1 transition" 
-                    title="Clear Priority"
-                >&times;</button>
-            )}
         </div>
     );
 };

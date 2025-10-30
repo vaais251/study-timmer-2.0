@@ -278,7 +278,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({ project, tasks, onUpdateProje
     const [editDeadline, setEditDeadline] = useState(project.deadline || '');
     const [editCriteriaType, setEditCriteriaType] = useState(project.completion_criteria_type);
     const [editCriteriaValue, setEditCriteriaValue] = useState(project.completion_criteria_value?.toString() || '');
-    const [editPriority, setEditPriority] = useState<number | null>(project.priority);
+    const [editPriority, setEditPriority] = useState<number>(project.priority ?? 3);
     const [isLogVisible, setIsLogVisible] = useState(false);
 
     const { progress, progressText, isComplete, isDue, isManual, isEditable } = useMemo(() => {
@@ -341,7 +341,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({ project, tasks, onUpdateProje
         setEditDeadline(project.deadline || '');
         setEditCriteriaType(project.completion_criteria_type);
         setEditCriteriaValue(project.completion_criteria_value?.toString() || '');
-        setEditPriority(project.priority);
+        setEditPriority(project.priority ?? 3);
         setIsEditing(false);
     };
 
@@ -442,7 +442,7 @@ const TargetItem: React.FC<{
     const [isEditing, setIsEditing] = useState(false);
     const [editText, setEditText] = useState(target.text);
     const [editDeadline, setEditDeadline] = useState(target.deadline);
-    const [editPriority, setEditPriority] = useState<number | null>(target.priority);
+    const [editPriority, setEditPriority] = useState<number>(target.priority ?? 3);
     
     const isCompleted = target.status === 'completed';
     const isIncomplete = target.status === 'incomplete';
@@ -460,7 +460,7 @@ const TargetItem: React.FC<{
     const handleCancel = () => {
         setEditText(target.text);
         setEditDeadline(target.deadline);
-        setEditPriority(target.priority);
+        setEditPriority(target.priority ?? 3);
         setIsEditing(false);
     };
 
@@ -939,7 +939,7 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
     const [newGoal, setNewGoal] = useState('');
     const [newTarget, setNewTarget] = useState('');
     const [newDeadline, setNewDeadline] = useState('');
-    const [newTargetPriority, setNewTargetPriority] = useState<number | null>(null);
+    const [newTargetPriority, setNewTargetPriority] = useState<number>(3);
     const [showArchivedGoals, setShowArchivedGoals] = useState(false);
     
     // Target states
@@ -952,7 +952,7 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
     const [newProjectName, setNewProjectName] = useState('');
     const [newProjectDescription, setNewProjectDescription] = useState('');
     const [newProjectDeadline, setNewProjectDeadline] = useState('');
-    const [newProjectPriority, setNewProjectPriority] = useState<number | null>(null);
+    const [newProjectPriority, setNewProjectPriority] = useState<number>(3);
     const [criteriaType, setCriteriaType] = useState<Project['completion_criteria_type']>('manual');
     const [criteriaValue, setCriteriaValue] = useState('');
     
@@ -996,7 +996,7 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
             setNewProjectName('');
             setNewProjectDescription('');
             setNewProjectDeadline('');
-            setNewProjectPriority(null);
+            setNewProjectPriority(3);
             setCriteriaType('manual');
             setCriteriaValue('');
         }
@@ -1014,7 +1014,7 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
             onAddTarget(newTarget.trim(), newDeadline, newTargetPriority);
             setNewTarget('');
             setNewDeadline('');
-            setNewTargetPriority(null);
+            setNewTargetPriority(3);
         }
     };
     

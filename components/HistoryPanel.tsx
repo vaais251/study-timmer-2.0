@@ -354,7 +354,6 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
         P2: true,
         P3: true,
         P4: true,
-        Neutral: true,
     });
     
     const [visibleCompletionRates, setVisibleCompletionRates] = useState({
@@ -362,8 +361,18 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
         P2: true,
         P3: true,
         P4: true,
-        Neutral: true,
     });
+
+    const [visiblePrioritiesForDistribution, setVisiblePrioritiesForDistribution] = useState({
+        P1: true,
+        P2: true,
+        P3: true,
+        P4: true,
+    });
+    const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+    const [isCategoryFilterOpen, setIsCategoryFilterOpen] = useState(false);
+    const categoryFilterRef = useRef<HTMLDivElement>(null);
+
 
     const handleLegendClick = (o: any) => {
         const { dataKey } = o;
@@ -385,6 +394,33 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
             setVisibleCompletionRates(prev => ({ ...prev, [dataKey as keyof typeof prev]: !prev[dataKey as keyof typeof prev] }));
         }
     };
+
+    const handlePriorityDistributionLegendClick = (o: any) => {
+        const { dataKey } = o;
+        if (dataKey in visiblePrioritiesForDistribution) {
+            setVisiblePrioritiesForDistribution(prev => ({ ...prev, [dataKey as keyof typeof prev]: !prev[dataKey as keyof typeof prev] }));
+        }
+    };
+
+    const handleCategorySelection = (categoryName: string) => {
+        setSelectedCategories(prev =>
+            prev.includes(categoryName)
+                ? prev.filter(c => c !== categoryName)
+                : [...prev, categoryName]
+        );
+    };
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (categoryFilterRef.current && !categoryFilterRef.current.contains(event.target as Node)) {
+                setIsCategoryFilterOpen(false);
+            }
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => {
+            document.removeEventListener("mousedown", handleClickOutside);
+        };
+    }, [categoryFilterRef]);
 
 
     const handleSetRange = (days: number) => {
@@ -594,6 +630,47 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
             lineChartData, taskBreakdownData, projectBreakdownData, tagAnalysisData, focusLineChartData, dailyTaskVolumeChartData
         };
     }, [logs, tasks, allTasks, projects, allProjects, targets, allTargets, historyRange, settings, pomodoroHistory]);
+    
+    const categoryPriorityDistributionData = useMemo(() => {
+        const categoryMap = new Map<string, { name: string, P1: number, P2: number, P3: number, P4: number }>();
+
+        tasks.forEach(task => {
+            const priority = task.priority ?? 3; // Default to P3
+            const priorityKey = `P${priority}` as 'P1' | 'P2' | 'P3' | 'P4';
+
+            if (task.tags && task.tags.length > 0) {
+                task.tags.forEach(tag => {
+                    const normalizedTag = tag.trim().toLowerCase();
+                    if (normalizedTag) {
+                        const displayName = normalizedTag.charAt(0).toUpperCase() + normalizedTag.slice(1);
+                        if (!categoryMap.has(normalizedTag)) {
+                            categoryMap.set(normalizedTag, { name: displayName, P1: 0, P2: 0, P3: 0, P4: 0 });
+                        }
+                        const categoryData = categoryMap.get(normalizedTag)!;
+                        if (categoryData.hasOwnProperty(priorityKey)) {
+                            categoryData[priorityKey]++;
+                        }
+                    }
+                });
+            }
+        });
+
+        return Array.from(categoryMap.values()).sort((a, b) => {
+            const totalA = a.P1 + a.P2 + a.P3 + a.P4;
+            const totalB = b.P1 + b.P2 + b.P3 + b.P4;
+            return totalB - totalA;
+        });
+    }, [tasks]);
+
+    useEffect(() => {
+        const topFour = categoryPriorityDistributionData.slice(0, 4).map(d => d.name);
+        setSelectedCategories(topFour);
+    }, [categoryPriorityDistributionData]);
+
+    const filteredCategoryPriorityData = useMemo(() => {
+        return categoryPriorityDistributionData.filter(d => selectedCategories.includes(d.name));
+    }, [categoryPriorityDistributionData, selectedCategories]);
+
 
     const detailedViewData = useMemo(() => {
         const today = getTodayDateString();
@@ -663,7 +740,7 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
         const taskMap = new Map<string, Task>();
         allTasks.forEach(task => taskMap.set(task.id, task));
 
-        const dataByDate = new Map<string, { date: string, P1: number, P2: number, P3: number, P4: number, Neutral: number }>();
+        const dataByDate = new Map<string, { date: string, P1: number, P2: number, P3: number, P4: number }>();
 
         if (historyRange.start && historyRange.end) {
             let currentDate = new Date(historyRange.start + 'T00:00:00');
@@ -676,7 +753,6 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                     P2: 0,
                     P3: 0,
                     P4: 0,
-                    Neutral: 0,
                 });
                 currentDate.setDate(currentDate.getDate() + 1);
             }
@@ -689,11 +765,10 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                 const task = h.task_id ? taskMap.get(h.task_id) : null;
                 const duration = Number(h.duration_minutes) || 0;
                 
-                if (task && task.priority) {
-                    const priorityKey = `P${task.priority}` as 'P1' | 'P2' | 'P3' | 'P4';
+                const priority = task?.priority ?? 3;
+                const priorityKey = `P${priority}` as 'P1' | 'P2' | 'P3' | 'P4';
+                if (dayData.hasOwnProperty(priorityKey)) {
                     dayData[priorityKey] += duration;
-                } else {
-                    dayData.Neutral += duration;
                 }
             }
         });
@@ -709,7 +784,6 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
             P2_total: number; P2_completed: number;
             P3_total: number; P3_completed: number;
             P4_total: number; P4_completed: number;
-            Neutral_total: number; Neutral_completed: number;
         }>();
     
         if (historyRange.start && historyRange.end) {
@@ -723,7 +797,6 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                     P2_total: 0, P2_completed: 0,
                     P3_total: 0, P3_completed: 0,
                     P4_total: 0, P4_completed: 0,
-                    Neutral_total: 0, Neutral_completed: 0,
                 });
                 currentDate.setDate(currentDate.getDate() + 1);
             }
@@ -733,7 +806,7 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
             const dateStr = task.due_date;
             const dayData = dataByDate.get(dateStr);
             if (dayData) {
-                const priority = task.priority;
+                const priority = task.priority ?? 3;
                 const isCompleted = !!task.completed_at;
     
                 if (priority === 1) {
@@ -748,9 +821,6 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                 } else if (priority === 4) {
                     dayData.P4_total++;
                     if (isCompleted) dayData.P4_completed++;
-                } else { // Null priority
-                    dayData.Neutral_total++;
-                    if (isCompleted) dayData.Neutral_completed++;
                 }
             }
         });
@@ -761,7 +831,6 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
             P2: dayData.P2_total > 0 ? (dayData.P2_completed / dayData.P2_total) * 100 : 0,
             P3: dayData.P3_total > 0 ? (dayData.P3_completed / dayData.P3_total) * 100 : 0,
             P4: dayData.P4_total > 0 ? (dayData.P4_completed / dayData.P4_total) * 100 : 0,
-            Neutral: dayData.Neutral_total > 0 ? (dayData.Neutral_completed / dayData.Neutral_total) * 100 : 0,
         }));
     }, [tasks, historyRange]);
 
@@ -868,7 +937,6 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                                 <Line type="monotone" dataKey="P2" name="P2 (High)" stroke="#F59E0B" activeDot={{ r: 8 }} hide={!visiblePriorities.P2} />
                                 <Line type="monotone" dataKey="P3" name="P3 (Medium)" stroke="#38BDF8" activeDot={{ r: 8 }} hide={!visiblePriorities.P3} />
                                 <Line type="monotone" dataKey="P4" name="P4 (Low)" stroke="#64748B" activeDot={{ r: 8 }} hide={!visiblePriorities.P4} />
-                                <Line type="monotone" dataKey="Neutral" name="Neutral" stroke="#9CA3AF" activeDot={{ r: 8 }} hide={!visiblePriorities.Neutral} />
                             </LineChart>
                         </ResponsiveContainer>
                     </div>
@@ -892,7 +960,6 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                                 <Line type="monotone" dataKey="P2" name="P2 (High)" stroke="#F59E0B" activeDot={{ r: 8 }} hide={!visibleCompletionRates.P2} />
                                 <Line type="monotone" dataKey="P3" name="P3 (Medium)" stroke="#38BDF8" activeDot={{ r: 8 }} hide={!visibleCompletionRates.P3} />
                                 <Line type="monotone" dataKey="P4" name="P4 (Low)" stroke="#64748B" activeDot={{ r: 8 }} hide={!visibleCompletionRates.P4} />
-                                <Line type="monotone" dataKey="Neutral" name="Neutral" stroke="#9CA3AF" activeDot={{ r: 8 }} hide={!visibleCompletionRates.Neutral} />
                             </LineChart>
                         </ResponsiveContainer>
                     </div>
@@ -929,7 +996,69 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                         </ResponsiveContainer>
                     </div>
                 </div>
-                <CategoryTimelineChart tasks={allTasks} history={timelinePomodoroHistory} historyRange={historyRange} />
+                <div className="mt-8">
+                    <CategoryTimelineChart tasks={allTasks} history={timelinePomodoroHistory} historyRange={historyRange} />
+                </div>
+                
+                <div className="mt-8">
+                    <h3 className="text-lg font-semibold text-white text-center mb-2">Category Priority Distribution</h3>
+                    <div className="flex justify-center mb-4">
+                        <div className="relative" ref={categoryFilterRef}>
+                            <button onClick={() => setIsCategoryFilterOpen(o => !o)} className="bg-white/10 hover:bg-white/20 text-white font-semibold py-2 px-4 rounded-lg inline-flex items-center">
+                                <span>Filter Categories ({selectedCategories.length}/{categoryPriorityDistributionData.length})</span>
+                                <svg className="fill-current h-4 w-4 ml-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
+                            </button>
+                            {isCategoryFilterOpen && (
+                                <div className="absolute z-10 mt-2 w-64 bg-slate-800 border border-slate-700 rounded-lg shadow-xl right-0">
+                                    <ul className="max-h-60 overflow-y-auto p-2">
+                                        {categoryPriorityDistributionData.map(cat => (
+                                            <li key={cat.name}>
+                                                <label className="inline-flex items-center w-full p-2 rounded-md hover:bg-slate-700/50 cursor-pointer">
+                                                    <input
+                                                        type="checkbox"
+                                                        className="h-4 w-4 rounded bg-slate-600 border-slate-500 text-teal-400 focus:ring-teal-400/50"
+                                                        checked={selectedCategories.includes(cat.name)}
+                                                        onChange={() => handleCategorySelection(cat.name)}
+                                                    />
+                                                    <span className="ml-3 text-sm text-white">{cat.name}</span>
+                                                </label>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+    
+                    {filteredCategoryPriorityData.length > 0 ? (
+                        <div className="h-96">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <BarChart
+                                    data={filteredCategoryPriorityData}
+                                    margin={{ top: 5, right: 20, left: -10, bottom: 5 }}
+                                >
+                                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.2)" />
+                                    <XAxis dataKey="name" stroke="rgba(255,255,255,0.7)" tick={{ fontSize: 10 }} angle={-45} textAnchor="end" height={60} interval={0} />
+                                    <YAxis stroke="rgba(255,255,255,0.7)" allowDecimals={false} />
+                                    <Tooltip
+                                        contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }}
+                                        itemStyle={{ color: 'white' }}
+                                        labelStyle={{ color: 'white', fontWeight: 'bold' }}
+                                    />
+                                    <Legend wrapperStyle={{fontSize: "12px", cursor: 'pointer'}} onClick={handlePriorityDistributionLegendClick}/>
+                                    <Bar dataKey="P1" stackId="a" fill="#F87171" name="P1 (Highest)" hide={!visiblePrioritiesForDistribution.P1} />
+                                    <Bar dataKey="P2" stackId="a" fill="#F59E0B" name="P2 (High)" hide={!visiblePrioritiesForDistribution.P2} />
+                                    <Bar dataKey="P3" stackId="a" fill="#38BDF8" name="P3 (Medium)" hide={!visiblePrioritiesForDistribution.P3} />
+                                    <Bar dataKey="P4" stackId="a" fill="#64748B" name="P4 (Low)" hide={!visiblePrioritiesForDistribution.P4} />
+                                </BarChart>
+                            </ResponsiveContainer>
+                        </div>
+                    ) : (
+                        <div className="h-64 flex items-center justify-center text-white/60 bg-black/10 rounded-lg">
+                            <p>No categories selected or no data for this period.</p>
+                        </div>
+                    )}
+                </div>
             </div>
 
             {/* --- Section 5: Focus Breakdown --- */}
