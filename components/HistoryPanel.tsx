@@ -4,7 +4,7 @@ import { DbDailyLog, Task, Project, Target, Settings, PomodoroHistory } from '..
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, LineChart, Line, XAxis, YAxis, CartesianGrid, Legend, BarChart, Bar } from 'recharts';
 import { getTodayDateString } from '../utils/date';
 import AIInsightModal from './common/AIInsightModal';
-import { SparklesIcon } from './common/Icons';
+import { SparklesIcon, FilledStarIcon } from './common/Icons';
 
 interface HistoryPanelProps {
     logs: DbDailyLog[];
@@ -55,12 +55,13 @@ interface DayDetailTooltipProps {
     value: number;
     category: string;
     allTasks: Task[];
+    allProjects: Project[];
     pomodoroHistory: PomodoroHistory[];
     position: { top: number; left: number };
     onClose: () => void;
 }
 
-const DayDetailTooltip: React.FC<DayDetailTooltipProps> = ({ date, value, category, allTasks, pomodoroHistory, position, onClose }) => {
+const DayDetailTooltip: React.FC<DayDetailTooltipProps> = ({ date, value, category, allTasks, allProjects, pomodoroHistory, position, onClose }) => {
     const tooltipRef = useRef<HTMLDivElement>(null);
 
     const details = useMemo(() => {
@@ -74,14 +75,17 @@ const DayDetailTooltip: React.FC<DayDetailTooltipProps> = ({ date, value, catego
             .filter(h => h.ended_at.startsWith(date))
             .reduce((sum, h) => sum + (Number(h.duration_minutes) || 0), 0);
         
+        const completedProjects = allProjects.filter(p => p.completed_at && p.completed_at.startsWith(date));
+        
         return {
             tasksForDay,
             completedTasksCount,
             totalTasks,
             completionPercentage,
-            overallFocusMinutes
+            overallFocusMinutes,
+            completedProjects
         };
-    }, [date, allTasks, pomodoroHistory]);
+    }, [date, allTasks, allProjects, pomodoroHistory]);
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -114,6 +118,20 @@ const DayDetailTooltip: React.FC<DayDetailTooltipProps> = ({ date, value, catego
                 )}
                 <p><strong>Task Completion:</strong> <span className="font-semibold text-white">{details.completionPercentage}%</span> ({details.completedTasksCount}/{details.totalTasks})</p>
                 
+                {details.completedProjects.length > 0 && (
+                    <div className="mt-2">
+                        <h5 className="font-bold text-yellow-300 flex items-center gap-1.5">
+                            <FilledStarIcon className="w-4 h-4" />
+                            Projects Completed:
+                        </h5>
+                        <ul className="list-disc list-inside text-xs space-y-1 pl-1 text-white/90">
+                            {details.completedProjects.map(p => (
+                                <li key={p.id} className="truncate">{p.name}</li>
+                            ))}
+                        </ul>
+                    </div>
+                )}
+                
                 {details.tasksForDay.length > 0 && (
                     <div>
                         <h5 className="font-semibold mt-2 text-white">Tasks:</h5>
@@ -134,20 +152,44 @@ const DayDetailTooltip: React.FC<DayDetailTooltipProps> = ({ date, value, catego
     );
 };
 
+const ProjectCompletionTooltip: React.FC<{ projects: Project[]; position: { top: number; left: number } }> = ({ projects, position }) => {
+    const style: React.CSSProperties = {
+        position: 'absolute',
+        top: `${position.top}px`,
+        left: `${position.left}px`,
+        transform: 'translateX(-50%) translateY(-100%)',
+        zIndex: 60,
+        pointerEvents: 'none'
+    };
+    return (
+        <div style={style} className="w-48 bg-slate-900 border border-yellow-400 rounded-lg shadow-2xl p-3 text-sm animate-scaleIn">
+            <h4 className="font-bold text-yellow-300 mb-2 text-center">Project{projects.length > 1 ? 's' : ''} Completed!</h4>
+            <ul className="list-disc list-inside text-white/90 text-xs space-y-1">
+                {projects.map(p => <li key={p.id} className="truncate">{p.name}</li>)}
+            </ul>
+        </div>
+    );
+};
+
 
 // --- New Component: Consistency Tracker ---
-const ConsistencyTracker: React.FC<{
+interface ConsistencyTrackerProps {
     logs: DbDailyLog[];
     allTasks: Task[];
+    allProjects: Project[];
     pomodoroHistory: PomodoroHistory[];
     openInsightModal: (chartTitle: string, chartData: any, chartElement: React.ReactNode) => void;
+    showCompletions: boolean;
+    onToggleCompletions: () => void;
     isForModal?: boolean;
-}> = ({ logs, allTasks, pomodoroHistory, openInsightModal, isForModal = false }) => {
+}
+
+const ConsistencyTracker: React.FC<ConsistencyTrackerProps> = ({ logs, allTasks, allProjects, pomodoroHistory, openInsightModal, showCompletions, onToggleCompletions, isForModal = false }) => {
     const [selectedDay, setSelectedDay] = useState<string | null>(null);
     const [tooltipPosition, setTooltipPosition] = useState<{ top: number; left: number } | null>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const [selectedCategory, setSelectedCategory] = useState<string>('Overall');
-
+    
     const allCategories = useMemo(() => {
         const tags = new Set<string>();
         allTasks.forEach(task => {
@@ -194,7 +236,7 @@ const ConsistencyTracker: React.FC<{
             return;
         }
         setSelectedDay(day.date);
-        const rect = (event.target as HTMLElement).getBoundingClientRect();
+        const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
         const containerRect = containerRef.current?.getBoundingClientRect();
 
         if (containerRect) {
@@ -208,6 +250,10 @@ const ConsistencyTracker: React.FC<{
     const { weeks, monthLabels, maxValue } = useMemo(() => {
         const activityMap: Map<string, number> = new Map(activityData.map(d => [d.date, d.value]));
         const maxValue = Math.max(1, ...activityData.map(d => d.value));
+        
+        const completionDates = new Set<string>(
+            allProjects.filter(p => p.completed_at).map(p => p.completed_at!.split('T')[0])
+        );
 
         const today = new Date();
         const daysToShow = 180; // Approx 6 months
@@ -224,6 +270,7 @@ const ConsistencyTracker: React.FC<{
             ...days.map(date => {
                 const dateString = getTodayDateString(date);
                 const value = activityMap.get(dateString) || 0;
+                const hasProjectCompletion = completionDates.has(dateString);
 
                 let colorClass = 'bg-gray-800'; // 0 value
                 if (value > 0) {
@@ -241,6 +288,7 @@ const ConsistencyTracker: React.FC<{
                     colorClass,
                     value,
                     month: date.getMonth(),
+                    hasProjectCompletion,
                 };
             })
         ];
@@ -266,7 +314,7 @@ const ConsistencyTracker: React.FC<{
         });
 
         return { weeks, monthLabels, maxValue };
-    }, [activityData]);
+    }, [activityData, allProjects]);
 
     const chartMarkup = (
         <div className="inline-block">
@@ -299,10 +347,16 @@ const ConsistencyTracker: React.FC<{
                                 day 
                                 ? <div 
                                     key={day.date} 
-                                    className={`w-3 h-3 rounded-sm ${day.colorClass} ${!isForModal ? 'cursor-pointer transition-transform hover:scale-125 hover:ring-2 hover:ring-white/80' : ''}`} 
+                                    className={`relative w-3 h-3 rounded-sm ${day.colorClass} ${!isForModal ? 'cursor-pointer transition-transform hover:scale-125 hover:ring-2 hover:ring-white/80' : ''}`} 
                                     title={`${day.value} focus minutes on ${day.date}`}
                                     onClick={(e) => handleDayClick(day, e)}
-                                  />
+                                  >
+                                    {showCompletions && day.hasProjectCompletion && (
+                                        <div className="absolute inset-0 flex items-center justify-center">
+                                            <FilledStarIcon className="w-2.5 h-2.5 text-yellow-300 drop-shadow-md pointer-events-none" />
+                                        </div>
+                                    )}
+                                  </div>
                                 : <div key={`ph-${weekIndex}-${dayIndex}`} className="w-3 h-3" />
                             ))}
                         </div>
@@ -315,25 +369,41 @@ const ConsistencyTracker: React.FC<{
     const dataForAI = activityData.map(d => ({ date: d.date, minutes: d.value }));
 
     const handleOpenModal = () => {
-        const modalChartElement = <ConsistencyTracker logs={logs} allTasks={allTasks} pomodoroHistory={pomodoroHistory} openInsightModal={openInsightModal} isForModal={true} />;
+        const modalChartElement = <ConsistencyTracker logs={logs} allTasks={allTasks} allProjects={allProjects} pomodoroHistory={pomodoroHistory} openInsightModal={openInsightModal} showCompletions={showCompletions} onToggleCompletions={onToggleCompletions} isForModal={true} />;
         openInsightModal(`Daily Focus Consistency: ${selectedCategory}`, dataForAI, modalChartElement);
     };
 
     return (
         <div ref={containerRef} className="relative bg-black/20 p-4 rounded-lg">
             {!isForModal && (
-                <div className="flex flex-col sm:flex-row justify-center items-center gap-2 mb-4">
-                    <h3 className="text-lg font-semibold text-white">Daily Focus:</h3>
-                    <select
-                        value={selectedCategory}
-                        onChange={e => setSelectedCategory(e.target.value)}
-                        className="bg-slate-700/50 border border-slate-600 rounded-lg py-1 px-3 text-white focus:outline-none focus:ring-2 focus:ring-teal-400"
-                    >
-                        {allCategories.map(cat => <option key={cat} value={cat} className="bg-slate-800">{cat}</option>)}
-                    </select>
-                    <button onClick={handleOpenModal} className="p-1 text-purple-400 hover:text-purple-300 transition" title="Get AI Insights">
-                        <SparklesIcon />
-                    </button>
+                <div className="flex flex-col sm:flex-row justify-between items-center gap-2 mb-4">
+                    <div className="flex items-center gap-2">
+                        <h3 className="text-lg font-semibold text-white">Daily Focus:</h3>
+                        <select
+                            value={selectedCategory}
+                            onChange={e => setSelectedCategory(e.target.value)}
+                            className="bg-slate-700/50 border border-slate-600 rounded-lg py-1 px-3 text-white focus:outline-none focus:ring-2 focus:ring-teal-400"
+                        >
+                            {allCategories.map(cat => <option key={cat} value={cat} className="bg-slate-800">{cat}</option>)}
+                        </select>
+                    </div>
+                     <div className="flex items-center gap-4">
+                        <label className="flex items-center gap-1.5 text-xs text-white/70 cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={showCompletions}
+                                onChange={onToggleCompletions}
+                                className="h-4 w-4 rounded bg-slate-600 border-slate-500 text-teal-400 focus:ring-teal-400/50"
+                            />
+                            <span className="flex items-center gap-1">
+                                <FilledStarIcon className="w-3 h-3 text-yellow-300" />
+                                Completions
+                            </span>
+                        </label>
+                        <button onClick={handleOpenModal} className="p-1 text-purple-400 hover:text-purple-300 transition" title="Get AI Insights">
+                            <SparklesIcon />
+                        </button>
+                    </div>
                 </div>
             )}
             {isForModal && <h3 className="text-lg font-semibold text-white text-center mb-4">Daily Focus: {selectedCategory}</h3>}
@@ -363,6 +433,7 @@ const ConsistencyTracker: React.FC<{
                     value={weeks.flat().find(d => d?.date === selectedDay)?.value || 0}
                     category={selectedCategory}
                     allTasks={allTasks}
+                    allProjects={allProjects}
                     pomodoroHistory={pomodoroHistory}
                     position={tooltipPosition}
                     onClose={() => setSelectedDay(null)}
@@ -383,7 +454,7 @@ const CategoryTimelineChart = React.memo(({ tasks, history, historyRange, openIn
     const [view, setView] = useState<'month' | 'week' | 'custom'>('week');
     const [visibleTags, setVisibleTags] = useState<string[]>([]);
 
-    const chartData = useMemo(() => {
+    const { data, tags, top4Tags } = useMemo(() => {
         let startDate: Date;
         let endDate: Date;
 
@@ -394,7 +465,6 @@ const CategoryTimelineChart = React.memo(({ tasks, history, historyRange, openIn
             startDate = new Date(historyRange.start + 'T00:00:00');
             endDate = new Date(historyRange.end + 'T00:00:00');
             
-            // If the selected end date is today or later, cap it at yesterday.
             if (endDate >= todayForComparison) {
                 const yesterday = new Date();
                 yesterday.setDate(yesterday.getDate() - 1);
@@ -402,7 +472,6 @@ const CategoryTimelineChart = React.memo(({ tasks, history, historyRange, openIn
                 endDate = yesterday;
             }
             
-            // If capping the end date made the start date later than the end date, adjust start date.
             if (startDate > endDate) {
                 startDate = new Date(endDate);
             }
@@ -457,8 +526,19 @@ const CategoryTimelineChart = React.memo(({ tasks, history, historyRange, openIn
             }
         });
         
-        const sortedTags = Array.from(allTags).sort();
         const finalData = Array.from(dataByDate.values());
+
+        const tagTotals = new Map<string, number>();
+        allTags.forEach(tag => {
+            const total = finalData.reduce((sum, day) => sum + ((day[tag] as number) || 0), 0);
+            tagTotals.set(tag, total);
+        });
+
+        const sortedTags = Array.from(tagTotals.entries())
+            .sort((a, b) => b[1] - a[1]) // Sort by total minutes, descending
+            .map(([tag]) => tag);
+
+        const top4Tags = sortedTags.slice(0, 4);
 
         // Ensure all tags are present in all date objects for recharts
         finalData.forEach(dayData => {
@@ -469,17 +549,17 @@ const CategoryTimelineChart = React.memo(({ tasks, history, historyRange, openIn
             });
         });
 
-        return { data: finalData, tags: sortedTags };
+        return { data: finalData, tags: sortedTags, top4Tags };
 
     }, [view, tasks, history, historyRange]);
     
     useEffect(() => {
-        setVisibleTags(chartData.tags);
-    }, [chartData.tags]);
+        setVisibleTags(top4Tags);
+    }, [top4Tags]);
 
     const handleLegendClick = (o: any) => {
         const { dataKey } = o;
-        if (chartData.tags.includes(dataKey)) {
+        if (tags.includes(dataKey)) {
             setVisibleTags(prev => 
                 prev.includes(dataKey) 
                     ? prev.filter(t => t !== dataKey) 
@@ -488,23 +568,32 @@ const CategoryTimelineChart = React.memo(({ tasks, history, historyRange, openIn
         }
     };
 
-    const COLORS = ['#F59E0B', '#10B981', '#38BDF8', '#EC4899', '#84CC16', '#F43F5E', '#6366F1'];
+    const generateColorFromString = (str: string) => {
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) {
+            hash = str.charCodeAt(i) + ((hash << 5) - hash);
+        }
+        const h = hash % 360;
+        const s = 65; // Keep saturation in a good range
+        const l = 50; // Keep lightness mid-range for visibility
+        return `hsl(${h}, ${s}%, ${l}%)`;
+    };
 
     const chartElement = (
         <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={chartData.data} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+            <LineChart data={data} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.2)" />
                 <XAxis dataKey="date" stroke="rgba(255,255,255,0.7)" tick={{ fontSize: 10 }} />
                 <YAxis stroke="rgba(255,255,255,0.7)" unit="m" />
                 <Tooltip contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }} itemStyle={{ color: 'white' }} labelStyle={{ color: 'white', fontWeight: 'bold' }} />
                 <Legend wrapperStyle={{fontSize: "12px", cursor: 'pointer'}} onClick={handleLegendClick}/>
-                {chartData.tags.map((tag, index) => (
+                {tags.map((tag) => (
                     <Line 
                         key={tag} 
                         type="monotone" 
                         dataKey={tag} 
                         name={tag.charAt(0).toUpperCase() + tag.slice(1)}
-                        stroke={COLORS[index % COLORS.length]} 
+                        stroke={generateColorFromString(tag)} 
                         strokeWidth={2}
                         dot={{ r: 2 }}
                         activeDot={{ r: 6 }}
@@ -520,7 +609,7 @@ const CategoryTimelineChart = React.memo(({ tasks, history, historyRange, openIn
             <div className="flex justify-center items-center gap-2 mb-2">
                 <h3 className="text-lg font-semibold text-white text-center">Category Focus Over Time</h3>
                 <button
-                    onClick={() => openInsightModal('Category Focus Over Time', chartData.data, <div className="h-96">{chartElement}</div>)}
+                    onClick={() => openInsightModal('Category Focus Over Time', data, <div className="h-96">{chartElement}</div>)}
                     className="p-1 text-purple-400 hover:text-purple-300 transition"
                     title="Get AI Insights for this chart"
                 >
@@ -547,7 +636,7 @@ const CategoryTimelineChart = React.memo(({ tasks, history, historyRange, openIn
                     Align to Range
                 </button>
             </div>
-            {chartData.data.length > 0 && chartData.tags.length > 0 ? (
+            {data.length > 0 && tags.length > 0 ? (
                  <div className="h-96 mt-4">
                     {chartElement}
                 </div>
@@ -601,6 +690,12 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
         chartData: any;
         chartElement: React.ReactNode;
     } | null>(null);
+    
+    const [showCompletions, setShowCompletions] = useState(false);
+
+    const completionDates = useMemo(() => 
+        new Set(allProjects.filter(p => p.completed_at).map(p => p.completed_at!.split('T')[0])),
+    [allProjects]);
 
     const openInsightModal = (chartTitle: string, chartData: any, chartElement: React.ReactNode) => {
         setModalState({ isOpen: true, chartTitle, chartData, chartElement });
@@ -802,7 +897,9 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
 
         const focusLineChartData = Array.from(focusMinutesPerDay.entries()).map(([dateString, minutes]) => ({
             date: new Date(dateString + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+            dateISO: dateString,
             focusMinutes: minutes,
+            hasCompletion: completionDates.has(dateString),
         }));
 
         const dailyTaskStats = new Map<string, { total: number, completed: number }>();
@@ -836,9 +933,11 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
 
         const dailyTaskVolumeChartData = Array.from(dailyTaskStats.entries()).map(([dateString, stats]) => ({
             date: new Date(dateString + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+            dateISO: dateString,
             completedTasks: stats.completed,
             incompleteTasks: stats.total - stats.completed,
             totalTasks: stats.total,
+            hasCompletion: completionDates.has(dateString),
         }));
 
         const totalCompletedTasks = allTasks.filter(t => t.completed_at).length;
@@ -900,7 +999,7 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
             averageDailyFocus,
             dayDiff
         };
-    }, [logs, tasks, allTasks, projects, allProjects, targets, allTargets, historyRange, settings, pomodoroHistory]);
+    }, [logs, tasks, allTasks, projects, allProjects, targets, allTargets, historyRange, settings, pomodoroHistory, completionDates]);
     
     const categoryPriorityDistributionData = useMemo(() => {
         const categoryMap = new Map<string, { name: string, P1: number, P2: number, P3: number, P4: number }>();
@@ -1196,6 +1295,48 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
         );
     };
 
+    const CompletionDot: React.FC<any> = (props) => {
+        const { cx, cy, payload } = props;
+    
+        if (showCompletions && payload.hasCompletion) {
+            return <svg x={cx - 8} y={cy - 8} width="16" height="16" fill="#FBBF24" viewBox="0 0 24 24" style={{filter: 'drop-shadow(0 0 2px rgba(0,0,0,0.5))'}}><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" /></svg>;
+        }
+        
+        return null;
+    };
+
+    const CustomLineChartTooltip: React.FC<any> = ({ active, payload, label }) => {
+        if (active && payload && payload.length) {
+            const data = payload[0].payload;
+            const completedProjectsOnDay = allProjects.filter(p => p.completed_at && p.completed_at.startsWith(data.dateISO));
+            
+            return (
+                <div className="bg-slate-900/90 backdrop-blur-sm border border-slate-700 p-3 rounded-lg shadow-lg text-sm">
+                    <p className="font-bold text-white mb-2">{label}</p>
+                    <div className="space-y-1">
+                        {payload.map((pld: any) => (
+                            <p key={pld.dataKey} style={{ color: pld.color }}>
+                                {`${pld.name}: `}<span className="font-semibold">{pld.value}{pld.unit || ''}</span>
+                            </p>
+                        ))}
+                    </div>
+                    {showCompletions && completedProjectsOnDay.length > 0 && (
+                        <div className="mt-2 pt-2 border-t border-slate-700">
+                            <h5 className="font-bold text-yellow-300 text-xs flex items-center gap-1.5">
+                                <FilledStarIcon className="w-3 h-3"/>
+                                Projects Completed:
+                            </h5>
+                            <ul className="list-disc list-inside text-xs text-white/90 mt-1">
+                                {completedProjectsOnDay.map(p => <li key={p.id}>{p.name}</li>)}
+                            </ul>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+        return null;
+    };
+
     // Chart Element Definitions for Modal Reuse
     const dailyFocusChartElement = (
         <ResponsiveContainer width="100%" height="100%">
@@ -1203,9 +1344,9 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.2)" />
                 <XAxis dataKey="date" stroke="rgba(255,255,255,0.7)" tick={{ fontSize: 10 }} />
                 <YAxis stroke="rgba(255,255,255,0.7)" unit="m" />
-                <Tooltip contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }} itemStyle={{ color: 'white' }} labelStyle={{ color: 'white', fontWeight: 'bold' }} />
+                <Tooltip content={<CustomLineChartTooltip />} />
                 <Legend wrapperStyle={{fontSize: "12px"}}/>
-                <Line type="monotone" dataKey="focusMinutes" name="Focus Minutes" stroke="#34D399" activeDot={{ r: 8 }} />
+                <Line type="monotone" dataKey="focusMinutes" name="Focus Minutes" stroke="#34D399" dot={<CompletionDot />} activeDot={{ r: 8 }} />
             </LineChart>
         </ResponsiveContainer>
     );
@@ -1253,11 +1394,11 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.2)" />
                 <XAxis dataKey="date" stroke="rgba(255,255,255,0.7)" tick={{ fontSize: 10 }} />
                 <YAxis stroke="rgba(255,255,255,0.7)" allowDecimals={false} />
-                <Tooltip contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }} itemStyle={{ color: 'white' }} labelStyle={{ color: 'white', fontWeight: 'bold' }} />
+                <Tooltip content={<CustomLineChartTooltip />} />
                 <Legend wrapperStyle={{fontSize: "12px", cursor: 'pointer'}} onClick={handleLegendClick} />
-                <Line type="monotone" dataKey="completedTasks" name="Completed" stroke="#34D399" activeDot={{ r: 8 }} hide={!visibleLines.completedTasks} />
-                <Line type="monotone" dataKey="incompleteTasks" name="Incomplete" stroke="#F87171" activeDot={{ r: 8 }} hide={!visibleLines.incompleteTasks} />
-                <Line type="monotone" dataKey="totalTasks" name="Total" stroke="#F59E0B" activeDot={{ r: 8 }} hide={!visibleLines.totalTasks} />
+                <Line type="monotone" dataKey="completedTasks" name="Completed" stroke="#34D399" dot={<CompletionDot />} activeDot={{ r: 8 }} hide={!visibleLines.completedTasks} />
+                <Line type="monotone" dataKey="incompleteTasks" name="Incomplete" stroke="#F87171" dot={<CompletionDot />} activeDot={{ r: 8 }} hide={!visibleLines.incompleteTasks} />
+                <Line type="monotone" dataKey="totalTasks" name="Total" stroke="#F59E0B" dot={<CompletionDot />} activeDot={{ r: 8 }} hide={!visibleLines.totalTasks} />
             </LineChart>
         </ResponsiveContainer>
     );
@@ -1449,8 +1590,11 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                 <ConsistencyTracker
                     logs={consistencyLogs}
                     allTasks={allTasks}
+                    allProjects={allProjects}
                     pomodoroHistory={consistencyPomodoroHistory}
                     openInsightModal={openInsightModal}
+                    showCompletions={showCompletions}
+                    onToggleCompletions={() => setShowCompletions(v => !v)}
                 />
             </div>
 
