@@ -33,7 +33,7 @@ export async function getChartInsight(chartTitle: string, chartData: any): Promi
         const ai = new GoogleGenAI({ apiKey: API_KEY });
 
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-2.5-pro',
             contents: [{ parts: [{ text: prompt }] }],
         });
         
@@ -59,7 +59,7 @@ export async function generateContent(prompt: string): Promise<string> {
         const ai = new GoogleGenAI({ apiKey: API_KEY });
 
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-2.5-pro',
             contents: [{ parts: [{ text: prompt }] }],
             config: {
                 // No tools for this simple utility call to avoid complexity.
@@ -89,10 +89,11 @@ export interface AgentContext {
     targets: Pick<Target, 'id' | 'text' | 'deadline' | 'completed_at' | 'priority'>[];
     projects: Pick<Project, 'id' | 'name' | 'description' | 'status' | 'deadline' | 'completion_criteria_type' | 'completion_criteria_value' | 'progress_value' | 'priority'>[];
     commitments: Pick<Commitment, 'id' | 'text' | 'due_date'>[];
-    tasks: Pick<Task, 'id' | 'text' | 'due_date' | 'completed_at' | 'project_id' | 'completed_poms' | 'total_poms' | 'comments' | 'priority'>[];
+    tasks: Pick<Task, 'id' | 'text' | 'due_date' | 'completed_at' | 'project_id' | 'completed_poms' | 'total_poms' | 'comments' | 'priority' | 'tags'>[];
     dailyLogs: { date: string; total_focus_minutes: number; completed_sessions: number }[];
     pomodoroHistory: Pick<PomodoroHistory, 'task_id' | 'ended_at' | 'duration_minutes'>[];
     aiMemories: Pick<AiMemory, 'id' | 'type' | 'content' | 'tags' | 'created_at'>[];
+    dateRangeDescription: string;
 }
 
 export async function runAgent(
@@ -102,7 +103,7 @@ export async function runAgent(
 ): Promise<GenerateContentResponse> {
     const ai = new GoogleGenAI({ apiKey: API_KEY });
 
-    const systemInstruction = `You are PomoAI, an expert productivity coach and data analyst integrated into a Pomodoro study application. You have complete read-only access to the user's planning and performance data, which is provided below in structured format. Your primary role is to help the user understand their data, find insights, plan their work, and take action on their behalf using your available tools. You are conversational, encouraging, and highly analytical. The app supports two primary work modes for tasks:
+    const systemInstruction = `You are PomoAI, an expert productivity coach and data analyst integrated into a Pomodoro study application. You have read-only access to a snapshot of the user's planning and performance data, provided below. This snapshot covers ${context.dateRangeDescription}. Your primary role is to help the user understand their data, find insights, plan their work, and take action on their behalf using your available tools. You are conversational, encouraging, and highly analytical. The app supports two primary work modes for tasks:
 1.  **Pomodoro Mode**: Traditional countdown timers for focused work sessions. These are for tasks with a defined scope, estimated in 'poms'.
 2.  **Stopwatch Mode**: A flexible, open-ended timer that counts up from zero. This is ideal for tasks where the duration is unknown, like creative work or open-ended research. Time is tracked and logged as a single session when the user manually completes the task. You can identify these tasks as having a \`total_poms\` value of -1.
 
@@ -202,8 +203,8 @@ You have access to the user's data, structured in the following tables. Use this
     *   \`completed_sessions\` (number)
     *   \`total_focus_minutes\` (number)
 
---- CONTEXT DATA ---
-The following data is a snapshot for the currently selected date range and user's high-level planning.
+--- CONTEXT DATA (${context.dateRangeDescription}) ---
+The following is a snapshot of the user's data for the specified period.
 
 == AI MEMORY BANK (Learnings & Personal Context) ==
 ${context.aiMemories.map(m => `- [${m.type.toUpperCase()}] (ID: ${m.id}) ${m.content} ${m.tags ? `Tags: [${m.tags.join(', ')}]` : ''}`).join('\n') || "No memories yet."}
@@ -223,28 +224,29 @@ ${context.projects.map(p => {
 }).join('\n') || 'No projects.'}
 Note: When adding a task to a project, you MUST use the project's ID.
 
-== TASKS (within date range) ==
+== TASKS IN RANGE ==
 ${context.tasks.map(t => {
     const comments = t.comments && t.comments.length > 0 ? ` Comments: [${t.comments.join('; ')}]` : '';
-    return `- [${t.completed_at ? 'X' : ' '}] ${t.text} (${t.completed_poms}/${t.total_poms} poms, Due: ${t.due_date}, P:${t.priority || 3}, ProjectID: ${t.project_id || 'None'}, ID: ${t.id})${comments}`;
-}).join('\n') || 'No tasks in this period.'}
+    const tags = t.tags && t.tags.length > 0 ? ` Tags: [${t.tags.join(', ')}]` : '';
+    return `- [${t.completed_at ? 'X' : ' '}] ${t.text} (${t.completed_poms}/${t.total_poms} poms, Due: ${t.due_date}, P:${t.priority || 3}, ProjectID: ${t.project_id || 'None'}, ID: ${t.id})${tags}${comments}`;
+}).join('\n') || 'No tasks exist in this range.'}
 
 == COMMITMENTS ==
 ${context.commitments.map(c => `- ${c.text} (Due: ${c.due_date || 'N/A'}, ID: ${c.id})`).join('\n') || 'No commitments made.'}
 
-== DAILY PERFORMANCE LOGS (within date range) ==
+== DAILY PERFORMANCE LOGS IN RANGE ==
 This data is a summary derived from the \`pomodoro_history\` table.
-${context.dailyLogs.map(log => `- Date: ${log.date}, Focus Time: ${log.total_focus_minutes} minutes, Pomodoros: ${log.completed_sessions}`).join('\n') || 'No focus sessions recorded in this period.'}
+${context.dailyLogs.map(log => `- Date: ${log.date}, Focus Time: ${log.total_focus_minutes} minutes, Pomodoros: ${log.completed_sessions}`).join('\n') || 'No focus sessions recorded in this range.'}
 
-== POMODORO HISTORY (within date range) ==
+== POMODORO HISTORY IN RANGE ==
 This is the raw log of individual focus sessions. Use the \`ended_at\` timestamp for detailed time-of-day analysis.
-${context.pomodoroHistory.map(p => `- Ended: ${p.ended_at}, Duration: ${p.duration_minutes} min, TaskID: ${p.task_id || 'None'}`).join('\n') || 'No individual focus sessions recorded in this period.'}
+${context.pomodoroHistory.map(p => `- Ended: ${p.ended_at}, Duration: ${p.duration_minutes} min, TaskID: ${p.task_id || 'None'}`).join('\n') || 'No individual focus sessions recorded in this range.'}
 --- END OF CONTEXT ---
 
 Based on this detailed data and schema, answer the user's questions and execute commands with precision.`;
     
     const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-2.5-pro',
         contents: history,
         config: {
             systemInstruction: { parts: [{ text: systemInstruction }] },

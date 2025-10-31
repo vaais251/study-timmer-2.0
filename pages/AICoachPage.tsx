@@ -35,12 +35,6 @@ interface AICoachPageProps {
     onMemoryChange: () => Promise<void>;
 }
 
-const getMonthAgoDateString = (): string => {
-    const date = new Date();
-    date.setMonth(date.getMonth() - 1);
-    return getTodayDateString(date);
-};
-
 // --- AI Function Declarations ---
 const toolDeclarations: FunctionDeclaration[] = [
     {
@@ -209,6 +203,8 @@ const AiMemoryManager: React.FC<{ memories: AiMemory[], onDelete: (id: string) =
     );
 };
 
+type FilterMode = 'all' | 'week' | 'month' | 'range';
+
 const AICoachPage: React.FC<AICoachPageProps> = (props) => {
     const { goals, targets, projects, allCommitments, onAddTask, onAddProject, onAddTarget, onAddCommitment, onRescheduleItem, chatMessages, setChatMessages, aiMemories, onMemoryChange } = props;
     
@@ -220,34 +216,74 @@ const AICoachPage: React.FC<AICoachPageProps> = (props) => {
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     
     // Context Data State
-    const [historyRange, setHistoryRange] = useState(() => ({
-        start: getMonthAgoDateString(),
-        end: getTodayDateString(),
-    }));
-    const [tasksInRange, setTasksInRange] = useState<Task[]>([]);
-    const [pomodoroHistoryInRange, setPomodoroHistoryInRange] = useState<PomodoroHistory[]>([]);
+    const [filterMode, setFilterMode] = useState<FilterMode>('all');
+    const [dateRange, setDateRange] = useState({ start: '', end: '' });
+    const [contextTasks, setContextTasks] = useState<Task[]>([]);
+    const [contextHistory, setContextHistory] = useState<PomodoroHistory[]>([]);
     const [isDataLoading, setIsDataLoading] = useState(true);
 
     useEffect(() => {
-        const fetchRangedData = async () => {
+        const fetchDataForContext = async () => {
             setIsDataLoading(true);
-            const [fetchedTasks, fetchedHistory] = await Promise.all([
-                 dbService.getHistoricalTasks(historyRange.start, historyRange.end),
-                 dbService.getPomodoroHistory(historyRange.start, historyRange.end)
-            ]);
-            setTasksInRange(fetchedTasks || []);
-            setPomodoroHistoryInRange(fetchedHistory || []);
-            setIsDataLoading(false);
+            let startDate = '';
+            let endDate = '';
+            const today = getTodayDateString();
+
+            switch (filterMode) {
+                case 'week':
+                    const sevenDaysAgo = new Date();
+                    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+                    startDate = getTodayDateString(sevenDaysAgo);
+                    endDate = today;
+                    break;
+                case 'month':
+                    const thirtyDaysAgo = new Date();
+                    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 29);
+                    startDate = getTodayDateString(thirtyDaysAgo);
+                    endDate = today;
+                    break;
+                case 'range':
+                    startDate = dateRange.start;
+                    endDate = dateRange.end;
+                    break;
+                case 'all':
+                default:
+                    break;
+            }
+            
+            if (filterMode === 'range' && (!startDate || !endDate || startDate > endDate)) {
+                setContextTasks([]);
+                setContextHistory([]);
+                setIsDataLoading(false);
+                return;
+            }
+
+            try {
+                if (filterMode === 'all') {
+                    const [fetchedTasks, fetchedHistory] = await Promise.all([
+                        dbService.getAllTasksForStats(),
+                        dbService.getAllPomodoroHistory()
+                    ]);
+                    setContextTasks(fetchedTasks || []);
+                    setContextHistory(fetchedHistory || []);
+                } else {
+                    const [fetchedTasks, fetchedHistory] = await Promise.all([
+                        dbService.getHistoricalTasks(startDate, endDate),
+                        dbService.getPomodoroHistory(startDate, endDate)
+                    ]);
+                    setContextTasks(fetchedTasks || []);
+                    setContextHistory(fetchedHistory || []);
+                }
+            } catch (error) {
+                console.error("Error fetching data for AI context:", error);
+            } finally {
+                setIsDataLoading(false);
+            }
         };
 
-        if (historyRange.start && historyRange.end && new Date(historyRange.start) <= new Date(historyRange.end)) {
-            fetchRangedData();
-        } else {
-            setTasksInRange([]);
-            setPomodoroHistoryInRange([]);
-            setIsDataLoading(false);
-        }
-    }, [historyRange]);
+        fetchDataForContext();
+    }, [filterMode, dateRange]);
+
 
     useEffect(() => {
         chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -353,8 +389,7 @@ const AICoachPage: React.FC<AICoachPageProps> = (props) => {
         }
 
         const dailyLogsMap = new Map<string, { date: string, total_focus_minutes: number, completed_sessions: number }>();
-
-        pomodoroHistoryInRange.forEach(p => {
+        contextHistory.forEach(p => {
             const date = p.ended_at.split('T')[0];
             if (!dailyLogsMap.has(date)) {
                 dailyLogsMap.set(date, { date, total_focus_minutes: 0, completed_sessions: 0 });
@@ -363,16 +398,28 @@ const AICoachPage: React.FC<AICoachPageProps> = (props) => {
             log.total_focus_minutes += Number(p.duration_minutes) || 0;
             log.completed_sessions += 1;
         });
-
-        tasksInRange.forEach(t => {
+        contextTasks.forEach(t => {
             const date = t.due_date;
             if (!dailyLogsMap.has(date)) {
                 dailyLogsMap.set(date, { date, total_focus_minutes: 0, completed_sessions: 0 });
             }
         });
-
         const dailyLogs = Array.from(dailyLogsMap.values()).sort((a, b) => a.date.localeCompare(b.date));
 
+        let dateRangeDescription = 'all of the user\'s history';
+        switch (filterMode) {
+            case 'week':
+                dateRangeDescription = 'the last 7 days';
+                break;
+            case 'month':
+                dateRangeDescription = 'the last 30 days';
+                break;
+            case 'range':
+                if (dateRange.start && dateRange.end) {
+                    dateRangeDescription = `the period from ${dateRange.start} to ${dateRange.end}`;
+                }
+                break;
+        }
 
         const agentContext: AgentContext = {
             goals: goals.map(g => ({ id: g.id, text: g.text })),
@@ -389,7 +436,7 @@ const AICoachPage: React.FC<AICoachPageProps> = (props) => {
                 priority: p.priority,
             })),
             commitments: allCommitments.map(c => ({ id: c.id, text: c.text, due_date: c.due_date })),
-            tasks: tasksInRange.map(t => ({
+            tasks: contextTasks.map(t => ({
                 id: t.id,
                 text: t.text,
                 due_date: t.due_date,
@@ -399,10 +446,12 @@ const AICoachPage: React.FC<AICoachPageProps> = (props) => {
                 total_poms: t.total_poms,
                 comments: t.comments,
                 priority: t.priority,
+                tags: t.tags,
             })),
             dailyLogs,
-            pomodoroHistory: pomodoroHistoryInRange.map(p => ({ task_id: p.task_id, ended_at: p.ended_at, duration_minutes: p.duration_minutes })),
+            pomodoroHistory: contextHistory.map(p => ({ task_id: p.task_id, ended_at: p.ended_at, duration_minutes: p.duration_minutes })),
             aiMemories: aiMemories.map(m => ({ id: m.id, type: m.type, content: m.content, tags: m.tags, created_at: m.created_at })),
+            dateRangeDescription,
         };
 
 
@@ -499,13 +548,25 @@ const AICoachPage: React.FC<AICoachPageProps> = (props) => {
                 </div>
                 {/* Context Header */}
                 <div className="relative p-3 bg-slate-900/30 border-b border-slate-700/80 z-10">
-                    <p className="text-center text-xs text-white/60 mb-2">Provide a date range for performance context.</p>
-                     <div className="flex flex-col sm:flex-row items-center justify-center gap-2">
-                        <input type="date" value={historyRange.start} onChange={e => setHistoryRange(p => ({...p, start: e.target.value}))} className="bg-slate-700/50 border border-slate-600 rounded-lg p-2 text-white/80 w-full text-center text-xs" style={{colorScheme: 'dark'}}/>
-                        <span className="text-white/80 text-xs">to</span>
-                        <input type="date" value={historyRange.end} onChange={e => setHistoryRange(p => ({...p, end: e.target.value}))} className="bg-slate-700/50 border border-slate-600 rounded-lg p-2 text-white/80 w-full text-center text-xs" style={{colorScheme: 'dark'}}/>
+                    <div className="flex justify-center gap-1 mb-2 bg-black/20 p-1 rounded-full max-w-md mx-auto text-sm">
+                        {(['all', 'week', 'month', 'range'] as FilterMode[]).map(mode => (
+                            <button
+                                key={mode}
+                                onClick={() => setFilterMode(mode)}
+                                className={`flex-1 p-2 rounded-full font-bold transition-colors ${filterMode === mode ? 'bg-white/20 text-white' : 'text-white/60 hover:bg-white/10'}`}
+                            >
+                                {mode === 'all' ? 'All Time' : mode === 'week' ? 'This Week' : mode === 'month' ? 'This Month' : 'Range'}
+                            </button>
+                        ))}
                     </div>
-                     {isDataLoading && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-teal-400 animate-pulse"></div>}
+                    {filterMode === 'range' && (
+                        <div className="flex items-center justify-center gap-2 mt-2 animate-fadeIn">
+                            <input type="date" value={dateRange.start} onChange={e => setDateRange(p => ({ ...p, start: e.target.value }))} className="bg-white/10 border border-white/20 rounded-lg p-2 text-white/80 text-sm text-center" style={{colorScheme: 'dark'}} />
+                            <span className="text-white/70">to</span>
+                            <input type="date" value={dateRange.end} onChange={e => setDateRange(p => ({ ...p, end: e.target.value }))} className="bg-white/10 border border-white/20 rounded-lg p-2 text-white/80 text-sm text-center" style={{colorScheme: 'dark'}} />
+                        </div>
+                    )}
+                    {isDataLoading && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-teal-400 animate-pulse"></div>}
                 </div>
                 
                 {/* Chat History */}
