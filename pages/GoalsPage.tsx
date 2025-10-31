@@ -7,6 +7,8 @@ import Spinner from '../components/common/Spinner';
 import { getTodayDateString, getMonthStartDateString } from '../utils/date';
 import PrioritySelector from '../components/common/PrioritySelector';
 import ExplanationTooltip from '../components/common/ExplanationTooltip';
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
+
 
 const getDaysAgo = (days: number): string => {
     const date = new Date();
@@ -28,6 +30,84 @@ const isOlderThanOrEqualToTwoDays = (dateString: string): boolean => {
     return diffDays >= 2;
 };
 
+const ProjectDailyFocusChart: React.FC<{
+    projectId: string | null;
+    projectName: string | null;
+    allTasks: Task[];
+    allHistory: PomodoroHistory[];
+    dateRange: { start: string; end: string };
+}> = ({ projectId, projectName, allTasks, allHistory, dateRange }) => {
+    const chartData = useMemo(() => {
+        if (!projectId) return [];
+
+        const projectTaskIds = new Set(
+            allTasks.filter(t => t.project_id === projectId).map(t => t.id)
+        );
+
+        if (projectTaskIds.size === 0) return [];
+
+        const dataByDate = new Map<string, number>();
+        const isAllTime = !dateRange.start || !dateRange.end;
+
+        const historyForProject = allHistory.filter(h => h.task_id && projectTaskIds.has(h.task_id));
+
+        for (const h of historyForProject) {
+            const date = h.ended_at.split('T')[0];
+            const minutes = Number(h.duration_minutes) || 0;
+            
+            if (minutes > 0 && (isAllTime || (date >= dateRange.start && date <= dateRange.end))) {
+                dataByDate.set(date, (dataByDate.get(date) || 0) + minutes);
+            }
+        }
+        
+        return Array.from(dataByDate.entries())
+            .map(([date, minutes]) => ({
+                date,
+                displayDate: new Date(date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+                minutes,
+            }))
+            .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    }, [projectId, allTasks, allHistory, dateRange]);
+
+    if (!projectId) {
+        return null;
+    }
+
+    if (chartData.length === 0) {
+        return (
+             <div className="mt-4 p-4 text-center text-sm text-white/60 bg-black/20 rounded-lg animate-fadeIn">
+                No focus time recorded for "{projectName}" in this period.
+            </div>
+        );
+    }
+
+    return (
+        <div className="mt-4 bg-black/20 p-4 rounded-lg animate-fadeIn">
+            <h4 className="text-md font-bold text-white text-center mb-4">Daily Focus Minutes: <span className="text-cyan-300">{projectName}</span></h4>
+            <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                        data={chartData}
+                        margin={{ top: 5, right: 20, left: -10, bottom: 5 }}
+                    >
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                        <XAxis dataKey="displayDate" stroke="rgba(255,255,255,0.7)" tick={{ fontSize: 10 }} />
+                        <YAxis stroke="rgba(255,255,255,0.7)" unit="m" allowDecimals={false} />
+                        <Tooltip
+                            cursor={{ fill: 'rgba(255,255,255,0.1)' }}
+                            contentStyle={{ background: 'rgba(30,41,59,0.9)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }}
+                            itemStyle={{ color: '#67e8f9' }} // cyan-300
+                            labelStyle={{ color: 'white', fontWeight: 'bold' }}
+                        />
+                        <Bar dataKey="minutes" fill="#22d3ee" />
+                    </BarChart>
+                </ResponsiveContainer>
+            </div>
+        </div>
+    );
+};
+
 
 const ProjectTimeAnalysisDashboard: React.FC<{
     allProjects: Project[];
@@ -36,6 +116,7 @@ const ProjectTimeAnalysisDashboard: React.FC<{
 }> = ({ allProjects, allTasks, allHistory }) => {
     const [dateRange, setDateRange] = useState({ start: getMonthStartDateString(), end: getTodayDateString() });
     const [statusFilter, setStatusFilter] = useState<'active' | 'completed' | 'due'>('active');
+    const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
 
     const projectTimeData = useMemo(() => {
         const isAllTime = !dateRange.start || !dateRange.end;
@@ -98,39 +179,51 @@ const ProjectTimeAnalysisDashboard: React.FC<{
     const isThisWeek = dateRange.start === getDaysAgo(6) && dateRange.end === today;
     const isThisMonth = dateRange.start === getMonthStartDateString() && dateRange.end === today;
 
+    const selectedProject = useMemo(() => {
+        if (!selectedProjectId) return null;
+        return allProjects.find(p => p.id === selectedProjectId);
+    }, [selectedProjectId, allProjects]);
+
 
     const ProjectTimeBar: React.FC<{project: (typeof projectTimeData)[0]}> = ({ project }) => {
         const progress = (project.targetTime && project.targetTime > 0)
             ? Math.min(100, (project.timeSpent / project.targetTime) * 100)
             : -1;
         
+        const isSelected = selectedProjectId === project.id;
+        
         return (
-             <div className="bg-black/20 p-3 rounded-lg">
-                <div className="flex justify-between items-start text-sm mb-2">
-                    <span className="font-bold text-white truncate pr-2">{project.name}</span>
-                    <div className="flex flex-col items-end gap-1 text-white/80 whitespace-nowrap">
-                        <div className="flex items-center gap-2">
-                            <svg className="w-4 h-4 text-cyan-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>
-                            <span><span className="font-semibold text-white">{project.taskCount}</span> tasks</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <svg className="w-4 h-4 text-teal-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                            <span><span className="font-semibold text-white">{project.timeSpent}</span> min</span>
+             <button 
+                onClick={() => setSelectedProjectId(prev => prev === project.id ? null : project.id)}
+                className={`w-full text-left transition-all duration-200 rounded-lg ${isSelected ? 'ring-2 ring-cyan-400 shadow-lg' : 'hover:ring-1 hover:ring-white/20'}`}
+             >
+                 <div className="bg-black/20 p-3 rounded-lg">
+                    <div className="flex justify-between items-start text-sm mb-2">
+                        <span className="font-bold text-white truncate pr-2">{project.name}</span>
+                        <div className="flex flex-col items-end gap-1 text-white/80 whitespace-nowrap">
+                            <div className="flex items-center gap-2">
+                                <svg className="w-4 h-4 text-cyan-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>
+                                <span><span className="font-semibold text-white">{project.taskCount}</span> tasks</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <svg className="w-4 h-4 text-teal-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                <span><span className="font-semibold text-white">{project.timeSpent}</span> min</span>
+                            </div>
                         </div>
                     </div>
+                    {progress !== -1 && (
+                        <div>
+                            <div className="flex justify-between items-center text-xs mb-1 text-white/70">
+                                <span>Time Goal Progress</span>
+                                <span>{project.timeSpent}m / {project.targetTime}m</span>
+                            </div>
+                            <div className="w-full bg-black/30 rounded-full h-2.5 shadow-inner">
+                                <div className="bg-gradient-to-r from-cyan-400 to-blue-500 h-2.5 rounded-full" style={{width: `${progress}%`}}></div>
+                            </div>
+                        </div>
+                    )}
                 </div>
-                {progress !== -1 && (
-                    <div>
-                        <div className="flex justify-between items-center text-xs mb-1 text-white/70">
-                            <span>Time Goal Progress</span>
-                            <span>{project.timeSpent}m / {project.targetTime}m</span>
-                        </div>
-                        <div className="w-full bg-black/30 rounded-full h-2.5 shadow-inner">
-                            <div className="bg-gradient-to-r from-cyan-400 to-blue-500 h-2.5 rounded-full" style={{width: `${progress}%`}}></div>
-                        </div>
-                    </div>
-                )}
-            </div>
+            </button>
         )
     };
 
@@ -162,6 +255,13 @@ const ProjectTimeAnalysisDashboard: React.FC<{
                     <p className="text-center text-sm text-white/60 py-4">No projects with tracked time found for this status and date range.</p>
                 )}
             </div>
+            <ProjectDailyFocusChart
+                projectId={selectedProjectId}
+                projectName={selectedProject?.name || null}
+                allTasks={allTasks}
+                allHistory={allHistory}
+                dateRange={dateRange}
+            />
         </Panel>
     );
 };
