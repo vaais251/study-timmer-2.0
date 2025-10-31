@@ -1,5 +1,5 @@
 import { GoogleGenAI, GenerateContentResponse, FunctionDeclaration, Part, Type } from "@google/genai";
-import { Goal, Target, Project, Commitment, Task, AiMemory } from '../types';
+import { Goal, Target, Project, Commitment, Task, AiMemory, PomodoroHistory } from '../types';
 
 // Hardcoded for testing as requested by the user.
 const API_KEY = "AIzaSyBT9IN5PiyqaWBdM9NekDg5d-5fWDuhZnE";
@@ -91,6 +91,7 @@ export interface AgentContext {
     commitments: Pick<Commitment, 'id' | 'text' | 'due_date'>[];
     tasks: Pick<Task, 'id' | 'text' | 'due_date' | 'completed_at' | 'project_id' | 'completed_poms' | 'total_poms' | 'comments' | 'priority'>[];
     dailyLogs: { date: string; total_focus_minutes: number; completed_sessions: number }[];
+    pomodoroHistory: Pick<PomodoroHistory, 'task_id' | 'ended_at' | 'duration_minutes'>[];
     aiMemories: Pick<AiMemory, 'id' | 'type' | 'content' | 'tags' | 'created_at'>[];
 }
 
@@ -121,6 +122,11 @@ It is CRITICAL that you keep this information up-to-date and relevant.
 - If the user asks you to "forget" or "delete" a specific memory, you MUST use your \`deleteMemory\` tool with the corresponding \`memoryId\`.
 
 When a user asks you to perform an action (e.g., "create a task", "set up a project"), you MUST use the provided functions. After using a function, you must confirm the action in your response. For data analysis questions (e.g., "Which day was I most productive?", "How much time did I spend on project X?"), you must analyze the provided data context to give a precise answer. Do not invent data.
+
+You are fully capable of performing detailed time-of-day analysis. To answer questions like "What time of day am I most productive?", you must analyze the timestamps provided in the context data.
+-   To determine when tasks are **completed**, analyze the \`completed_at\` timestamps in the \`tasks\` data. Extract the hour from each timestamp, group the tasks by hour of the day (e.g., 9 AM, 10 AM, etc.), and identify which hour has the most completed tasks.
+-   To determine when the user **focuses most**, analyze the \`ended_at\` timestamps in the \`pomodoro_history\` data. Aggregate the total \`duration_minutes\` for each hour of the day to find the most focused periods.
+Use this powerful analytical capability to provide insightful answers about the user's daily patterns.
 
 Today's date is ${new Date().toISOString().split('T')[0]}.
 
@@ -227,8 +233,12 @@ ${context.tasks.map(t => {
 ${context.commitments.map(c => `- ${c.text} (Due: ${c.due_date || 'N/A'}, ID: ${c.id})`).join('\n') || 'No commitments made.'}
 
 == DAILY PERFORMANCE LOGS (within date range) ==
-This data is derived from the \`pomodoro_history\` table.
+This data is a summary derived from the \`pomodoro_history\` table.
 ${context.dailyLogs.map(log => `- Date: ${log.date}, Focus Time: ${log.total_focus_minutes} minutes, Pomodoros: ${log.completed_sessions}`).join('\n') || 'No focus sessions recorded in this period.'}
+
+== POMODORO HISTORY (within date range) ==
+This is the raw log of individual focus sessions. Use the \`ended_at\` timestamp for detailed time-of-day analysis.
+${context.pomodoroHistory.map(p => `- Ended: ${p.ended_at}, Duration: ${p.duration_minutes} min, TaskID: ${p.task_id || 'None'}`).join('\n') || 'No individual focus sessions recorded in this period.'}
 --- END OF CONTEXT ---
 
 Based on this detailed data and schema, answer the user's questions and execute commands with precision.`;

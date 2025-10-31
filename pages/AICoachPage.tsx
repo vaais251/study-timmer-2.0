@@ -401,6 +401,7 @@ const AICoachPage: React.FC<AICoachPageProps> = (props) => {
                 priority: t.priority,
             })),
             dailyLogs,
+            pomodoroHistory: pomodoroHistoryInRange.map(p => ({ task_id: p.task_id, ended_at: p.ended_at, duration_minutes: p.duration_minutes })),
             aiMemories: aiMemories.map(m => ({ id: m.id, type: m.type, content: m.content, tags: m.tags, created_at: m.created_at })),
         };
 
