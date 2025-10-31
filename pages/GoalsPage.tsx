@@ -273,6 +273,7 @@ const ActivityLog: React.FC<{ projectId: string, tasks: Task[] }> = ({ projectId
     const [newUpdateDesc, setNewUpdateDesc] = useState('');
     const [newUpdateDate, setNewUpdateDate] = useState(getTodayDateString());
     const [linkedTaskId, setLinkedTaskId] = useState<string>('none');
+    const [expandedUpdateId, setExpandedUpdateId] = useState<string | null>(null);
     
     const fetchUpdates = useCallback(async () => {
         setIsLoading(true);
@@ -352,24 +353,53 @@ const ActivityLog: React.FC<{ projectId: string, tasks: Task[] }> = ({ projectId
             {isLoading ? <Spinner/> : (
                 <ul className="space-y-2 max-h-48 overflow-y-auto pr-2">
                     {updates.map(update => {
-                        const focusTime = update.task_id ? taskFocusTimes.get(update.task_id) : null;
-                        const focusTimeString = focusTime && focusTime > 0 ? ` - Focus: ${focusTime}m` : '';
-
-                        return (
-                            <li key={update.id} className="bg-black/20 p-2 rounded-md text-sm group relative">
-                                <div className="flex justify-between items-start">
-                                    <div>
-                                        <p className="text-white/90">{update.description}</p>
-                                        <p className="text-xs text-white/60 mt-1">
-                                            {new Date(update.update_date + 'T00:00:00').toLocaleDateString()}
-                                            {update.tasks ? ` - Ref: ${update.tasks.text}`:''}
-                                            {focusTimeString && <span className="text-cyan-400 font-semibold">{focusTimeString}</span>}
-                                        </p>
-                                    </div>
-                                    <button onClick={() => handleDeleteUpdate(update.id)} className="p-1 text-red-400 hover:text-red-300 transition opacity-0 group-hover:opacity-100 flex-shrink-0" title="Delete Log Entry"><TrashIcon /></button>
-                                </div>
-                            </li>
-                        );
+                         const task = update.task_id ? tasks.find(t => t.id === update.task_id) : null;
+                         const focusTime = task ? taskFocusTimes.get(task.id) : null;
+                         const focusTimeString = focusTime && focusTime > 0 ? ` - Focus: ${focusTime}m` : '';
+                         const hasComments = task && task.comments && task.comments.length > 0;
+                         const isExpanded = expandedUpdateId === update.id;
+ 
+                         return (
+                             <li
+                                 key={update.id}
+                                 className={`bg-black/20 rounded-md text-sm group relative transition-all duration-300 ${hasComments ? 'cursor-pointer hover:bg-black/40' : ''}`}
+                                 onClick={() => hasComments && setExpandedUpdateId(isExpanded ? null : update.id)}
+                             >
+                                 <div className="p-2 flex justify-between items-start gap-2">
+                                     <div className="flex items-start gap-2 flex-grow min-w-0">
+                                         {hasComments && (
+                                             <svg className={`w-3 h-3 mt-1 text-white/50 transform transition-transform flex-shrink-0 ${isExpanded ? 'rotate-90' : 'rotate-0'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M9 5l7 7-7 7" />
+                                             </svg>
+                                         )}
+                                         <div className="flex-grow min-w-0">
+                                             <p className="text-white/90 break-words">{update.description}</p>
+                                             <p className="text-xs text-white/60 mt-1">
+                                                 {new Date(update.update_date + 'T00:00:00').toLocaleDateString()}
+                                                 {task ? <span className="italic"> - Ref: {task.text}</span> : (update.tasks ? ` - Ref: ${update.tasks.text}` : '')}
+                                                 {focusTimeString && <span className="text-cyan-400 font-semibold">{focusTimeString}</span>}
+                                             </p>
+                                         </div>
+                                     </div>
+                                     <button onClick={(e) => { e.stopPropagation(); handleDeleteUpdate(update.id); }} className="p-1 text-red-400 hover:text-red-300 transition opacity-0 group-hover:opacity-100 flex-shrink-0" title="Delete Log Entry">
+                                         <TrashIcon />
+                                     </button>
+                                 </div>
+                                 
+                                 {isExpanded && hasComments && task.comments && (
+                                     <div className="px-2 pb-2 animate-fadeIn">
+                                         <div className="bg-slate-900/50 ml-5 p-2 rounded-md border-l-2 border-cyan-400">
+                                             <h5 className="text-xs font-bold text-white/70 mb-1">Session Notes:</h5>
+                                             <ul className="list-disc list-inside ml-2 text-xs text-white/80 space-y-1">
+                                                 {task.comments.map((comment, index) => (
+                                                     <li key={index}>{comment}</li>
+                                                 ))}
+                                             </ul>
+                                         </div>
+                                     </div>
+                                 )}
+                             </li>
+                         );
                     })}
                     {updates.length === 0 && <p className="text-center text-xs text-white/60 py-2">No activity logged yet.</p>}
                 </ul>

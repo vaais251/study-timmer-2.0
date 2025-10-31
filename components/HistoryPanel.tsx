@@ -20,6 +20,7 @@ interface HistoryPanelProps {
     pomodoroHistory: PomodoroHistory[];
     consistencyLogs: DbDailyLog[];
     timelinePomodoroHistory: PomodoroHistory[];
+    consistencyPomodoroHistory: PomodoroHistory[];
 }
 
 const formatMinutesToHours = (minutes: number) => {
@@ -48,8 +49,112 @@ const StatCard: React.FC<{title: string, children: React.ReactNode}> = ({ title,
     </div>
 );
 
+
+interface DayDetailTooltipProps {
+    date: string;
+    allTasks: Task[];
+    pomodoroHistory: PomodoroHistory[];
+    logs: DbDailyLog[];
+    position: { top: number; left: number };
+    onClose: () => void;
+}
+
+const DayDetailTooltip: React.FC<DayDetailTooltipProps> = ({ date, allTasks, pomodoroHistory, logs, position, onClose }) => {
+    const tooltipRef = useRef<HTMLDivElement>(null);
+
+    const details = useMemo(() => {
+        const tasksForDay = allTasks.filter(t => t.due_date === date);
+        const completedTasksCount = tasksForDay.filter(t => t.completed_at).length;
+        const totalTasks = tasksForDay.length;
+        
+        const log = logs.find(l => l.date === date);
+        const completionPercentage = log ? log.completed_sessions : (totalTasks > 0 ? Math.round((completedTasksCount / totalTasks) * 100) : 0);
+
+        const focusMinutes = pomodoroHistory
+            .filter(h => h.ended_at.startsWith(date))
+            .reduce((sum, h) => sum + (Number(h.duration_minutes) || 0), 0);
+        
+        return {
+            tasksForDay,
+            completedTasksCount,
+            totalTasks,
+            completionPercentage,
+            focusMinutes
+        };
+    }, [date, allTasks, pomodoroHistory, logs]);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (tooltipRef.current && !tooltipRef.current.contains(event.target as Node)) {
+                onClose();
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [onClose]);
+
+    const style: React.CSSProperties = {
+        position: 'absolute',
+        top: `${position.top - 10}px`,
+        left: `${position.left}px`,
+        transform: 'translateX(-50%) translateY(-100%)',
+        zIndex: 50
+    };
+
+    return (
+        <div ref={tooltipRef} style={style} className="w-64 bg-slate-900 border border-slate-700 rounded-lg shadow-2xl p-4 animate-scaleIn text-sm">
+            <button onClick={onClose} className="absolute top-2 right-2 text-slate-400 hover:text-white text-xl">&times;</button>
+            <h4 className="font-bold text-white mb-2">{new Date(date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</h4>
+            <div className="space-y-1 text-white/80">
+                <p><strong>Task Completion:</strong> <span className="font-semibold text-white">{details.completionPercentage}%</span> ({details.completedTasksCount}/{details.totalTasks})</p>
+                <p><strong>Focus Time:</strong> <span className="font-semibold text-white">{details.focusMinutes} min</span></p>
+                {details.tasksForDay.length > 0 && (
+                    <div>
+                        <h5 className="font-semibold mt-2 text-white">Tasks:</h5>
+                        <ul className="list-disc list-inside max-h-24 overflow-y-auto text-xs space-y-1 pl-1">
+                            {details.tasksForDay.map(task => (
+                                <li key={task.id} className={`${task.completed_at ? 'text-green-400' : 'text-amber-400'} truncate`}>
+                                    {task.text}
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+                )}
+                 {details.tasksForDay.length === 0 && (
+                     <p className="text-xs text-white/60 mt-2">No tasks were due on this day.</p>
+                 )}
+            </div>
+        </div>
+    );
+};
+
+
 // --- New Component: Consistency Tracker ---
-const ConsistencyTracker = React.memo(({ logs }: { logs: DbDailyLog[] }) => {
+const ConsistencyTracker = ({ logs, allTasks, pomodoroHistory }: { logs: DbDailyLog[], allTasks: Task[], pomodoroHistory: PomodoroHistory[] }) => {
+    const [selectedDay, setSelectedDay] = useState<string | null>(null);
+    const [tooltipPosition, setTooltipPosition] = useState<{ top: number; left: number } | null>(null);
+    const containerRef = useRef<HTMLDivElement>(null);
+
+    const handleDayClick = (day: { date: string }, event: React.MouseEvent) => {
+        event.stopPropagation();
+        if (selectedDay === day.date) {
+            setSelectedDay(null);
+            return;
+        }
+        setSelectedDay(day.date);
+        const rect = (event.target as HTMLElement).getBoundingClientRect();
+        const containerRect = containerRef.current?.getBoundingClientRect();
+
+        if (containerRect) {
+            setTooltipPosition({
+                top: rect.top - containerRect.top,
+                left: rect.left - containerRect.left + rect.width / 2,
+            });
+        }
+    };
+    
     const { weeks, monthLabels } = useMemo(() => {
         const activityMap: Map<string, number> = new Map(logs.map(log => [log.date, log.completed_sessions]));
         const today = new Date();
@@ -107,7 +212,7 @@ const ConsistencyTracker = React.memo(({ logs }: { logs: DbDailyLog[] }) => {
     }, [logs]);
 
     return (
-        <div className="bg-black/20 p-4 rounded-lg overflow-x-auto">
+        <div ref={containerRef} className="relative bg-black/20 p-4 rounded-lg overflow-x-auto">
             <div className="inline-block">
                 <div className="flex" style={{ paddingLeft: '2.5rem', paddingBottom: '0.5rem' }}>
                     {monthLabels.map((month, index) => {
@@ -139,8 +244,9 @@ const ConsistencyTracker = React.memo(({ logs }: { logs: DbDailyLog[] }) => {
                                     day 
                                     ? <div 
                                         key={day.date} 
-                                        className={`w-3 h-3 rounded-sm ${day.colorClass}`} 
-                                        title={`${day.percentage}% tasks completed on ${day.date}`} 
+                                        className={`w-3 h-3 rounded-sm ${day.colorClass} cursor-pointer transition-transform hover:scale-125 hover:ring-2 hover:ring-white/80`} 
+                                        title={`${day.percentage}% tasks completed on ${day.date}`}
+                                        onClick={(e) => handleDayClick(day, e)}
                                       />
                                     : <div key={`ph-${weekIndex}-${dayIndex}`} className="w-3 h-3" />
                                 ))}
@@ -159,9 +265,19 @@ const ConsistencyTracker = React.memo(({ logs }: { logs: DbDailyLog[] }) => {
                 <div className="w-3 h-3 rounded-sm bg-emerald-300"></div>
                 <span>More</span>
             </div>
+             {selectedDay && tooltipPosition && (
+                <DayDetailTooltip
+                    date={selectedDay}
+                    allTasks={allTasks}
+                    pomodoroHistory={pomodoroHistory}
+                    logs={logs}
+                    position={tooltipPosition}
+                    onClose={() => setSelectedDay(null)}
+                />
+            )}
         </div>
     );
-});
+};
 
 interface CategoryTimelineChartProps {
     tasks: Task[];
@@ -352,7 +468,7 @@ const CategoryTimelineChart = React.memo(({ tasks, history, historyRange, openIn
 });
 
 
-const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, projects, allProjects, targets, allTargets, historyRange, setHistoryRange, settings, pomodoroHistory, consistencyLogs, timelinePomodoroHistory }) => {
+const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, projects, allProjects, targets, allTargets, historyRange, setHistoryRange, settings, pomodoroHistory, consistencyLogs, timelinePomodoroHistory, consistencyPomodoroHistory }) => {
     const [selectedDay, setSelectedDay] = useState<string>(getTodayDateString());
     const [detailViewType, setDetailViewType] = useState<'day' | 'week' | 'month' | 'all'>('day');
     
@@ -940,7 +1056,7 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
     };
 
     // Chart Element Definitions for Modal Reuse
-    const consistencyTrackerElement = <ConsistencyTracker logs={consistencyLogs} />;
+    const consistencyTrackerElement = <ConsistencyTracker logs={consistencyLogs} allTasks={allTasks} pomodoroHistory={consistencyPomodoroHistory} />;
 
     const dailyFocusChartElement = (
         <ResponsiveContainer width="100%" height="100%">
