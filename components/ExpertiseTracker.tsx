@@ -184,13 +184,11 @@ const ExpertiseTracker: React.FC = () => {
         return allExpertiseData.map(allTimeCategoryData => {
             const minutesInRange = tagMinutesMap.get(allTimeCategoryData.name) || 0;
             return {
-                // from allTimeCategoryData, for all-time progress bar
                 name: allTimeCategoryData.name,
                 displayName: allTimeCategoryData.displayName,
                 progress: allTimeCategoryData.progress,
-                
-                // calculated for the selected date range, for text display
-                totalMinutes: minutesInRange,
+                allTimeMinutes: allTimeCategoryData.totalMinutes,
+                minutesInRange: minutesInRange,
             };
         });
     }, [dateRange, history, tasks, allExpertiseData]);
@@ -228,7 +226,7 @@ const ExpertiseTracker: React.FC = () => {
                 const categoryData = expertiseDataForDisplay.find(c => c.name === catName);
                 return {
                      name: categoryData?.displayName || 'Unknown',
-                     minutes: categoryData?.totalMinutes || 0
+                     minutes: categoryData?.minutesInRange || 0
                 }
             })
             .sort((a,b) => b.minutes - a.minutes);
@@ -263,6 +261,8 @@ const ExpertiseTracker: React.FC = () => {
             return renderPlaceholder();
         }
 
+        const isRangeActive = dateRange.start && dateRange.end;
+
         return (
             <div className="bg-black/20 p-4 rounded-lg">
                 <select
@@ -275,10 +275,10 @@ const ExpertiseTracker: React.FC = () => {
                     ))}
                 </select>
                 <div className="min-h-[70px]">
-                    <div className="flex justify-between items-center mb-1 text-sm">
+                    <div className="flex justify-between items-baseline mb-1 text-sm">
                         <span className="font-bold text-white">{data.displayName}</span>
                         <span className="text-white/80">
-                            {formatTimeForMastery(data.totalMinutes)} / 10,000 hrs
+                            {formatTimeForMastery(data.allTimeMinutes)} / 10,000h
                         </span>
                     </div>
                     <div className="w-full bg-black/30 rounded-full h-4 shadow-inner">
@@ -287,8 +287,13 @@ const ExpertiseTracker: React.FC = () => {
                             style={{ width: `${Math.min(100, data.progress)}%` }}
                         ></div>
                     </div>
-                     <div className="text-right text-xs text-white/60 mt-1">
-                        {data.progress.toFixed(4)}% complete
+                     <div className="flex justify-between items-center text-xs text-white/60 mt-1">
+                        <span>{data.progress.toFixed(4)}% complete</span>
+                        { isRangeActive && data.minutesInRange > 0 &&
+                            <span className="font-semibold text-green-400">
+                                +{formatTimeForMastery(data.minutesInRange)} in range
+                            </span>
+                        }
                     </div>
                 </div>
             </div>

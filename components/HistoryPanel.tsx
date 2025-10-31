@@ -216,7 +216,7 @@ const ConsistencyTracker: React.FC<ConsistencyTrackerProps> = ({ logs, allTasks,
         pomodoroHistory.forEach(historyItem => {
             const task = historyItem.task_id ? taskMap.get(historyItem.task_id) : null;
             if (task && task.tags?.map(t => t.trim().toLowerCase()).includes(lowerCaseCategory)) {
-                const date = historyItem.ended_at.split('T')[0];
+                const date = getTodayDateString(new Date(historyItem.ended_at));
                 const currentMinutes = categoryMinutesByDate.get(date) || 0;
                 categoryMinutesByDate.set(date, currentMinutes + (Number(historyItem.duration_minutes) || 0));
             }
@@ -489,7 +489,7 @@ const CategoryTimelineChart = React.memo(({ tasks, history, historyRange, openIn
         const endDateString = getTodayDateString(endDate);
 
         const filteredHistory = history.filter(h => {
-            const hDate = h.ended_at.split('T')[0];
+            const hDate = getTodayDateString(new Date(h.ended_at));
             return hDate >= startDateString && hDate <= endDateString;
         });
 
@@ -512,7 +512,7 @@ const CategoryTimelineChart = React.memo(({ tasks, history, historyRange, openIn
         filteredHistory.forEach(h => {
             const task = h.task_id ? taskMap.get(h.task_id) : null;
             if (task && task.tags && task.tags.length > 0) {
-                const dateStr = h.ended_at.split('T')[0];
+                const dateStr = getTodayDateString(new Date(h.ended_at));
                 const dayData = dataByDate.get(dateStr);
                 if (dayData) {
                     task.tags.forEach(tag => {
@@ -888,7 +888,7 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
         }
 
         pomodoroHistory.forEach(entry => {
-            const dateString = entry.ended_at.split('T')[0];
+            const dateString = getTodayDateString(new Date(entry.ended_at));
             if (focusMinutesPerDay.has(dateString)) {
                 const currentMinutes = focusMinutesPerDay.get(dateString)!;
                 focusMinutesPerDay.set(dateString, currentMinutes + (Number(entry.duration_minutes) || 0));
@@ -1183,7 +1183,7 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
         }
 
         pomodoroHistory.forEach(h => {
-            const dateStr = h.ended_at.split('T')[0];
+            const dateStr = getTodayDateString(new Date(h.ended_at));
             const dayData = dataByDate.get(dateStr);
             if (dayData) {
                 const task = h.task_id ? taskMap.get(h.task_id) : null;
