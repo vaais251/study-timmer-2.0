@@ -18,7 +18,8 @@
     "@google/genai": "https://aistudiocdn.com/@google/genai@^1.27.0",
     "recharts": "https://aistudiocdn.com/recharts@^3.3.0",
     "@supabase/supabase-js": "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm",
-    "resend": "https://aistudiocdn.com/resend@^6.3.0"
+    "resend": "https://aistudiocdn.com/resend@^6.3.0",
+    "react-dom": "https://aistudiocdn.com/react-dom@^19.2.0"
   }
 }
 </script>
@@ -28,7 +29,7 @@
   }
   /* --- Animation Keyframes --- */
   @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-  @keyframes slideUp { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes slideUp { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: none; } }
   @keyframes slideInFromLeft { from { opacity: 0; transform: translateX(-15px); } to { opacity: 1; transform: translateX(0); } }
   @keyframes pulse-glow {
       0%, 100% { filter: drop-shadow(0 0 8px var(--glow-color, transparent)); }
@@ -71,7 +72,7 @@
   .animate-bounce-subtle { animation: bounce-subtle 1.5s ease-in-out infinite; }
   .animate-bounce-dots { animation: bounce-dots 1s infinite ease-in-out; }
   .animate-pulse-subtle-scale { animation: pulse-subtle-scale 2.5s ease-in-out infinite; }
-  .timer-running { animation: pulse-glow 2.5s ease-in-out infinite; }
+  .timer-running { animation: pulse-glow 2.s ease-in-out infinite; }
   .animate-scaleIn { animation: scaleIn 0.2s ease-out forwards; }
   .animate-item-add { animation: item-add 0.4s ease-out forwards; }
   .animate-item-delete {

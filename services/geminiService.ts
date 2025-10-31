@@ -1,7 +1,58 @@
 import { GoogleGenAI, GenerateContentResponse, FunctionDeclaration, Part, Type } from "@google/genai";
 import { Goal, Target, Project, Commitment, Task, AiMemory } from '../types';
 
+// Hardcoded for testing as requested by the user.
 const API_KEY = "AIzaSyBT9IN5PiyqaWBdM9NekDg5d-5fWDuhZnE";
+
+export async function getChartInsight(chartTitle: string, chartData: any): Promise<string> {
+    const prompt = `
+        You are a world-class data analyst and productivity coach. Your goal is to help a user understand their study and work habits to become more productive.
+        You are analyzing data from a chart in their Pomodoro timer application.
+
+        Chart Title: "${chartTitle}"
+
+        The data for this chart is provided below in JSON format. Analyze it thoroughly.
+
+        Data:
+        \`\`\`json
+        ${JSON.stringify(chartData, null, 2)}
+        \`\`\`
+
+        Based on this data, provide a detailed analysis with actionable insights. Your analysis should be easy to read and structured with markdown.
+        
+        Specifically, please cover the following:
+        1.  **Summary**: Start with a high-level summary of what the chart shows. What is the key takeaway?
+        2.  **Trends & Patterns**: Identify any significant trends (e.g., increasing focus time, decreasing completion rate), patterns (e.g., more productive on certain days), or correlations.
+        3.  **Outliers & Anomalies**: Point out any outliers, such as exceptionally productive days or unusually low-performance periods. Explain what might have caused them.
+        4.  **Actionable Insights & Suggestions**: Provide concrete, actionable advice based on your analysis. For example, if focus is low on weekends, suggest planning lighter tasks. If a certain project is taking a lot of time, suggest breaking it down.
+        
+        Keep your tone encouraging and helpful. The user wants to improve.
+    `;
+
+    try {
+        const ai = new GoogleGenAI({ apiKey: API_KEY });
+
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: [{ parts: [{ text: prompt }] }],
+        });
+        
+        const text = response.text;
+        
+        if (text) {
+            return text;
+        } else {
+            return "The AI returned an empty response. You might want to try again.";
+        }
+    } catch (error) {
+        console.error("Error calling Gemini API for chart insight:", error);
+        if (error instanceof Error) {
+            return `An error occurred while contacting the AI. Details: ${error.message}`;
+        }
+        return "An unknown error occurred while contacting the AI.";
+    }
+}
+
 
 export async function generateContent(prompt: string): Promise<string> {
     try {

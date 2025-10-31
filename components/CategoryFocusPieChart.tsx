@@ -1,7 +1,9 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Task, PomodoroHistory } from '../types';
 import Panel from './common/Panel';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import AIInsightModal from './common/AIInsightModal';
+import { SparklesIcon } from './common/Icons';
 
 interface CategoryFocusPieChartProps {
     tasks: Task[];
@@ -11,6 +13,8 @@ interface CategoryFocusPieChartProps {
 const COLORS = ['#F59E0B', '#10B981', '#84CC16', '#EC4899', '#38BDF8', '#F43F5E', '#6366F1'];
 
 const CategoryFocusPieChart: React.FC<CategoryFocusPieChartProps> = ({ tasks, todaysHistory }) => {
+    const [isModalOpen, setIsModalOpen] = useState(false);
+
     const totalFocusMinutes = useMemo(() => {
         return Math.round(todaysHistory.reduce((sum, item) => sum + (Number(item.duration_minutes) || 0), 0));
     }, [todaysHistory]);
@@ -77,41 +81,66 @@ const CategoryFocusPieChart: React.FC<CategoryFocusPieChartProps> = ({ tasks, to
         );
     };
 
-    return (
-        <Panel title="Today's Focus Distribution (%)">
-            <div className="h-80 w-full relative">
-                <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                        <Pie
-                            data={chartData}
-                            cx="50%"
-                            cy="50%"
-                            labelLine={false}
-                            label={renderCustomizedLabel}
-                            outerRadius={110}
-                            innerRadius={70}
-                            fill="#8884d8"
-                            dataKey="value"
-                            paddingAngle={2}
-                        >
-                            {chartData.map((entry, index) => (
-                                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} stroke="none" />
-                            ))}
-                        </Pie>
-                        <Tooltip 
-                            contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }}
-                            itemStyle={{ color: 'white' }}
-                            formatter={(value: number) => [`${value} minutes`, 'Focus Time']}
-                        />
-                        <Legend wrapperStyle={{ bottom: -5 }} />
-                    </PieChart>
-                </ResponsiveContainer>
-                 <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-[60%] text-center pointer-events-none">
-                    <span className="text-4xl font-bold text-white">{totalFocusMinutes}</span>
-                    <span className="block text-sm text-white/70">Total Mins</span>
-                </div>
+    const chartElement = (
+        <div className="w-full h-full relative">
+            <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                    <Pie
+                        data={chartData}
+                        cx="50%"
+                        cy="50%"
+                        labelLine={false}
+                        label={renderCustomizedLabel}
+                        outerRadius={110}
+                        innerRadius={70}
+                        fill="#8884d8"
+                        dataKey="value"
+                        paddingAngle={2}
+                    >
+                        {chartData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} stroke="none" />
+                        ))}
+                    </Pie>
+                    <Tooltip 
+                        contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }}
+                        itemStyle={{ color: 'white' }}
+                        formatter={(value: number) => [`${value} minutes`, 'Focus Time']}
+                    />
+                    <Legend wrapperStyle={{ bottom: -5 }} />
+                </PieChart>
+            </ResponsiveContainer>
+             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-[60%] text-center pointer-events-none">
+                <span className="text-4xl font-bold text-white">{totalFocusMinutes}</span>
+                <span className="block text-sm text-white/70">Total Mins</span>
             </div>
-        </Panel>
+        </div>
+    );
+
+    return (
+        <>
+            <Panel>
+                <div className="flex justify-center items-center gap-2 -mt-2">
+                    <h2 className="text-lg font-semibold text-white">Today's Focus Distribution</h2>
+                     <button
+                        onClick={() => setIsModalOpen(true)}
+                        className="p-1 text-purple-400 hover:text-purple-300 transition"
+                        title="Get AI Insights for this chart"
+                    >
+                        <SparklesIcon />
+                    </button>
+                </div>
+                <div className="h-80 w-full relative">
+                    {chartElement}
+                </div>
+            </Panel>
+            <AIInsightModal
+                isOpen={isModalOpen}
+                onClose={() => setIsModalOpen(false)}
+                chartTitle="Today's Focus Distribution (%)"
+                chartData={chartData}
+                chartElement={<div className="h-80 w-full">{chartElement}</div>}
+            />
+        </>
     );
 };
 

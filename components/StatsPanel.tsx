@@ -1,10 +1,10 @@
-
-
 import React, { useMemo, useState } from 'react';
 import Panel from './common/Panel';
 import { Task, DbDailyLog } from '../types';
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend } from 'recharts';
 import { getTodayDateString } from '../utils/date';
+import AIInsightModal from './common/AIInsightModal';
+import { SparklesIcon } from './common/Icons';
 
 interface StatsPanelProps {
     completedToday: Task[];
@@ -21,6 +21,7 @@ const StatItem: React.FC<{ label: string, value: string | number }> = ({ label, 
 
 const StatsPanel: React.FC<StatsPanelProps> = ({ completedToday, tasksToday, historicalLogs }) => {
     const [comparisonPeriod, setComparisonPeriod] = useState<'yesterday' | '7day'>('yesterday');
+    const [isModalOpen, setIsModalOpen] = useState(false);
 
     const { card1, card2, card3, stats, chartData } = useMemo(() => {
         const todayString = getTodayDateString();
@@ -121,33 +122,56 @@ const StatsPanel: React.FC<StatsPanelProps> = ({ completedToday, tasksToday, his
 
     const COLORS = ['#34D399', '#F87171'];
 
+    const chartElement = (
+        <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+                <Pie data={chartData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} fill="#8884d8" label>
+                    {chartData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
+                </Pie>
+                <Tooltip contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }} itemStyle={{ color: 'white' }} />
+                <Legend />
+            </PieChart>
+        </ResponsiveContainer>
+    );
+
     return (
-        <Panel title="📊 Today's Progress">
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                <StatItem label={card1.label} value={card1.value} />
-                
-                <div className="bg-white/10 p-3 rounded-lg text-center">
-                    {card2.label}
-                    {card2.value}
+        <>
+            <Panel title="📊 Today's Progress">
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                    <StatItem label={card1.label} value={card1.value} />
+                    
+                    <div className="bg-white/10 p-3 rounded-lg text-center">
+                        {card2.label}
+                        {card2.value}
+                    </div>
+                    
+                    <StatItem label={card3.label} value={card3.value} />
+                    <StatItem label="Completion %" value={`${stats.completionPercentage}%`} />
+                    <StatItem label="Poms Done" value={stats.pomsDone} />
+                    <StatItem label="Poms Estimated" value={stats.pomsEst} />
                 </div>
-                
-                <StatItem label={card3.label} value={card3.value} />
-                <StatItem label="Completion %" value={`${stats.completionPercentage}%`} />
-                <StatItem label="Poms Done" value={stats.pomsDone} />
-                <StatItem label="Poms Estimated" value={stats.pomsEst} />
-            </div>
-            <div className="h-56 mt-4">
-                <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                        <Pie data={chartData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} fill="#8884d8" label>
-                            {chartData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
-                        </Pie>
-                        <Tooltip contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }} itemStyle={{ color: 'white' }} />
-                        <Legend />
-                    </PieChart>
-                </ResponsiveContainer>
-            </div>
-        </Panel>
+                 <div className="flex justify-center items-center gap-2 mt-6 -mb-2">
+                    <h3 className="text-md font-semibold text-white">Task Completion Breakdown</h3>
+                    <button
+                        onClick={() => setIsModalOpen(true)}
+                        className="p-1 text-purple-400 hover:text-purple-300 transition"
+                        title="Get AI Insights for this chart"
+                    >
+                        <SparklesIcon />
+                    </button>
+                </div>
+                <div className="h-56 mt-4">
+                   {chartElement}
+                </div>
+            </Panel>
+            <AIInsightModal
+                isOpen={isModalOpen}
+                onClose={() => setIsModalOpen(false)}
+                chartTitle="Today's Task Completion Breakdown"
+                chartData={chartData}
+                chartElement={<div className="h-56">{chartElement}</div>}
+            />
+        </>
     );
 };
 

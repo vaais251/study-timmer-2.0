@@ -3,6 +3,8 @@ import Panel from './common/Panel';
 import { DbDailyLog, Task, Project, Target, Settings, PomodoroHistory } from '../types';
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, LineChart, Line, XAxis, YAxis, CartesianGrid, Legend, BarChart, Bar } from 'recharts';
 import { getTodayDateString } from '../utils/date';
+import AIInsightModal from './common/AIInsightModal';
+import { SparklesIcon } from './common/Icons';
 
 interface HistoryPanelProps {
     logs: DbDailyLog[];
@@ -105,60 +107,57 @@ const ConsistencyTracker = React.memo(({ logs }: { logs: DbDailyLog[] }) => {
     }, [logs]);
 
     return (
-        <div className="mt-8">
-            <h3 className="text-lg font-semibold text-white text-center mb-4">Daily Consistency Tracker</h3>
-            <div className="bg-black/20 p-4 rounded-lg overflow-x-auto">
-                <div className="inline-block">
-                    <div className="flex" style={{ paddingLeft: '2.5rem', paddingBottom: '0.5rem' }}>
-                        {monthLabels.map((month, index) => {
-                            const nextMonth = monthLabels[index + 1];
-                            const colSpan = nextMonth ? nextMonth.startColumn - month.startColumn : weeks.length - month.startColumn;
-                            // Cell width (w-3) is 12px, gap is 4px. Total per column = 16px.
-                            return (
-                                <div key={month.name} className="text-xs text-white/50" style={{ minWidth: `${colSpan * 16}px` }}>
-                                    {month.name}
-                                </div>
-                            );
-                        })}
+        <div className="bg-black/20 p-4 rounded-lg overflow-x-auto">
+            <div className="inline-block">
+                <div className="flex" style={{ paddingLeft: '2.5rem', paddingBottom: '0.5rem' }}>
+                    {monthLabels.map((month, index) => {
+                        const nextMonth = monthLabels[index + 1];
+                        const colSpan = nextMonth ? nextMonth.startColumn - month.startColumn : weeks.length - month.startColumn;
+                        // Cell width (w-3) is 12px, gap is 4px. Total per column = 16px.
+                        return (
+                            <div key={month.name} className="text-xs text-white/50" style={{ minWidth: `${colSpan * 16}px` }}>
+                                {month.name}
+                            </div>
+                        );
+                    })}
+                </div>
+                <div className="flex gap-3">
+                    <div className="grid grid-rows-7 text-xs text-white/50 w-8 shrink-0 text-right pr-2">
+                        <span></span>
+                        <span className="self-center">Mon</span>
+                        <span></span>
+                        <span className="self-center">Wed</span>
+                        <span></span>
+                        <span className="self-center">Fri</span>
+                        <span></span>
                     </div>
-                    <div className="flex gap-3">
-                        <div className="grid grid-rows-7 text-xs text-white/50 w-8 shrink-0 text-right pr-2">
-                            <span></span>
-                            <span className="self-center">Mon</span>
-                            <span></span>
-                            <span className="self-center">Wed</span>
-                            <span></span>
-                            <span className="self-center">Fri</span>
-                            <span></span>
-                        </div>
-                        
-                        <div className="flex gap-1">
-                            {weeks.map((week, weekIndex) => (
-                                <div key={weekIndex} className="grid grid-rows-7 gap-1">
-                                    {week.map((day, dayIndex) => (
-                                        day 
-                                        ? <div 
-                                            key={day.date} 
-                                            className={`w-3 h-3 rounded-sm ${day.colorClass}`} 
-                                            title={`${day.percentage}% tasks completed on ${day.date}`} 
-                                          />
-                                        : <div key={`ph-${weekIndex}-${dayIndex}`} className="w-3 h-3" />
-                                    ))}
-                                </div>
-                            ))}
-                        </div>
+                    
+                    <div className="flex gap-1">
+                        {weeks.map((week, weekIndex) => (
+                            <div key={weekIndex} className="grid grid-rows-7 gap-1">
+                                {week.map((day, dayIndex) => (
+                                    day 
+                                    ? <div 
+                                        key={day.date} 
+                                        className={`w-3 h-3 rounded-sm ${day.colorClass}`} 
+                                        title={`${day.percentage}% tasks completed on ${day.date}`} 
+                                      />
+                                    : <div key={`ph-${weekIndex}-${dayIndex}`} className="w-3 h-3" />
+                                ))}
+                            </div>
+                        ))}
                     </div>
                 </div>
+            </div>
 
-                <div className="flex justify-end items-center mt-4 text-xs text-white/60 gap-2 pr-4">
-                    <span>Less</span>
-                    <div className="w-3 h-3 rounded-sm bg-gray-800"></div>
-                    <div className="w-3 h-3 rounded-sm bg-emerald-900"></div>
-                    <div className="w-3 h-3 rounded-sm bg-emerald-700"></div>
-                    <div className="w-3 h-3 rounded-sm bg-emerald-500"></div>
-                    <div className="w-3 h-3 rounded-sm bg-emerald-300"></div>
-                    <span>More</span>
-                </div>
+            <div className="flex justify-end items-center mt-4 text-xs text-white/60 gap-2 pr-4">
+                <span>Less</span>
+                <div className="w-3 h-3 rounded-sm bg-gray-800"></div>
+                <div className="w-3 h-3 rounded-sm bg-emerald-900"></div>
+                <div className="w-3 h-3 rounded-sm bg-emerald-700"></div>
+                <div className="w-3 h-3 rounded-sm bg-emerald-500"></div>
+                <div className="w-3 h-3 rounded-sm bg-emerald-300"></div>
+                <span>More</span>
             </div>
         </div>
     );
@@ -168,9 +167,10 @@ interface CategoryTimelineChartProps {
     tasks: Task[];
     history: PomodoroHistory[];
     historyRange: { start: string; end: string };
+    openInsightModal: (chartTitle: string, chartData: any, chartElement: React.ReactNode) => void;
 }
 
-const CategoryTimelineChart = React.memo(({ tasks, history, historyRange }: CategoryTimelineChartProps) => {
+const CategoryTimelineChart = React.memo(({ tasks, history, historyRange, openInsightModal }: CategoryTimelineChartProps) => {
     const [view, setView] = useState<'month' | 'week' | 'custom'>('week');
     const [visibleTags, setVisibleTags] = useState<string[]>([]);
 
@@ -280,10 +280,44 @@ const CategoryTimelineChart = React.memo(({ tasks, history, historyRange }: Cate
     };
 
     const COLORS = ['#F59E0B', '#10B981', '#38BDF8', '#EC4899', '#84CC16', '#F43F5E', '#6366F1'];
+
+    const chartElement = (
+        <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={chartData.data} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.2)" />
+                <XAxis dataKey="date" stroke="rgba(255,255,255,0.7)" tick={{ fontSize: 10 }} />
+                <YAxis stroke="rgba(255,255,255,0.7)" unit="m" />
+                <Tooltip contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }} itemStyle={{ color: 'white' }} labelStyle={{ color: 'white', fontWeight: 'bold' }} />
+                <Legend wrapperStyle={{fontSize: "12px", cursor: 'pointer'}} onClick={handleLegendClick}/>
+                {chartData.tags.map((tag, index) => (
+                    <Line 
+                        key={tag} 
+                        type="monotone" 
+                        dataKey={tag} 
+                        name={tag.charAt(0).toUpperCase() + tag.slice(1)}
+                        stroke={COLORS[index % COLORS.length]} 
+                        strokeWidth={2}
+                        dot={{ r: 2 }}
+                        activeDot={{ r: 6 }}
+                        hide={!visibleTags.includes(tag)}
+                    />
+                ))}
+            </LineChart>
+        </ResponsiveContainer>
+    );
     
     return (
         <div className="">
-            <h3 className="text-lg font-semibold text-white text-center mb-2">Category Focus Over Time</h3>
+            <div className="flex justify-center items-center gap-2 mb-2">
+                <h3 className="text-lg font-semibold text-white text-center">Category Focus Over Time</h3>
+                <button
+                    onClick={() => openInsightModal('Category Focus Over Time', chartData.data, <div className="h-96">{chartElement}</div>)}
+                    className="p-1 text-purple-400 hover:text-purple-300 transition"
+                    title="Get AI Insights for this chart"
+                >
+                    <SparklesIcon />
+                </button>
+            </div>
              <div className="flex justify-center gap-2 mb-4 bg-black/20 p-1 rounded-full max-w-md mx-auto">
                 <button 
                     onClick={() => setView('week')} 
@@ -306,28 +340,7 @@ const CategoryTimelineChart = React.memo(({ tasks, history, historyRange }: Cate
             </div>
             {chartData.data.length > 0 && chartData.tags.length > 0 ? (
                  <div className="h-96 mt-4">
-                    <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={chartData.data} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.2)" />
-                            <XAxis dataKey="date" stroke="rgba(255,255,255,0.7)" tick={{ fontSize: 10 }} />
-                            <YAxis stroke="rgba(255,255,255,0.7)" unit="m" />
-                            <Tooltip contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }} itemStyle={{ color: 'white' }} labelStyle={{ color: 'white', fontWeight: 'bold' }} />
-                            <Legend wrapperStyle={{fontSize: "12px", cursor: 'pointer'}} onClick={handleLegendClick}/>
-                            {chartData.tags.map((tag, index) => (
-                                <Line 
-                                    key={tag} 
-                                    type="monotone" 
-                                    dataKey={tag} 
-                                    name={tag.charAt(0).toUpperCase() + tag.slice(1)}
-                                    stroke={COLORS[index % COLORS.length]} 
-                                    strokeWidth={2}
-                                    dot={{ r: 2 }}
-                                    activeDot={{ r: 6 }}
-                                    hide={!visibleTags.includes(tag)}
-                                />
-                            ))}
-                        </LineChart>
-                    </ResponsiveContainer>
+                    {chartElement}
                 </div>
             ) : (
                 <div className="h-64 flex items-center justify-center text-white/60 bg-black/10 rounded-lg">
@@ -372,6 +385,21 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
     const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
     const [isCategoryFilterOpen, setIsCategoryFilterOpen] = useState(false);
     const categoryFilterRef = useRef<HTMLDivElement>(null);
+
+    const [modalState, setModalState] = useState<{
+        isOpen: boolean;
+        chartTitle: string;
+        chartData: any;
+        chartElement: React.ReactNode;
+    } | null>(null);
+
+    const openInsightModal = (chartTitle: string, chartData: any, chartElement: React.ReactNode) => {
+        setModalState({ isOpen: true, chartTitle, chartData, chartElement });
+    };
+
+    const closeInsightModal = () => {
+        setModalState(null);
+    };
 
 
     const handleLegendClick = (o: any) => {
@@ -911,6 +939,193 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
         );
     };
 
+    // Chart Element Definitions for Modal Reuse
+    const consistencyTrackerElement = <ConsistencyTracker logs={consistencyLogs} />;
+
+    const dailyFocusChartElement = (
+        <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={aggregatedData.focusLineChartData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.2)" />
+                <XAxis dataKey="date" stroke="rgba(255,255,255,0.7)" tick={{ fontSize: 10 }} />
+                <YAxis stroke="rgba(255,255,255,0.7)" unit="m" />
+                <Tooltip contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }} itemStyle={{ color: 'white' }} labelStyle={{ color: 'white', fontWeight: 'bold' }} />
+                <Legend wrapperStyle={{fontSize: "12px"}}/>
+                <Line type="monotone" dataKey="focusMinutes" name="Focus Minutes" stroke="#34D399" activeDot={{ r: 8 }} />
+            </LineChart>
+        </ResponsiveContainer>
+    );
+
+    const priorityFocusChartElement = (
+        <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={priorityFocusData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.2)" />
+                <XAxis dataKey="date" stroke="rgba(255,255,255,0.7)" tick={{ fontSize: 10 }} />
+                <YAxis stroke="rgba(255,255,255,0.7)" unit="m" />
+                <Tooltip contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }} itemStyle={{ color: 'white' }} labelStyle={{ color: 'white', fontWeight: 'bold' }} />
+                <Legend wrapperStyle={{fontSize: "12px", cursor: 'pointer'}} onClick={handlePriorityLegendClick} />
+                <Line type="monotone" dataKey="P1" name="P1 (Highest)" stroke="#F87171" activeDot={{ r: 8 }} hide={!visiblePriorities.P1} />
+                <Line type="monotone" dataKey="P2" name="P2 (High)" stroke="#F59E0B" activeDot={{ r: 8 }} hide={!visiblePriorities.P2} />
+                <Line type="monotone" dataKey="P3" name="P3 (Medium)" stroke="#38BDF8" activeDot={{ r: 8 }} hide={!visiblePriorities.P3} />
+                <Line type="monotone" dataKey="P4" name="P4 (Low)" stroke="#64748B" activeDot={{ r: 8 }} hide={!visiblePriorities.P4} />
+            </LineChart>
+        </ResponsiveContainer>
+    );
+
+    const completionRateChartElement = (
+        <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={taskCompletionByPriorityData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.2)" />
+                <XAxis dataKey="date" stroke="rgba(255,255,255,0.7)" tick={{ fontSize: 10 }} />
+                <YAxis stroke="rgba(255,255,255,0.7)" unit="%" domain={[0, 100]} />
+                <Tooltip
+                    contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }}
+                    itemStyle={{ color: 'white' }}
+                    labelStyle={{ color: 'white', fontWeight: 'bold' }}
+                    formatter={(value: number) => [`${value.toFixed(1)}%`, 'Completion']}
+                />
+                <Legend wrapperStyle={{fontSize: "12px", cursor: 'pointer'}} onClick={handleCompletionRateLegendClick} />
+                <Line type="monotone" dataKey="P1" name="P1 (Highest)" stroke="#F87171" activeDot={{ r: 8 }} hide={!visibleCompletionRates.P1} />
+                <Line type="monotone" dataKey="P2" name="P2 (High)" stroke="#F59E0B" activeDot={{ r: 8 }} hide={!visibleCompletionRates.P2} />
+                <Line type="monotone" dataKey="P3" name="P3 (Medium)" stroke="#38BDF8" activeDot={{ r: 8 }} hide={!visibleCompletionRates.P3} />
+                <Line type="monotone" dataKey="P4" name="P4 (Low)" stroke="#64748B" activeDot={{ r: 8 }} hide={!visibleCompletionRates.P4} />
+            </LineChart>
+        </ResponsiveContainer>
+    );
+    
+    const taskVolumeChartElement = (
+        <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={aggregatedData.dailyTaskVolumeChartData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.2)" />
+                <XAxis dataKey="date" stroke="rgba(255,255,255,0.7)" tick={{ fontSize: 10 }} />
+                <YAxis stroke="rgba(255,255,255,0.7)" allowDecimals={false} />
+                <Tooltip contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }} itemStyle={{ color: 'white' }} labelStyle={{ color: 'white', fontWeight: 'bold' }} />
+                <Legend wrapperStyle={{fontSize: "12px", cursor: 'pointer'}} onClick={handleLegendClick} />
+                <Line type="monotone" dataKey="completedTasks" name="Completed" stroke="#34D399" activeDot={{ r: 8 }} hide={!visibleLines.completedTasks} />
+                <Line type="monotone" dataKey="incompleteTasks" name="Incomplete" stroke="#F87171" activeDot={{ r: 8 }} hide={!visibleLines.incompleteTasks} />
+                <Line type="monotone" dataKey="totalTasks" name="Total" stroke="#F59E0B" activeDot={{ r: 8 }} hide={!visibleLines.totalTasks} />
+            </LineChart>
+        </ResponsiveContainer>
+    );
+
+    const dailyCompletionChartElement = (
+        <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={aggregatedData.lineChartData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.2)" />
+                <XAxis dataKey="date" stroke="rgba(255,255,255,0.7)" tick={{ fontSize: 10 }} />
+                <YAxis stroke="rgba(255,255,255,0.7)" unit="%" domain={[0, 100]} />
+                <Tooltip contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }} itemStyle={{ color: 'white' }} labelStyle={{ color: 'white', fontWeight: 'bold' }} />
+                <Legend wrapperStyle={{fontSize: "12px"}}/>
+                <Line type="monotone" dataKey="completion" name="Task Completion %" stroke="#f59e0b" activeDot={{ r: 8 }} />
+            </LineChart>
+        </ResponsiveContainer>
+    );
+
+    const categoryPriorityChartElement = (
+        <ResponsiveContainer width="100%" height="100%">
+            <BarChart
+                data={filteredCategoryPriorityData}
+                margin={{ top: 5, right: 20, left: -10, bottom: 5 }}
+            >
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.2)" />
+                <XAxis dataKey="name" stroke="rgba(255,255,255,0.7)" tick={{ fontSize: 10 }} angle={-45} textAnchor="end" height={60} interval={0} />
+                <YAxis stroke="rgba(255,255,255,0.7)" allowDecimals={false} />
+                <Tooltip
+                    contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }}
+                    itemStyle={{ color: 'white' }}
+                    labelStyle={{ color: 'white', fontWeight: 'bold' }}
+                />
+                <Legend wrapperStyle={{fontSize: "12px", cursor: 'pointer'}} onClick={handlePriorityDistributionLegendClick}/>
+                <Bar dataKey="P1" stackId="a" fill="#F87171" name="P1 (Highest)" hide={!visiblePrioritiesForDistribution.P1} />
+                <Bar dataKey="P2" stackId="a" fill="#F59E0B" name="P2 (High)" hide={!visiblePrioritiesForDistribution.P2} />
+                <Bar dataKey="P3" stackId="a" fill="#38BDF8" name="P3 (Medium)" hide={!visiblePrioritiesForDistribution.P3} />
+                <Bar dataKey="P4" stackId="a" fill="#64748B" name="P4 (Low)" hide={!visiblePrioritiesForDistribution.P4} />
+            </BarChart>
+        </ResponsiveContainer>
+    );
+
+    const focusByCategoryBarChartElement = (
+        <ResponsiveContainer width="100%" height="100%">
+            <BarChart
+                layout="vertical"
+                data={aggregatedData.tagAnalysisData}
+                margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+            >
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.2)" />
+                <XAxis type="number" stroke="rgba(255,255,255,0.7)" unit="m" />
+                <YAxis dataKey="name" type="category" stroke="rgba(255,255,255,0.7)" width={80} tick={{ fontSize: 12 }} />
+                <Tooltip
+                    cursor={{ fill: 'rgba(255,255,255,0.1)' }}
+                    contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }}
+                    itemStyle={{ color: 'white' }} 
+                    labelStyle={{ color: 'white', fontWeight: 'bold' }}
+                    formatter={(value: number) => [`${value} minutes`, 'Focus Time']}
+                />
+                <Legend wrapperStyle={{fontSize: "12px"}}/>
+                <Bar dataKey="minutes" name="Focus Minutes" fill="#f59e0b" />
+            </BarChart>
+        </ResponsiveContainer>
+    );
+
+    const focusDistributionPieChartElement = (
+        <div className="w-full h-full relative">
+            <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                    <Pie
+                        data={pieChartData}
+                        cx="50%"
+                        cy="50%"
+                        labelLine={false}
+                        label={renderCustomizedLabel}
+                        outerRadius={110}
+                        innerRadius={70}
+                        fill="#8884d8"
+                        dataKey="value"
+                        paddingAngle={2}
+                    >
+                        {pieChartData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={COLORS_PIE[index % COLORS_PIE.length]} stroke="none" />
+                        ))}
+                    </Pie>
+                    <Tooltip 
+                        contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }}
+                        itemStyle={{ color: 'white' }}
+                        formatter={(value: number) => [`${value} minutes`, 'Focus Time']}
+                    />
+                    <Legend wrapperStyle={{ bottom: 0 }} />
+                </PieChart>
+            </ResponsiveContainer>
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-[60%] text-center pointer-events-none">
+                <span className="text-4xl font-bold text-white">{totalFocusMinutesInRange}</span>
+                <span className="block text-sm text-white/70">Total Mins</span>
+            </div>
+        </div>
+    );
+
+    const taskBreakdownPieChartElement = (
+        <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+                <Pie data={aggregatedData.taskBreakdownData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} fill="#8884d8" label>
+                    {aggregatedData.taskBreakdownData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS_TASKS[index % COLORS_TASKS.length]} />)}
+                </Pie>
+                <Tooltip contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }} itemStyle={{ color: 'white' }} />
+                <Legend wrapperStyle={{fontSize: "12px"}}/>
+            </PieChart>
+        </ResponsiveContainer>
+    );
+
+    const projectBreakdownPieChartElement = (
+        <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+                <Pie data={aggregatedData.projectBreakdownData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} fill="#8884d8" label>
+                    {aggregatedData.projectBreakdownData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS_PROJECTS[index % COLORS_PROJECTS.length]} />)}
+                </Pie>
+                <Tooltip contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }} itemStyle={{ color: 'white' }} />
+                <Legend wrapperStyle={{fontSize: "12px"}}/>
+            </PieChart>
+        </ResponsiveContainer>
+    );
+
+
     return (
         <Panel title="📜 History & Progress">
             {/* --- Section 1: Controls --- */}
@@ -953,104 +1168,66 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
             </div>
 
             {/* --- Section 3: Consistency Tracker --- */}
-            <ConsistencyTracker logs={consistencyLogs} />
+            <div className="mt-8">
+                <div className="flex justify-center items-center gap-2 mb-4">
+                    <h3 className="text-lg font-semibold text-white text-center">Daily Consistency Tracker</h3>
+                    <button
+                        onClick={() => openInsightModal('Daily Consistency Tracker', consistencyLogs, consistencyTrackerElement)}
+                        className="p-1 text-purple-400 hover:text-purple-300 transition"
+                        title="Get AI Insights for this chart"
+                    >
+                        <SparklesIcon />
+                    </button>
+                </div>
+                {consistencyTrackerElement}
+            </div>
 
             {/* --- Section 4: Time-based Trends --- */}
             <div className="mt-8 space-y-6">
                 <div>
-                    <h3 className="text-lg font-semibold text-white text-center mb-2">Daily Focus Minutes</h3>
-                    <div className="h-72">
-                         <ResponsiveContainer width="100%" height="100%">
-                            <LineChart data={aggregatedData.focusLineChartData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.2)" />
-                                <XAxis dataKey="date" stroke="rgba(255,255,255,0.7)" tick={{ fontSize: 10 }} />
-                                <YAxis stroke="rgba(255,255,255,0.7)" unit="m" />
-                                <Tooltip contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }} itemStyle={{ color: 'white' }} labelStyle={{ color: 'white', fontWeight: 'bold' }} />
-                                <Legend wrapperStyle={{fontSize: "12px"}}/>
-                                <Line type="monotone" dataKey="focusMinutes" name="Focus Minutes" stroke="#34D399" activeDot={{ r: 8 }} />
-                            </LineChart>
-                        </ResponsiveContainer>
+                    <div className="flex justify-center items-center gap-2 mb-2">
+                        <h3 className="text-lg font-semibold text-white text-center">Daily Focus Minutes</h3>
+                        <button onClick={() => openInsightModal('Daily Focus Minutes', aggregatedData.focusLineChartData, <div className="h-72">{dailyFocusChartElement}</div>)} className="p-1 text-purple-400 hover:text-purple-300 transition" title="Get AI Insights"><SparklesIcon /></button>
                     </div>
+                    <div className="h-72">{dailyFocusChartElement}</div>
                 </div>
                  <div>
-                    <h3 className="text-lg font-semibold text-white text-center mb-2">Priority Focus Distribution</h3>
-                    <div className="h-72">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <LineChart data={priorityFocusData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.2)" />
-                                <XAxis dataKey="date" stroke="rgba(255,255,255,0.7)" tick={{ fontSize: 10 }} />
-                                <YAxis stroke="rgba(255,255,255,0.7)" unit="m" />
-                                <Tooltip contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }} itemStyle={{ color: 'white' }} labelStyle={{ color: 'white', fontWeight: 'bold' }} />
-                                <Legend wrapperStyle={{fontSize: "12px", cursor: 'pointer'}} onClick={handlePriorityLegendClick} />
-                                <Line type="monotone" dataKey="P1" name="P1 (Highest)" stroke="#F87171" activeDot={{ r: 8 }} hide={!visiblePriorities.P1} />
-                                <Line type="monotone" dataKey="P2" name="P2 (High)" stroke="#F59E0B" activeDot={{ r: 8 }} hide={!visiblePriorities.P2} />
-                                <Line type="monotone" dataKey="P3" name="P3 (Medium)" stroke="#38BDF8" activeDot={{ r: 8 }} hide={!visiblePriorities.P3} />
-                                <Line type="monotone" dataKey="P4" name="P4 (Low)" stroke="#64748B" activeDot={{ r: 8 }} hide={!visiblePriorities.P4} />
-                            </LineChart>
-                        </ResponsiveContainer>
+                    <div className="flex justify-center items-center gap-2 mb-2">
+                        <h3 className="text-lg font-semibold text-white text-center">Priority Focus Distribution</h3>
+                        <button onClick={() => openInsightModal('Priority Focus Distribution', priorityFocusData, <div className="h-72">{priorityFocusChartElement}</div>)} className="p-1 text-purple-400 hover:text-purple-300 transition" title="Get AI Insights"><SparklesIcon /></button>
                     </div>
+                    <div className="h-72">{priorityFocusChartElement}</div>
                 </div>
                  <div>
-                    <h3 className="text-lg font-semibold text-white text-center mb-2">Task Completion Rate by Priority</h3>
-                    <div className="h-72">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <LineChart data={taskCompletionByPriorityData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.2)" />
-                                <XAxis dataKey="date" stroke="rgba(255,255,255,0.7)" tick={{ fontSize: 10 }} />
-                                <YAxis stroke="rgba(255,255,255,0.7)" unit="%" domain={[0, 100]} />
-                                <Tooltip
-                                    contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }}
-                                    itemStyle={{ color: 'white' }}
-                                    labelStyle={{ color: 'white', fontWeight: 'bold' }}
-                                    formatter={(value: number) => [`${value.toFixed(1)}%`, 'Completion']}
-                                />
-                                <Legend wrapperStyle={{fontSize: "12px", cursor: 'pointer'}} onClick={handleCompletionRateLegendClick} />
-                                <Line type="monotone" dataKey="P1" name="P1 (Highest)" stroke="#F87171" activeDot={{ r: 8 }} hide={!visibleCompletionRates.P1} />
-                                <Line type="monotone" dataKey="P2" name="P2 (High)" stroke="#F59E0B" activeDot={{ r: 8 }} hide={!visibleCompletionRates.P2} />
-                                <Line type="monotone" dataKey="P3" name="P3 (Medium)" stroke="#38BDF8" activeDot={{ r: 8 }} hide={!visibleCompletionRates.P3} />
-                                <Line type="monotone" dataKey="P4" name="P4 (Low)" stroke="#64748B" activeDot={{ r: 8 }} hide={!visibleCompletionRates.P4} />
-                            </LineChart>
-                        </ResponsiveContainer>
+                    <div className="flex justify-center items-center gap-2 mb-2">
+                        <h3 className="text-lg font-semibold text-white text-center">Task Completion Rate by Priority</h3>
+                        <button onClick={() => openInsightModal('Task Completion Rate by Priority', taskCompletionByPriorityData, <div className="h-72">{completionRateChartElement}</div>)} className="p-1 text-purple-400 hover:text-purple-300 transition" title="Get AI Insights"><SparklesIcon /></button>
                     </div>
+                    <div className="h-72">{completionRateChartElement}</div>
                 </div>
                 <div>
-                    <h3 className="text-lg font-semibold text-white text-center mb-2">Daily Task Volume</h3>
-                    <div className="h-72">
-                         <ResponsiveContainer width="100%" height="100%">
-                            <LineChart data={aggregatedData.dailyTaskVolumeChartData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.2)" />
-                                <XAxis dataKey="date" stroke="rgba(255,255,255,0.7)" tick={{ fontSize: 10 }} />
-                                <YAxis stroke="rgba(255,255,255,0.7)" allowDecimals={false} />
-                                <Tooltip contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }} itemStyle={{ color: 'white' }} labelStyle={{ color: 'white', fontWeight: 'bold' }} />
-                                <Legend wrapperStyle={{fontSize: "12px", cursor: 'pointer'}} onClick={handleLegendClick} />
-                                <Line type="monotone" dataKey="completedTasks" name="Completed" stroke="#34D399" activeDot={{ r: 8 }} hide={!visibleLines.completedTasks} />
-                                <Line type="monotone" dataKey="incompleteTasks" name="Incomplete" stroke="#F87171" activeDot={{ r: 8 }} hide={!visibleLines.incompleteTasks} />
-                                <Line type="monotone" dataKey="totalTasks" name="Total" stroke="#F59E0B" activeDot={{ r: 8 }} hide={!visibleLines.totalTasks} />
-                            </LineChart>
-                        </ResponsiveContainer>
+                    <div className="flex justify-center items-center gap-2 mb-2">
+                        <h3 className="text-lg font-semibold text-white text-center">Daily Task Volume</h3>
+                        <button onClick={() => openInsightModal('Daily Task Volume', aggregatedData.dailyTaskVolumeChartData, <div className="h-72">{taskVolumeChartElement}</div>)} className="p-1 text-purple-400 hover:text-purple-300 transition" title="Get AI Insights"><SparklesIcon /></button>
                     </div>
+                    <div className="h-72">{taskVolumeChartElement}</div>
                 </div>
                 <div>
-                    <h3 className="text-lg font-semibold text-white text-center mb-2">Daily Task Completion %</h3>
-                    <div className="h-72">
-                         <ResponsiveContainer width="100%" height="100%">
-                            <LineChart data={aggregatedData.lineChartData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.2)" />
-                                <XAxis dataKey="date" stroke="rgba(255,255,255,0.7)" tick={{ fontSize: 10 }} />
-                                <YAxis stroke="rgba(255,255,255,0.7)" unit="%" domain={[0, 100]} />
-                                <Tooltip contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }} itemStyle={{ color: 'white' }} labelStyle={{ color: 'white', fontWeight: 'bold' }} />
-                                <Legend wrapperStyle={{fontSize: "12px"}}/>
-                                <Line type="monotone" dataKey="completion" name="Task Completion %" stroke="#f59e0b" activeDot={{ r: 8 }} />
-                            </LineChart>
-                        </ResponsiveContainer>
+                    <div className="flex justify-center items-center gap-2 mb-2">
+                        <h3 className="text-lg font-semibold text-white text-center">Daily Task Completion %</h3>
+                        <button onClick={() => openInsightModal('Daily Task Completion %', aggregatedData.lineChartData, <div className="h-72">{dailyCompletionChartElement}</div>)} className="p-1 text-purple-400 hover:text-purple-300 transition" title="Get AI Insights"><SparklesIcon /></button>
                     </div>
+                    <div className="h-72">{dailyCompletionChartElement}</div>
                 </div>
                 <div className="mt-8">
-                    <CategoryTimelineChart tasks={allTasks} history={timelinePomodoroHistory} historyRange={historyRange} />
+                    <CategoryTimelineChart tasks={allTasks} history={timelinePomodoroHistory} historyRange={historyRange} openInsightModal={openInsightModal} />
                 </div>
                 
                 <div className="mt-8">
-                    <h3 className="text-lg font-semibold text-white text-center mb-2">Category Priority Distribution</h3>
+                    <div className="flex justify-center items-center gap-2 mb-2">
+                        <h3 className="text-lg font-semibold text-white text-center">Category Priority Distribution</h3>
+                        <button onClick={() => openInsightModal('Category Priority Distribution', filteredCategoryPriorityData, <div className="h-96">{categoryPriorityChartElement}</div>)} className="p-1 text-purple-400 hover:text-purple-300 transition" title="Get AI Insights"><SparklesIcon /></button>
+                    </div>
                     <div className="flex justify-center mb-4">
                         <div className="relative" ref={categoryFilterRef}>
                             <button onClick={() => setIsCategoryFilterOpen(o => !o)} className="bg-white/10 hover:bg-white/20 text-white font-semibold py-2 px-4 rounded-lg inline-flex items-center">
@@ -1080,28 +1257,7 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                     </div>
     
                     {filteredCategoryPriorityData.length > 0 ? (
-                        <div className="h-96">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <BarChart
-                                    data={filteredCategoryPriorityData}
-                                    margin={{ top: 5, right: 20, left: -10, bottom: 5 }}
-                                >
-                                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.2)" />
-                                    <XAxis dataKey="name" stroke="rgba(255,255,255,0.7)" tick={{ fontSize: 10 }} angle={-45} textAnchor="end" height={60} interval={0} />
-                                    <YAxis stroke="rgba(255,255,255,0.7)" allowDecimals={false} />
-                                    <Tooltip
-                                        contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }}
-                                        itemStyle={{ color: 'white' }}
-                                        labelStyle={{ color: 'white', fontWeight: 'bold' }}
-                                    />
-                                    <Legend wrapperStyle={{fontSize: "12px", cursor: 'pointer'}} onClick={handlePriorityDistributionLegendClick}/>
-                                    <Bar dataKey="P1" stackId="a" fill="#F87171" name="P1 (Highest)" hide={!visiblePrioritiesForDistribution.P1} />
-                                    <Bar dataKey="P2" stackId="a" fill="#F59E0B" name="P2 (High)" hide={!visiblePrioritiesForDistribution.P2} />
-                                    <Bar dataKey="P3" stackId="a" fill="#38BDF8" name="P3 (Medium)" hide={!visiblePrioritiesForDistribution.P3} />
-                                    <Bar dataKey="P4" stackId="a" fill="#64748B" name="P4 (Low)" hide={!visiblePrioritiesForDistribution.P4} />
-                                </BarChart>
-                            </ResponsiveContainer>
-                        </div>
+                        <div className="h-96">{categoryPriorityChartElement}</div>
                     ) : (
                         <div className="h-64 flex items-center justify-center text-white/60 bg-black/10 rounded-lg">
                             <p>No categories selected or no data for this period.</p>
@@ -1113,29 +1269,13 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
             {/* --- Section 5: Focus Breakdown --- */}
             <div className="mt-8 space-y-6">
                 <div>
-                    <h3 className="text-lg font-semibold text-white text-center mb-2">Focus Time by Category</h3>
+                    <div className="flex justify-center items-center gap-2 mb-2">
+                        <h3 className="text-lg font-semibold text-white text-center">Focus Time by Category</h3>
+                        <button onClick={() => openInsightModal('Focus Time by Category', aggregatedData.tagAnalysisData, <div className="h-96">{focusByCategoryBarChartElement}</div>)} className="p-1 text-purple-400 hover:text-purple-300 transition" title="Get AI Insights"><SparklesIcon /></button>
+                    </div>
                     <div className="h-96">
                         {aggregatedData.tagAnalysisData.length > 0 ? (
-                            <ResponsiveContainer width="100%" height="100%">
-                                <BarChart
-                                    layout="vertical"
-                                    data={aggregatedData.tagAnalysisData}
-                                    margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
-                                >
-                                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.2)" />
-                                    <XAxis type="number" stroke="rgba(255,255,255,0.7)" unit="m" />
-                                    <YAxis dataKey="name" type="category" stroke="rgba(255,255,255,0.7)" width={80} tick={{ fontSize: 12 }} />
-                                    <Tooltip
-                                        cursor={{ fill: 'rgba(255,255,255,0.1)' }}
-                                        contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }}
-                                        itemStyle={{ color: 'white' }} 
-                                        labelStyle={{ color: 'white', fontWeight: 'bold' }}
-                                        formatter={(value: number) => [`${value} minutes`, 'Focus Time']}
-                                    />
-                                    <Legend wrapperStyle={{fontSize: "12px"}}/>
-                                    <Bar dataKey="minutes" name="Focus Minutes" fill="#f59e0b" />
-                                </BarChart>
-                            </ResponsiveContainer>
+                            focusByCategoryBarChartElement
                         ) : (
                             <div className="flex items-center justify-center h-full text-white/60 bg-black/10 rounded-lg">
                                 No tagged tasks with completed sessions in this date range.
@@ -1144,41 +1284,13 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                     </div>
                 </div>
                 <div>
-                     <h3 className="text-lg font-semibold text-white text-center mb-2">Focus Distribution (%)</h3>
+                     <div className="flex justify-center items-center gap-2 mb-2">
+                        <h3 className="text-lg font-semibold text-white text-center">Focus Distribution (%)</h3>
+                        <button onClick={() => openInsightModal('Focus Distribution (%)', pieChartData, <div className="h-96">{focusDistributionPieChartElement}</div>)} className="p-1 text-purple-400 hover:text-purple-300 transition" title="Get AI Insights"><SparklesIcon /></button>
+                    </div>
                     <div className="h-96">
                          {pieChartData.length > 0 ? (
-                            <div className="w-full h-full relative">
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <PieChart>
-                                        <Pie
-                                            data={pieChartData}
-                                            cx="50%"
-                                            cy="50%"
-                                            labelLine={false}
-                                            label={renderCustomizedLabel}
-                                            outerRadius={110}
-                                            innerRadius={70}
-                                            fill="#8884d8"
-                                            dataKey="value"
-                                            paddingAngle={2}
-                                        >
-                                            {pieChartData.map((entry, index) => (
-                                                <Cell key={`cell-${index}`} fill={COLORS_PIE[index % COLORS_PIE.length]} stroke="none" />
-                                            ))}
-                                        </Pie>
-                                        <Tooltip 
-                                            contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }}
-                                            itemStyle={{ color: 'white' }}
-                                            formatter={(value: number) => [`${value} minutes`, 'Focus Time']}
-                                        />
-                                        <Legend wrapperStyle={{ bottom: 0 }} />
-                                    </PieChart>
-                                </ResponsiveContainer>
-                                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-[60%] text-center pointer-events-none">
-                                    <span className="text-4xl font-bold text-white">{totalFocusMinutesInRange}</span>
-                                    <span className="block text-sm text-white/70">Total Mins</span>
-                                </div>
-                            </div>
+                            focusDistributionPieChartElement
                         ) : (
                             <div className="flex items-center justify-center h-full text-white/60 bg-black/10 rounded-lg">
                                 No data to display.
@@ -1191,32 +1303,18 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
             {/* --- Section 7: Overall Stats --- */}
             <div className="mt-8 space-y-6">
                  <div>
-                    <h3 className="text-lg font-semibold text-white text-center mb-2">Overall Task Breakdown</h3>
-                    <div className="h-64">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <PieChart>
-                                <Pie data={aggregatedData.taskBreakdownData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} fill="#8884d8" label>
-                                    {aggregatedData.taskBreakdownData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS_TASKS[index % COLORS_TASKS.length]} />)}
-                                </Pie>
-                                <Tooltip contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }} itemStyle={{ color: 'white' }} />
-                                <Legend wrapperStyle={{fontSize: "12px"}}/>
-                            </PieChart>
-                        </ResponsiveContainer>
+                    <div className="flex justify-center items-center gap-2 mb-2">
+                        <h3 className="text-lg font-semibold text-white text-center">Overall Task Breakdown</h3>
+                        <button onClick={() => openInsightModal('Overall Task Breakdown', aggregatedData.taskBreakdownData, <div className="h-64">{taskBreakdownPieChartElement}</div>)} className="p-1 text-purple-400 hover:text-purple-300 transition" title="Get AI Insights"><SparklesIcon /></button>
                     </div>
+                    <div className="h-64">{taskBreakdownPieChartElement}</div>
                 </div>
                  <div>
-                    <h3 className="text-lg font-semibold text-white text-center mb-2">Overall Project Breakdown</h3>
-                    <div className="h-64">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <PieChart>
-                                <Pie data={aggregatedData.projectBreakdownData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} fill="#8884d8" label>
-                                    {aggregatedData.projectBreakdownData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS_PROJECTS[index % COLORS_PROJECTS.length]} />)}
-                                </Pie>
-                                <Tooltip contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }} itemStyle={{ color: 'white' }} />
-                                <Legend wrapperStyle={{fontSize: "12px"}}/>
-                            </PieChart>
-                        </ResponsiveContainer>
+                    <div className="flex justify-center items-center gap-2 mb-2">
+                        <h3 className="text-lg font-semibold text-white text-center">Overall Project Breakdown</h3>
+                        <button onClick={() => openInsightModal('Overall Project Breakdown', aggregatedData.projectBreakdownData, <div className="h-64">{projectBreakdownPieChartElement}</div>)} className="p-1 text-purple-400 hover:text-purple-300 transition" title="Get AI Insights"><SparklesIcon /></button>
                     </div>
+                    <div className="h-64">{projectBreakdownPieChartElement}</div>
                 </div>
             </div>
 
@@ -1262,7 +1360,16 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                     </div>
                 )}
             </div>
-
+            
+            {modalState && (
+                <AIInsightModal
+                    isOpen={modalState.isOpen}
+                    onClose={closeInsightModal}
+                    chartTitle={modalState.chartTitle}
+                    chartData={modalState.chartData}
+                    chartElement={modalState.chartElement}
+                />
+            )}
         </Panel>
     );
 };
