@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Goal, Target, Project, Task, PomodoroHistory, Commitment, ProjectUpdate } from '../types';
 import Panel from '../components/common/Panel';
-import { TrashIcon, EditIcon, StarIcon, LockIcon, CheckIcon } from '../components/common/Icons';
+import { TrashIcon, EditIcon, StarIcon, LockIcon, CheckIcon, TargetIcon as GoalsIcon, RescheduleIcon } from '../components/common/Icons';
 import * as dbService from '../services/dbService';
 import Spinner from '../components/common/Spinner';
 import { getTodayDateString, getMonthStartDateString } from '../utils/date';
@@ -228,7 +228,8 @@ const ProjectTimeAnalysisDashboard: React.FC<{
     };
 
     return (
-        <Panel title="📊 Project Time Analysis">
+        <div className="bg-slate-800/50 rounded-xl p-4 sm:p-6 mt-6 border border-slate-700/80">
+             <h3 className="text-xl font-bold text-white text-center mb-4">Project Time Analysis</h3>
             <div className="mb-4 space-y-2">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                      <input type="date" value={dateRange.start} onChange={e => setDateRange(p => ({...p, start: e.target.value}))} className="bg-white/20 border border-white/30 rounded-lg p-2 text-white/80 w-full text-center" style={{colorScheme: 'dark'}}/>
@@ -1013,7 +1014,8 @@ const CommitmentsPanel: React.FC<{
     };
     
     return (
-        <Panel title="💪 My Commitments">
+        <div className="bg-slate-800/50 rounded-xl p-4 sm:p-6 mt-6 border border-slate-700/80">
+            <h3 className="text-xl font-bold text-white text-center mb-2">My Commitments</h3>
             <div className="text-center mb-4 flex justify-center items-center gap-2">
                 <p className="text-white/80 text-sm">What will you hold yourself accountable for?</p>
                  <ExplanationTooltip 
@@ -1063,7 +1065,7 @@ const CommitmentsPanel: React.FC<{
                     {dateRange.start && dateRange.end ? `No ${view} commitments in this date range.` : `No ${view} commitments.`}
                 </p>}
             </ul>
-        </Panel>
+        </div>
     )
 }
 
@@ -1092,6 +1094,8 @@ interface GoalsPageProps {
 
 const GoalsPage: React.FC<GoalsPageProps> = (props) => {
     const { goals, targets, projects, commitments, onAddGoal, onUpdateGoal, onDeleteGoal, onSetGoalCompletion, onAddTarget, onUpdateTarget, onDeleteTarget, onAddProject, onUpdateProject, onDeleteProject, onAddCommitment, onUpdateCommitment, onDeleteCommitment, onSetCommitmentCompletion, onMarkCommitmentBroken } = props;
+
+    const [activeTab, setActiveTab] = useState<'overview' | 'projects' | 'commitments'>('overview');
 
     const [newGoal, setNewGoal] = useState('');
     const [newTarget, setNewTarget] = useState('');
@@ -1123,6 +1127,7 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
     const [projectDateRange, setProjectDateRange] = useState({ start: '', end: '' });
     const [showProjectDateFilter, setShowProjectDateFilter] = useState(false);
     const [projectSortBy, setProjectSortBy] = useState<'default' | 'priority'>('default');
+    const [projectSubTab, setProjectSubTab] = useState<'list' | 'analysis'>('list');
 
 
     useEffect(() => {
@@ -1398,11 +1403,17 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
             </div>
         );
     };
+    
+    const tabConfig = {
+        overview: { icon: <StarIcon />, label: "Overview" },
+        projects: { icon: <GoalsIcon />, label: "Projects" },
+        commitments: { icon: <LockIcon />, label: "Commitments" },
+    };
 
     return (
-        <div>
+        <div className="space-y-6">
              {upcomingDeadlines.length > 0 && (
-                <div className="bg-amber-500/30 border border-amber-500 text-amber-200 p-4 rounded-2xl mb-4 animate-pulse-slow">
+                <div className="bg-amber-500/30 border border-amber-500 text-amber-200 p-4 rounded-2xl animate-pulse-slow">
                     <h3 className="font-bold text-lg text-center mb-2">🔥 Heads Up! Due Tomorrow:</h3>
                     <ul className="list-disc list-inside text-sm text-center">
                         {upcomingDeadlines.map(item => (
@@ -1412,219 +1423,267 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
                 </div>
             )}
             
-            <Panel title="🌟 My Core Goals">
-                <p className="text-white/80 text-center text-sm mb-4">Your guiding stars. What long-term ambitions are you working towards?</p>
-                <div className="relative mb-4">
-                    <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none text-amber-300">
-                        <StarIcon />
-                    </div>
-                    <input
-                        type="text"
-                        value={newGoal}
-                        onChange={(e) => setNewGoal(e.target.value)}
-                        onKeyPress={(e) => e.key === 'Enter' && handleAddGoal()}
-                        placeholder="What's your next big goal?"
-                        className="w-full bg-black/30 border-2 border-white/20 rounded-full py-3 pr-28 pl-12 text-white placeholder:text-white/50 focus:outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-400/50 transition-all"
-                    />
-                    <button onClick={handleAddGoal} className="absolute inset-y-1.5 right-1.5 px-6 rounded-full font-bold text-white transition-all duration-300 bg-gradient-to-br from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 hover:scale-105">
-                        Add
-                    </button>
-                </div>
-                 <div className="text-right mb-2">
-                    {hiddenGoalsCount > 0 && (
-                        <button onClick={() => setShowArchivedGoals(s => !s)} className="text-xs text-cyan-300 hover:text-cyan-200 font-semibold px-3 py-1 rounded-full hover:bg-white/10 transition">
-                            {showArchivedGoals ? 'Hide Archived' : `Show ${hiddenGoalsCount} Archived`}
-                        </button>
-                    )}
-                </div>
-                <ul className="grid grid-cols-1 lg:grid-cols-2 gap-3 max-h-96 overflow-y-auto pr-2">
-                    {visibleGoals.map(goal => (
-                        <GoalItem key={goal.id} goal={goal} onUpdateGoal={onUpdateGoal} onDeleteGoal={onDeleteGoal} onSetCompletion={onSetGoalCompletion} />
-                    ))}
-                    {goals.length === 0 && <p className="text-center text-white/60 p-4 col-span-1 lg:col-span-2">Set your first high-level goal to get started!</p>}
-                </ul>
-            </Panel>
-
-            <Panel title="🎯 Key Targets">
-                <div className="text-center mb-4 flex justify-center items-center gap-2">
-                    <p className="text-white/80 text-sm">Specific, measurable outcomes with a deadline to keep you on track.</p>
-                    <ExplanationTooltip 
-                        title="Goals vs. Targets"
-                        content="A <strong>Target</strong> is a specific, measurable, and time-bound milestone (e.g., 'Finish Chapter 3 by Friday').<br/><br/>A <strong>Goal</strong> is a high-level, long-term ambition (e.g., 'Write a book').<br/><br/>Targets are the concrete steps to achieve your Goals."
-                    />
-                </div>
-                <div className="flex flex-col gap-2 mb-4">
-                    <div className="flex flex-col sm:flex-row gap-2">
-                        <input
-                            type="text"
-                            value={newTarget}
-                            onChange={(e) => setNewTarget(e.target.value)}
-                            placeholder="Define a clear target..."
-                            className="flex-grow bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50"
-                        />
-                        <input
-                            type="date"
-                            value={newDeadline}
-                            onChange={(e) => setNewDeadline(e.target.value)}
-                            className="bg-white/20 border border-white/30 rounded-lg p-3 text-white/80 text-center"
-                            style={{colorScheme: 'dark'}}
-                        />
-                    </div>
-                    <div className="flex flex-col sm:flex-row gap-2 justify-between items-center">
-                        <PrioritySelector priority={newTargetPriority} setPriority={setNewTargetPriority} />
-                        <button onClick={handleAddTarget} className="w-full sm:w-auto p-3 px-6 rounded-lg font-bold text-white transition hover:scale-105 bg-gradient-to-br from-blue-500 to-sky-600">Add Target</button>
-                    </div>
-                </div>
-                
-                <div className="flex justify-center gap-2 mb-4 bg-black/20 p-1 rounded-full">
-                    <button onClick={() => setTargetView('pending')} className={`flex-1 p-2 text-sm rounded-full font-bold transition-colors ${targetView === 'pending' ? 'bg-white/20 text-white' : 'text-white/60 hover:bg-white/10'}`}>
-                        Pending ({pendingTargets.length})
-                    </button>
-                    <button onClick={() => setTargetView('incomplete')} className={`flex-1 p-2 text-sm rounded-full font-bold transition-colors ${targetView === 'incomplete' ? 'bg-white/20 text-white' : 'text-white/60 hover:bg-white/10'}`}>
-                        Incomplete ({targets.filter(t => t.status === 'incomplete').length})
-                    </button>
-                    <button onClick={() => setTargetView('completed')} className={`flex-1 p-2 text-sm rounded-full font-bold transition-colors ${targetView === 'completed' ? 'bg-white/20 text-white' : 'text-white/60 hover:bg-white/10'}`}>
-                        Completed ({targets.filter(t => t.status === 'completed').length})
-                    </button>
-                </div>
-
-                <TargetFilterControls />
-
-                <div className="flex justify-end mb-2 -mt-2">
+            <div className="flex justify-center gap-1 sm:gap-2 bg-slate-800/50 p-1 rounded-full max-w-xl mx-auto">
+                {(Object.keys(tabConfig) as Array<keyof typeof tabConfig>).map(key => (
                     <button
-                        onClick={() => setTargetSortBy(s => s === 'default' ? 'priority' : 'default')}
-                        className="text-xs text-cyan-300 hover:text-cyan-200 font-semibold px-3 py-1 rounded-full hover:bg-white/10 transition"
-                        aria-label={`Sort targets by ${targetSortBy === 'default' ? 'priority' : 'date'}`}
+                        key={key}
+                        onClick={() => setActiveTab(key)}
+                        className={`flex-1 p-2.5 text-xs sm:text-sm rounded-full font-bold transition-colors whitespace-nowrap flex items-center justify-center gap-2 ${
+                            activeTab === key
+                                ? 'bg-slate-700 text-white shadow-inner'
+                                : 'text-slate-400 hover:bg-slate-700/50 hover:text-white'
+                        }`}
                     >
-                        Sort by: {targetSortBy === 'default' ? 'Default' : 'Priority'}
+                        {tabConfig[key].icon}
+                        <span>{tabConfig[key].label}</span>
                     </button>
-                </div>
-                
-                {targetView === 'pending' && (
-                    <ul className="space-y-2 max-h-64 overflow-y-auto pr-2">
-                        {pendingTargets.map(target => (
-                            <TargetItem key={target.id} target={target} onUpdateTarget={onUpdateTarget} onDeleteTarget={onDeleteTarget} />
-                        ))}
-                        {pendingTargets.length === 0 && <p className="text-center text-white/60 p-4">No pending targets. Great job, or add a new one!</p>}
-                    </ul>
-                )}
-                {targetView === 'incomplete' && (
-                    <ul className="space-y-2 max-h-64 overflow-y-auto pr-2">
-                        {incompleteTargets.map(target => (
-                            <TargetItem key={target.id} target={target} onUpdateTarget={onUpdateTarget} onDeleteTarget={onDeleteTarget} />
-                        ))}
-                        {incompleteTargets.length === 0 && <p className="text-center text-white/60 p-4">
-                            {targetDateRange.start && targetDateRange.end ? 'No incomplete targets in this date range.' : 'No incomplete targets in the last 30 days.'}
-                        </p>}
-                    </ul>
-                )}
-                {targetView === 'completed' && (
-                     <ul className="space-y-2 max-h-64 overflow-y-auto pr-2">
-                        {completedTargets.map(target => (
-                            <TargetItem key={target.id} target={target} onUpdateTarget={onUpdateTarget} onDeleteTarget={onDeleteTarget} />
-                        ))}
-                        {completedTargets.length === 0 && <p className="text-center text-white/60 p-4">
-                            {targetDateRange.start && targetDateRange.end ? 'No completed targets in this date range.' : 'No targets completed in the last 30 days.'}
-                        </p>}
-                    </ul>
-                )}
+                ))}
+            </div>
 
-            </Panel>
-            
-            <CommitmentsPanel 
-                commitments={commitments}
-                onAdd={onAddCommitment}
-                onUpdate={onUpdateCommitment}
-                onDelete={onDeleteCommitment}
-                onSetCompletion={onSetCommitmentCompletion}
-                onMarkAsBroken={onMarkCommitmentBroken}
-            />
-            
-            <Panel title="🚀 Projects">
-                <p className="text-white/80 text-center text-sm mb-4">Group your tasks into larger projects to track overall progress.</p>
-                 <div className="bg-black/20 p-3 rounded-lg mb-4 space-y-2">
-                    <input type="text" value={newProjectName} onChange={e => setNewProjectName(e.target.value)} placeholder="New Project Name" className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50" />
-                    <textarea value={newProjectDescription} onChange={e => setNewProjectDescription(e.target.value)} placeholder="Project Description (Optional)" className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50" rows={2}></textarea>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                        <div>
-                            <label className="text-xs text-white/70 mb-1 flex items-center gap-1.5">
-                                Deadline
-                                <ExplanationTooltip title="Project Deadline" content="An optional due date for your project. The project's status will change to 'Due' if it's not completed by this date, reminding you to reassess." />
-                            </label>
-                            <input type="date" value={newProjectDeadline} onChange={e => setNewProjectDeadline(e.target.value)} className="bg-white/20 border border-white/30 rounded-lg p-3 text-white/80 w-full text-center" style={{colorScheme: 'dark'}} />
+            <div key={activeTab}>
+                {activeTab === 'overview' && (
+                    <div className="space-y-6 animate-fadeIn">
+                        {/* Core Goals */}
+                        <div className="bg-slate-800/50 rounded-xl p-4 sm:p-6 border border-slate-700/80">
+                             <h3 className="text-xl font-bold text-white text-center mb-2">My Core Goals</h3>
+                            <p className="text-white/80 text-center text-sm mb-4">Your guiding stars. What long-term ambitions are you working towards?</p>
+                            <div className="relative mb-4">
+                                <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none text-amber-300">
+                                    <StarIcon />
+                                </div>
+                                <input
+                                    type="text"
+                                    value={newGoal}
+                                    onChange={(e) => setNewGoal(e.target.value)}
+                                    onKeyPress={(e) => e.key === 'Enter' && handleAddGoal()}
+                                    placeholder="What's your next big goal?"
+                                    className="w-full bg-black/30 border-2 border-white/20 rounded-full py-3 pr-28 pl-12 text-white placeholder:text-white/50 focus:outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-400/50 transition-all"
+                                />
+                                <button onClick={handleAddGoal} className="absolute inset-y-1.5 right-1.5 px-6 rounded-full font-bold text-white transition-all duration-300 bg-gradient-to-br from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 hover:scale-105">
+                                    Add
+                                </button>
+                            </div>
+                             <div className="text-right mb-2">
+                                {hiddenGoalsCount > 0 && (
+                                    <button onClick={() => setShowArchivedGoals(s => !s)} className="text-xs text-cyan-300 hover:text-cyan-200 font-semibold px-3 py-1 rounded-full hover:bg-white/10 transition">
+                                        {showArchivedGoals ? 'Hide Archived' : `Show ${hiddenGoalsCount} Archived`}
+                                    </button>
+                                )}
+                            </div>
+                            <ul className="grid grid-cols-1 lg:grid-cols-2 gap-3 max-h-96 overflow-y-auto pr-2">
+                                {visibleGoals.map(goal => (
+                                    <GoalItem key={goal.id} goal={goal} onUpdateGoal={onUpdateGoal} onDeleteGoal={onDeleteGoal} onSetCompletion={onSetGoalCompletion} />
+                                ))}
+                                {goals.length === 0 && <p className="text-center text-white/60 p-4 col-span-1 lg:col-span-2">Set your first high-level goal to get started!</p>}
+                            </ul>
                         </div>
-                        <div>
-                            <label className="text-xs text-white/70 mb-1 flex items-center gap-1.5">
-                                Completion Criteria
-                                <ExplanationTooltip title="Completion Criteria" content="How is this project 'done'?<br/><br/>- <strong>Manual:</strong> You decide when it's complete.<br/>- <strong>Task Count:</strong> Automatically completes after a set number of linked tasks are finished.<br/>- <strong>Time Duration:</strong> Automatically completes after you've logged a certain number of focus minutes on linked tasks." />
-                            </label>
-                            <select value={criteriaType} onChange={e => setCriteriaType(e.target.value as any)} className="bg-white/20 border border-white/30 rounded-lg p-3 text-white focus:outline-none focus:bg-white/30 focus:border-white/50 w-full">
-                                <option value="manual" className="bg-gray-800">Manual Completion</option>
-                                <option value="task_count" className="bg-gray-800">Complete by Task Count</option>
-                                <option value="duration_minutes" className="bg-gray-800">Complete by Time Duration</option>
-                            </select>
+                        {/* Key Targets */}
+                         <div className="bg-slate-800/50 rounded-xl p-4 sm:p-6 border border-slate-700/80">
+                             <h3 className="text-xl font-bold text-white text-center mb-2">Key Targets</h3>
+                             <div className="text-center mb-4 flex justify-center items-center gap-2">
+                                <p className="text-white/80 text-sm">Specific, measurable outcomes with a deadline to keep you on track.</p>
+                                <ExplanationTooltip 
+                                    title="Goals vs. Targets"
+                                    content="A <strong>Target</strong> is a specific, measurable, and time-bound milestone (e.g., 'Finish Chapter 3 by Friday').<br/><br/>A <strong>Goal</strong> is a high-level, long-term ambition (e.g., 'Write a book').<br/><br/>Targets are the concrete steps to achieve your Goals."
+                                />
+                            </div>
+                            <div className="flex flex-col gap-2 mb-4">
+                                <div className="flex flex-col sm:flex-row gap-2">
+                                    <input
+                                        type="text"
+                                        value={newTarget}
+                                        onChange={(e) => setNewTarget(e.target.value)}
+                                        placeholder="Define a clear target..."
+                                        className="flex-grow bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50"
+                                    />
+                                    <input
+                                        type="date"
+                                        value={newDeadline}
+                                        onChange={(e) => setNewDeadline(e.target.value)}
+                                        className="bg-white/20 border border-white/30 rounded-lg p-3 text-white/80 text-center"
+                                        style={{colorScheme: 'dark'}}
+                                    />
+                                </div>
+                                <div className="flex flex-col sm:flex-row gap-2 justify-between items-center">
+                                    <PrioritySelector priority={newTargetPriority} setPriority={setNewTargetPriority} />
+                                    <button onClick={handleAddTarget} className="w-full sm:w-auto p-3 px-6 rounded-lg font-bold text-white transition hover:scale-105 bg-gradient-to-br from-blue-500 to-sky-600">Add Target</button>
+                                </div>
+                            </div>
+                            
+                            <div className="flex justify-center gap-2 mb-4 bg-black/20 p-1 rounded-full">
+                                <button onClick={() => setTargetView('pending')} className={`flex-1 p-2 text-sm rounded-full font-bold transition-colors ${targetView === 'pending' ? 'bg-white/20 text-white' : 'text-white/60 hover:bg-white/10'}`}>
+                                    Pending ({pendingTargets.length})
+                                </button>
+                                <button onClick={() => setTargetView('incomplete')} className={`flex-1 p-2 text-sm rounded-full font-bold transition-colors ${targetView === 'incomplete' ? 'bg-white/20 text-white' : 'text-white/60 hover:bg-white/10'}`}>
+                                    Incomplete ({targets.filter(t => t.status === 'incomplete').length})
+                                </button>
+                                <button onClick={() => setTargetView('completed')} className={`flex-1 p-2 text-sm rounded-full font-bold transition-colors ${targetView === 'completed' ? 'bg-white/20 text-white' : 'text-white/60 hover:bg-white/10'}`}>
+                                    Completed ({targets.filter(t => t.status === 'completed').length})
+                                </button>
+                            </div>
+
+                            <TargetFilterControls />
+
+                            <div className="flex justify-end mb-2 -mt-2">
+                                <button
+                                    onClick={() => setTargetSortBy(s => s === 'default' ? 'priority' : 'default')}
+                                    className="text-xs text-cyan-300 hover:text-cyan-200 font-semibold px-3 py-1 rounded-full hover:bg-white/10 transition"
+                                    aria-label={`Sort targets by ${targetSortBy === 'default' ? 'priority' : 'date'}`}
+                                >
+                                    Sort by: {targetSortBy === 'default' ? 'Default' : 'Priority'}
+                                </button>
+                            </div>
+                            
+                            {targetView === 'pending' && (
+                                <ul className="space-y-2 max-h-64 overflow-y-auto pr-2">
+                                    {pendingTargets.map(target => (
+                                        <TargetItem key={target.id} target={target} onUpdateTarget={onUpdateTarget} onDeleteTarget={onDeleteTarget} />
+                                    ))}
+                                    {pendingTargets.length === 0 && <p className="text-center text-white/60 p-4">No pending targets. Great job, or add a new one!</p>}
+                                </ul>
+                            )}
+                            {targetView === 'incomplete' && (
+                                <ul className="space-y-2 max-h-64 overflow-y-auto pr-2">
+                                    {incompleteTargets.map(target => (
+                                        <TargetItem key={target.id} target={target} onUpdateTarget={onUpdateTarget} onDeleteTarget={onDeleteTarget} />
+                                    ))}
+                                    {incompleteTargets.length === 0 && <p className="text-center text-white/60 p-4">
+                                        {targetDateRange.start && targetDateRange.end ? 'No incomplete targets in this date range.' : 'No incomplete targets in the last 30 days.'}
+                                    </p>}
+                                </ul>
+                            )}
+                            {targetView === 'completed' && (
+                                <ul className="space-y-2 max-h-64 overflow-y-auto pr-2">
+                                    {completedTargets.map(target => (
+                                        <TargetItem key={target.id} target={target} onUpdateTarget={onUpdateTarget} onDeleteTarget={onDeleteTarget} />
+                                    ))}
+                                    {completedTargets.length === 0 && <p className="text-center text-white/60 p-4">
+                                        {targetDateRange.start && targetDateRange.end ? 'No completed targets in this date range.' : 'No targets completed in the last 30 days.'}
+                                    </p>}
+                                </ul>
+                            )}
                         </div>
                     </div>
-                    {criteriaType !== 'manual' && (
-                        <input type="number" value={criteriaValue} onChange={e => setCriteriaValue(e.target.value)} placeholder={criteriaType === 'task_count' ? '# of tasks to complete' : 'Total minutes of focus'} className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50" />
-                    )}
-                    <div className="flex flex-col sm:flex-row gap-2 justify-between items-center pt-1">
-                         <div>
-                            <label className="text-xs text-white/70 mb-1 flex items-center gap-1.5">
-                                Priority
-                                <ExplanationTooltip title="Project Priority" content="Set a priority from 1 (Highest) to 4 (Lowest). This helps organize your projects list." />
-                            </label>
-                            <PrioritySelector priority={newProjectPriority} setPriority={setNewProjectPriority} />
+                )}
+                
+                {activeTab === 'projects' && (
+                     <div className="space-y-6 animate-fadeIn">
+                        <div className="flex justify-center gap-2 -mb-2 bg-slate-800/50 p-1 rounded-full max-w-sm mx-auto">
+                             <button onClick={() => setProjectSubTab('list')} className={`flex-1 p-2 text-sm rounded-full font-bold transition-colors ${projectSubTab === 'list' ? 'bg-white/20 text-white' : 'text-white/60 hover:bg-white/10'}`}>
+                                Project List
+                            </button>
+                             <button onClick={() => setProjectSubTab('analysis')} className={`flex-1 p-2 text-sm rounded-full font-bold transition-colors ${projectSubTab === 'analysis' ? 'bg-white/20 text-white' : 'text-white/60 hover:bg-white/10'}`}>
+                                Time Analysis
+                            </button>
                         </div>
-                        <button onClick={handleAddProject} className="w-full sm:w-auto p-3 rounded-lg font-bold text-white transition hover:scale-105 bg-gradient-to-br from-blue-500 to-sky-600">Add Project</button>
-                    </div>
-                </div>
-                
-                 <div className="flex justify-center gap-2 mb-4 bg-black/20 p-1 rounded-full">
-                    {(['active', 'completed', 'due'] as const).map(status => (
-                        <button key={status} onClick={() => setProjectStatusFilter(status)} className={`flex-1 p-2 text-sm rounded-full font-bold transition-colors ${projectStatusFilter === status ? 'bg-white/20 text-white' : 'text-white/60 hover:bg-white/10'}`}>
-                            {status.charAt(0).toUpperCase() + status.slice(1)} ({
-                                status === 'active' ? activeProjects.length :
-                                status === 'completed' ? projects.filter(p=>p.status === 'completed').length :
-                                projects.filter(p=>p.status === 'due').length
-                            })
-                        </button>
-                    ))}
-                </div>
 
-                <ProjectFilterControls />
-                
-                <div className="flex justify-end mb-2 -mt-2">
-                    <button
-                        onClick={() => setProjectSortBy(s => s === 'default' ? 'priority' : 'default')}
-                        className="text-xs text-cyan-300 hover:text-cyan-200 font-semibold px-3 py-1 rounded-full hover:bg-white/10 transition"
-                        aria-label={`Sort projects by ${projectSortBy === 'default' ? 'priority' : 'date'}`}
-                    >
-                        Sort by: {projectSortBy === 'default' ? 'Default' : 'Priority'}
-                    </button>
-                </div>
-                
-                <ul className="space-y-2 max-h-96 overflow-y-auto pr-2">
-                    {(
-                        projectStatusFilter === 'active' ? activeProjects :
-                        projectStatusFilter === 'completed' ? visibleCompletedProjects :
-                        visibleDueProjects
-                    ).map(project => (
-                        <li key={project.id}>
-                            <ProjectItem project={project} tasks={allTasks} onUpdateProject={onUpdateProject} onDeleteProject={onDeleteProject} />
-                        </li>
-                    ))}
-                    {(
-                        projectStatusFilter === 'active' ? activeProjects :
-                        projectStatusFilter === 'completed' ? visibleCompletedProjects :
-                        visibleDueProjects
-                    ).length === 0 && <p className="text-center text-white/60 p-4">No projects match the current filter.</p>}
-                </ul>
-            </Panel>
-            
-            {isLoadingStats ? <Spinner /> : (
-                <ProjectTimeAnalysisDashboard allProjects={projects} allTasks={allTasks} allHistory={allHistory} />
-            )}
+                        {projectSubTab === 'list' && (
+                             <div className="bg-slate-800/50 rounded-xl p-4 sm:p-6 mt-6 border border-slate-700/80">
+                                 <h3 className="text-xl font-bold text-white text-center mb-2">Projects</h3>
+                                <p className="text-white/80 text-center text-sm mb-4">Group your tasks into larger projects to track overall progress.</p>
+                                <div className="bg-black/20 p-3 rounded-lg mb-4 space-y-2">
+                                    <input type="text" value={newProjectName} onChange={e => setNewProjectName(e.target.value)} placeholder="New Project Name" className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50" />
+                                    <textarea value={newProjectDescription} onChange={e => setNewProjectDescription(e.target.value)} placeholder="Project Description (Optional)" className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50" rows={2}></textarea>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                        <div>
+                                            <label className="text-xs text-white/70 mb-1 flex items-center gap-1.5">
+                                                Deadline
+                                                <ExplanationTooltip title="Project Deadline" content="An optional due date for your project. The project's status will change to 'Due' if it's not completed by this date, reminding you to reassess." />
+                                            </label>
+                                            <input type="date" value={newProjectDeadline} onChange={e => setNewProjectDeadline(e.target.value)} className="bg-white/20 border border-white/30 rounded-lg p-3 text-white/80 w-full text-center" style={{colorScheme: 'dark'}} />
+                                        </div>
+                                        <div>
+                                            <label className="text-xs text-white/70 mb-1 flex items-center gap-1.5">
+                                                Completion Criteria
+                                                <ExplanationTooltip title="Completion Criteria" content="How is this project 'done'?<br/><br/>- <strong>Manual:</strong> You decide when it's complete.<br/>- <strong>Task Count:</strong> Automatically completes after a set number of linked tasks are finished.<br/>- <strong>Time Duration:</strong> Automatically completes after you've logged a certain number of focus minutes on linked tasks." />
+                                            </label>
+                                            <select value={criteriaType} onChange={e => setCriteriaType(e.target.value as any)} className="bg-white/20 border border-white/30 rounded-lg p-3 text-white focus:outline-none focus:bg-white/30 focus:border-white/50 w-full">
+                                                <option value="manual" className="bg-gray-800">Manual Completion</option>
+                                                <option value="task_count" className="bg-gray-800">Complete by Task Count</option>
+                                                <option value="duration_minutes" className="bg-gray-800">Complete by Time Duration</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    {criteriaType !== 'manual' && (
+                                        <input type="number" value={criteriaValue} onChange={e => setCriteriaValue(e.target.value)} placeholder={criteriaType === 'task_count' ? '# of tasks to complete' : 'Total minutes of focus'} className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50" />
+                                    )}
+                                    <div className="flex flex-col sm:flex-row gap-2 justify-between items-center pt-1">
+                                        <div>
+                                            <label className="text-xs text-white/70 mb-1 flex items-center gap-1.5">
+                                                Priority
+                                                <ExplanationTooltip title="Project Priority" content="Set a priority from 1 (Highest) to 4 (Lowest). This helps organize your projects list." />
+                                            </label>
+                                            <PrioritySelector priority={newProjectPriority} setPriority={setNewProjectPriority} />
+                                        </div>
+                                        <button onClick={handleAddProject} className="w-full sm:w-auto p-3 rounded-lg font-bold text-white transition hover:scale-105 bg-gradient-to-br from-blue-500 to-sky-600">Add Project</button>
+                                    </div>
+                                </div>
+                                
+                                <div className="flex justify-center gap-2 mb-4 bg-black/20 p-1 rounded-full">
+                                    {(['active', 'completed', 'due'] as const).map(status => (
+                                        <button key={status} onClick={() => setProjectStatusFilter(status)} className={`flex-1 p-2 text-sm rounded-full font-bold transition-colors ${projectStatusFilter === status ? 'bg-white/20 text-white' : 'text-white/60 hover:bg-white/10'}`}>
+                                            {status.charAt(0).toUpperCase() + status.slice(1)} ({
+                                                status === 'active' ? activeProjects.length :
+                                                status === 'completed' ? projects.filter(p=>p.status === 'completed').length :
+                                                projects.filter(p=>p.status === 'due').length
+                                            })
+                                        </button>
+                                    ))}
+                                </div>
+
+                                <ProjectFilterControls />
+                                
+                                <div className="flex justify-end mb-2 -mt-2">
+                                    <button
+                                        onClick={() => setProjectSortBy(s => s === 'default' ? 'priority' : 'default')}
+                                        className="text-xs text-cyan-300 hover:text-cyan-200 font-semibold px-3 py-1 rounded-full hover:bg-white/10 transition"
+                                        aria-label={`Sort projects by ${projectSortBy === 'default' ? 'priority' : 'date'}`}
+                                    >
+                                        Sort by: {projectSortBy === 'default' ? 'Default' : 'Priority'}
+                                    </button>
+                                </div>
+                                
+                                <ul className="space-y-2 max-h-96 overflow-y-auto pr-2">
+                                    {(
+                                        projectStatusFilter === 'active' ? activeProjects :
+                                        projectStatusFilter === 'completed' ? visibleCompletedProjects :
+                                        visibleDueProjects
+                                    ).map(project => (
+                                        <li key={project.id}>
+                                            <ProjectItem project={project} tasks={allTasks} onUpdateProject={onUpdateProject} onDeleteProject={onDeleteProject} />
+                                        </li>
+                                    ))}
+                                    {(
+                                        projectStatusFilter === 'active' ? activeProjects :
+                                        projectStatusFilter === 'completed' ? visibleCompletedProjects :
+                                        visibleDueProjects
+                                    ).length === 0 && <p className="text-center text-white/60 p-4">No projects match the current filter.</p>}
+                                </ul>
+                            </div>
+                        )}
+                        {projectSubTab === 'analysis' && (
+                            <div className="animate-fadeIn">
+                                {isLoadingStats ? <Spinner /> : (
+                                    <ProjectTimeAnalysisDashboard allProjects={projects} allTasks={allTasks} allHistory={allHistory} />
+                                )}
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {activeTab === 'commitments' && (
+                     <div className="animate-fadeIn">
+                        <CommitmentsPanel 
+                            commitments={commitments}
+                            onAdd={onAddCommitment}
+                            onUpdate={onUpdateCommitment}
+                            onDelete={onDeleteCommitment}
+                            onSetCompletion={onSetCommitmentCompletion}
+                            onMarkAsBroken={onMarkCommitmentBroken}
+                        />
+                    </div>
+                )}
+            </div>
         </div>
     );
 };

@@ -6,6 +6,8 @@ import { getTodayDateString } from '../utils/date';
 import AIInsightModal from './common/AIInsightModal';
 import { SparklesIcon, FilledStarIcon } from './common/Icons';
 
+type ActiveTab = 'dashboard' | 'tasks' | 'categories' | 'priorities';
+
 interface HistoryPanelProps {
     logs: DbDailyLog[];
     tasks: Task[];
@@ -21,6 +23,7 @@ interface HistoryPanelProps {
     consistencyLogs: DbDailyLog[];
     timelinePomodoroHistory: PomodoroHistory[];
     consistencyPomodoroHistory: PomodoroHistory[];
+    activeTab: ActiveTab;
 }
 
 const formatMinutesToHours = (minutes: number) => {
@@ -650,7 +653,7 @@ const CategoryTimelineChart = React.memo(({ tasks, history, historyRange, openIn
 });
 
 
-const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, projects, allProjects, targets, allTargets, historyRange, setHistoryRange, settings, pomodoroHistory, consistencyLogs, timelinePomodoroHistory, consistencyPomodoroHistory }) => {
+const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, projects, allProjects, targets, allTargets, historyRange, setHistoryRange, settings, pomodoroHistory, consistencyLogs, timelinePomodoroHistory, consistencyPomodoroHistory, activeTab }) => {
     const [selectedDay, setSelectedDay] = useState<string>(getTodayDateString());
     const [detailViewType, setDetailViewType] = useState<'day' | 'week' | 'month' | 'all'>('day');
     
@@ -1541,10 +1544,16 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
             </PieChart>
         </ResponsiveContainer>
     );
-
+    
+    const tabTitles: { [key in ActiveTab]: string } = {
+        dashboard: '📜 Dashboard',
+        tasks: '📊 Task Analysis',
+        categories: '📚 Category Analysis',
+        priorities: '🚦 Priority Analysis',
+    };
 
     return (
-        <Panel title="📜 History & Progress">
+        <Panel title={tabTitles[activeTab]}>
             {/* --- Section 1: Controls --- */}
             <div className="mb-6 space-y-2">
                 <h3 className="text-lg font-semibold text-white text-center">Select Date Range</h3>
@@ -1559,238 +1568,256 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                 </div>
             </div>
 
-            {/* --- Section 2: KPIs --- */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-white">
-                <StatCard title="Time & Tasks">
-                    <div className="grid grid-cols-2 gap-y-2 h-full content-center">
-                        <StatItem label="Days Shown" value={aggregatedData.dayDiff} />
-                        <StatItem label="Total Focus" value={formatMinutesToHours(aggregatedData.totalFocus)} />
-                        <StatItem label="Avg Daily Focus" value={formatMinutesToHours(aggregatedData.averageDailyFocus)} />
-                        <StatItem label="Tasks Done" value={`${aggregatedData.completedCount} / ${aggregatedData.totalTasks}`} />
+            {activeTab === 'dashboard' && (
+                <div key="dashboard" className="animate-fadeIn space-y-8">
+                    {/* KPIs */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-white">
+                        <StatCard title="Time & Tasks">
+                            <div className="grid grid-cols-2 gap-y-2 h-full content-center">
+                                <StatItem label="Days Shown" value={aggregatedData.dayDiff} />
+                                <StatItem label="Total Focus" value={formatMinutesToHours(aggregatedData.totalFocus)} />
+                                <StatItem label="Avg Daily Focus" value={formatMinutesToHours(aggregatedData.averageDailyFocus)} />
+                                <StatItem label="Tasks Done" value={`${aggregatedData.completedCount} / ${aggregatedData.totalTasks}`} />
+                            </div>
+                        </StatCard>
+                        <StatCard title="Task Progress">
+                            <div className="grid grid-cols-2 gap-y-2">
+                                <StatItem label="Tasks Done" value={aggregatedData.completedCount} />
+                                <StatItem label="Tasks in Range" value={aggregatedData.totalTasks} />
+                                <StatItem label="Poms Done" value={aggregatedData.pomsDone} />
+                                <StatItem label="Poms Est" value={aggregatedData.pomsEst} />
+                            </div>
+                        </StatCard>
+                        <StatCard title="Achievements">
+                            <div className="flex justify-around items-center h-full">
+                                <StatItem label="Projects Done" value={`${aggregatedData.projectsCompleted} / ${aggregatedData.totalProjectsInRange}`} />
+                                <StatItem label="Targets Met" value={`${aggregatedData.targetsCompleted} / ${aggregatedData.totalTargetsInRange}`} />
+                            </div>
+                        </StatCard>
                     </div>
-                </StatCard>
-                <StatCard title="Task Progress">
-                    <div className="grid grid-cols-2 gap-y-2">
-                        <StatItem label="Tasks Done" value={aggregatedData.completedCount} />
-                        <StatItem label="Tasks in Range" value={aggregatedData.totalTasks} />
-                        <StatItem label="Poms Done" value={aggregatedData.pomsDone} />
-                        <StatItem label="Poms Est" value={aggregatedData.pomsEst} />
-                    </div>
-                </StatCard>
-                 <StatCard title="Achievements">
-                     <div className="flex justify-around items-center h-full">
-                        <StatItem label="Projects Done" value={`${aggregatedData.projectsCompleted} / ${aggregatedData.totalProjectsInRange}`} />
-                        <StatItem label="Targets Met" value={`${aggregatedData.targetsCompleted} / ${aggregatedData.totalTargetsInRange}`} />
-                    </div>
-                </StatCard>
-            </div>
 
-            {/* --- Section 3: Consistency Tracker --- */}
-            <div className="mt-8">
-                <ConsistencyTracker
-                    logs={consistencyLogs}
-                    allTasks={allTasks}
-                    allProjects={allProjects}
-                    pomodoroHistory={consistencyPomodoroHistory}
-                    openInsightModal={openInsightModal}
-                    showCompletions={showCompletions}
-                    onToggleCompletions={() => setShowCompletions(v => !v)}
-                />
-            </div>
+                    {/* Consistency Tracker */}
+                    <ConsistencyTracker
+                        logs={consistencyLogs}
+                        allTasks={allTasks}
+                        allProjects={allProjects}
+                        pomodoroHistory={consistencyPomodoroHistory}
+                        openInsightModal={openInsightModal}
+                        showCompletions={showCompletions}
+                        onToggleCompletions={() => setShowCompletions(v => !v)}
+                    />
+                    
+                    {/* Daily Focus Chart */}
+                    <div>
+                        <div className="flex justify-center items-center gap-2 mb-2">
+                            <h3 className="text-lg font-semibold text-white text-center">Daily Focus Minutes</h3>
+                            <button onClick={() => openInsightModal('Daily Focus Minutes', aggregatedData.focusLineChartData, <div className="h-72">{dailyFocusChartElement}</div>)} className="p-1 text-purple-400 hover:text-purple-300 transition" title="Get AI Insights"><SparklesIcon /></button>
+                        </div>
+                        <div className="h-72">{dailyFocusChartElement}</div>
+                    </div>
 
-            {/* --- Section 4: Time-based Trends --- */}
-            <div className="mt-8 space-y-6">
-                <div>
-                    <div className="flex justify-center items-center gap-2 mb-2">
-                        <h3 className="text-lg font-semibold text-white text-center">Daily Focus Minutes</h3>
-                        <button onClick={() => openInsightModal('Daily Focus Minutes', aggregatedData.focusLineChartData, <div className="h-72">{dailyFocusChartElement}</div>)} className="p-1 text-purple-400 hover:text-purple-300 transition" title="Get AI Insights"><SparklesIcon /></button>
+                    {/* Overall Project Breakdown */}
+                    <div>
+                        <div className="flex justify-center items-center gap-2 mb-2">
+                            <h3 className="text-lg font-semibold text-white text-center">Overall Project Breakdown</h3>
+                            <button onClick={() => openInsightModal('Overall Project Breakdown', aggregatedData.projectBreakdownData, <div className="h-64">{projectBreakdownPieChartElement}</div>)} className="p-1 text-purple-400 hover:text-purple-300 transition" title="Get AI Insights"><SparklesIcon /></button>
+                        </div>
+                        <div className="h-64">{projectBreakdownPieChartElement}</div>
                     </div>
-                    <div className="h-72">{dailyFocusChartElement}</div>
                 </div>
-                 <div>
-                    <div className="flex justify-center items-center gap-2 mb-2">
-                        <h3 className="text-lg font-semibold text-white text-center">Priority Focus Distribution</h3>
-                        <button onClick={() => openInsightModal('Priority Focus Distribution', priorityFocusData, <div className="h-72">{priorityFocusChartElement}</div>)} className="p-1 text-purple-400 hover:text-purple-300 transition" title="Get AI Insights"><SparklesIcon /></button>
+            )}
+            
+            {activeTab === 'tasks' && (
+                <div key="tasks" className="animate-fadeIn space-y-8">
+                    {/* Daily Task Volume */}
+                    <div>
+                        <div className="flex justify-center items-center gap-2 mb-2">
+                            <h3 className="text-lg font-semibold text-white text-center">Daily Task Volume</h3>
+                            <button onClick={() => openInsightModal('Daily Task Volume', aggregatedData.dailyTaskVolumeChartData, <div className="h-72">{taskVolumeChartElement}</div>)} className="p-1 text-purple-400 hover:text-purple-300 transition" title="Get AI Insights"><SparklesIcon /></button>
+                        </div>
+                        <div className="h-72">{taskVolumeChartElement}</div>
                     </div>
-                    <div className="h-72">{priorityFocusChartElement}</div>
-                </div>
-                 <div>
-                    <div className="flex justify-center items-center gap-2 mb-2">
-                        <h3 className="text-lg font-semibold text-white text-center">Task Completion Rate by Priority</h3>
-                        <button onClick={() => openInsightModal('Task Completion Rate by Priority', taskCompletionByPriorityData, <div className="h-72">{completionRateChartElement}</div>)} className="p-1 text-purple-400 hover:text-purple-300 transition" title="Get AI Insights"><SparklesIcon /></button>
+                    {/* Daily Task Completion % */}
+                    <div>
+                        <div className="flex justify-center items-center gap-2 mb-2">
+                            <h3 className="text-lg font-semibold text-white text-center">Daily Task Completion %</h3>
+                            <button onClick={() => openInsightModal('Daily Task Completion %', aggregatedData.lineChartData, <div className="h-72">{dailyCompletionChartElement}</div>)} className="p-1 text-purple-400 hover:text-purple-300 transition" title="Get AI Insights"><SparklesIcon /></button>
+                        </div>
+                        <div className="h-72">{dailyCompletionChartElement}</div>
                     </div>
-                    <div className="h-72">{completionRateChartElement}</div>
-                </div>
-                <div>
-                    <div className="flex justify-center items-center gap-2 mb-2">
-                        <h3 className="text-lg font-semibold text-white text-center">Daily Task Volume</h3>
-                        <button onClick={() => openInsightModal('Daily Task Volume', aggregatedData.dailyTaskVolumeChartData, <div className="h-72">{taskVolumeChartElement}</div>)} className="p-1 text-purple-400 hover:text-purple-300 transition" title="Get AI Insights"><SparklesIcon /></button>
+                    {/* Overall Task Breakdown */}
+                    <div>
+                        <div className="flex justify-center items-center gap-2 mb-2">
+                            <h3 className="text-lg font-semibold text-white text-center">Overall Task Breakdown</h3>
+                            <button onClick={() => openInsightModal('Overall Task Breakdown', aggregatedData.taskBreakdownData, <div className="h-64">{taskBreakdownPieChartElement}</div>)} className="p-1 text-purple-400 hover:text-purple-300 transition" title="Get AI Insights"><SparklesIcon /></button>
+                        </div>
+                        <div className="h-64">{taskBreakdownPieChartElement}</div>
                     </div>
-                    <div className="h-72">{taskVolumeChartElement}</div>
-                </div>
-                <div>
-                    <div className="flex justify-center items-center gap-2 mb-2">
-                        <h3 className="text-lg font-semibold text-white text-center">Daily Task Completion %</h3>
-                        <button onClick={() => openInsightModal('Daily Task Completion %', aggregatedData.lineChartData, <div className="h-72">{dailyCompletionChartElement}</div>)} className="p-1 text-purple-400 hover:text-purple-300 transition" title="Get AI Insights"><SparklesIcon /></button>
-                    </div>
-                    <div className="h-72">{dailyCompletionChartElement}</div>
-                </div>
-                <div className="mt-8">
-                    <CategoryTimelineChart tasks={allTasks} history={timelinePomodoroHistory} historyRange={historyRange} openInsightModal={openInsightModal} />
-                </div>
-                
-                <div className="mt-8">
-                    <div className="flex justify-center items-center gap-2 mb-2">
-                        <h3 className="text-lg font-semibold text-white text-center">Category Priority Distribution</h3>
-                        <button onClick={() => openInsightModal('Category Priority Distribution', filteredCategoryPriorityData, <div className="h-96">{categoryPriorityChartElement}</div>)} className="p-1 text-purple-400 hover:text-purple-300 transition" title="Get AI Insights"><SparklesIcon /></button>
-                    </div>
-                    <div className="flex justify-center mb-4">
-                        <div className="relative" ref={categoryFilterRef}>
-                            <button onClick={() => setIsCategoryFilterOpen(o => !o)} className="bg-white/10 hover:bg-white/20 text-white font-semibold py-2 px-4 rounded-lg inline-flex items-center">
-                                <span>Filter Categories ({selectedCategories.length}/{categoryPriorityDistributionData.length})</span>
-                                <svg className="fill-current h-4 w-4 ml-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
-                            </button>
-                            {isCategoryFilterOpen && (
-                                <div className="absolute z-10 mt-2 w-64 bg-slate-800 border border-slate-700 rounded-lg shadow-xl right-0">
-                                    <ul className="max-h-60 overflow-y-auto p-2">
-                                        {categoryPriorityDistributionData.map(cat => (
-                                            <li key={cat.name}>
-                                                <label className="inline-flex items-center w-full p-2 rounded-md hover:bg-slate-700/50 cursor-pointer">
-                                                    <input
-                                                        type="checkbox"
-                                                        className="h-4 w-4 rounded bg-slate-600 border-slate-500 text-teal-400 focus:ring-teal-400/50"
-                                                        checked={selectedCategories.includes(cat.name)}
-                                                        onChange={() => handleCategorySelection(cat.name)}
-                                                    />
-                                                    <span className="ml-3 text-sm text-white">{cat.name}</span>
-                                                </label>
+                    {/* Detailed Drilldown */}
+                    <div className="mt-8">
+                        <h3 className="text-lg font-semibold text-white text-center mb-2">Detailed Breakdown</h3>
+                        <div className="flex justify-center gap-2 mb-4 bg-black/20 p-1 rounded-full max-w-lg mx-auto">
+                            {(['day', 'week', 'month', 'all'] as const).map(type => (
+                                <button 
+                                    key={type} 
+                                    onClick={() => setDetailViewType(type)} 
+                                    className={`flex-1 p-2 text-sm rounded-full font-bold transition-colors ${detailViewType === type ? 'bg-white/20 text-white' : 'text-white/60 hover:bg-white/10'}`}
+                                >
+                                    {type === 'day' ? 'Day' : type === 'week' ? 'Last 7 Days' : type === 'month' ? 'Last 30 Days' : 'Date Range'}
+                                </button>
+                            ))}
+                        </div>
+                        {detailViewType === 'day' && (
+                        <div className="flex gap-2 max-w-sm mx-auto">
+                            <input type="date" value={selectedDay} onChange={e => setSelectedDay(e.target.value)} className="bg-white/20 border border-white/30 rounded-lg p-2 text-white/80 w-full text-center" style={{colorScheme: 'dark'}} />
+                        </div>
+                        )}
+                        {detailedViewData ? (
+                            <div className="bg-black/20 p-3 mt-3 rounded-lg text-white text-sm space-y-1 max-w-lg mx-auto">
+                                <p><strong>{detailedViewData.startDate === detailedViewData.endDate ? 'Date' : 'Period'}:</strong> {detailedViewData.title}</p>
+                                <p><strong>Completed Tasks:</strong> {detailedViewData.completedTasksCount} / {detailedViewData.totalTasksCount}</p>
+                                <p><strong>Task Completion:</strong> {detailedViewData.completionPercentage}%</p>
+                                <p><strong>Total Focus Minutes:</strong> {detailedViewData.totalFocusMinutes}</p>
+                                <h4 className="font-bold pt-2">Tasks ({detailedViewData.tasks.length}):</h4>
+                                {detailedViewData.tasks.length > 0 ? (
+                                    <ul className='list-disc list-inside max-h-48 overflow-y-auto pr-2 space-y-1'>
+                                        {detailedViewData.tasks.sort((a,b) => a.due_date.localeCompare(b.due_date)).map(t => (
+                                            <li key={t.id} className={t.completed_at ? 'text-green-400' : 'text-amber-400'}>
+                                                <span className="font-mono text-xs">{t.due_date}:</span> {t.text} - {t.completed_at ? 'Completed' : 'Incomplete'}
                                             </li>
                                         ))}
                                     </ul>
+                                ) : <p className="text-white/60">No tasks were due in this period.</p>}
+                            </div>
+                        ) : (
+                            <div className="bg-black/20 p-3 mt-3 rounded-lg text-white/70 text-sm text-center max-w-lg mx-auto">
+                                {detailViewType === 'day' ? 'Select a day to see details.' : 'Loading data...'}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+            
+            {activeTab === 'categories' && (
+                <div key="categories" className="animate-fadeIn space-y-8">
+                    {/* Category Timeline Chart */}
+                     <CategoryTimelineChart tasks={allTasks} history={timelinePomodoroHistory} historyRange={historyRange} openInsightModal={openInsightModal} />
+                    
+                    {/* Category Priority Distribution */}
+                    <div>
+                        <div className="flex justify-center items-center gap-2 mb-2">
+                            <h3 className="text-lg font-semibold text-white text-center">Category Priority Distribution</h3>
+                            <button onClick={() => openInsightModal('Category Priority Distribution', filteredCategoryPriorityData, <div className="h-96">{categoryPriorityChartElement}</div>)} className="p-1 text-purple-400 hover:text-purple-300 transition" title="Get AI Insights"><SparklesIcon /></button>
+                        </div>
+                        <div className="flex justify-center mb-4">
+                            <div className="relative" ref={categoryFilterRef}>
+                                <button onClick={() => setIsCategoryFilterOpen(o => !o)} className="bg-white/10 hover:bg-white/20 text-white font-semibold py-2 px-4 rounded-lg inline-flex items-center">
+                                    <span>Filter Categories ({selectedCategories.length}/{categoryPriorityDistributionData.length})</span>
+                                    <svg className="fill-current h-4 w-4 ml-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
+                                </button>
+                                {isCategoryFilterOpen && (
+                                    <div className="absolute z-10 mt-2 w-64 bg-slate-800 border border-slate-700 rounded-lg shadow-xl right-0">
+                                        <ul className="max-h-60 overflow-y-auto p-2">
+                                            {categoryPriorityDistributionData.map(cat => (
+                                                <li key={cat.name}>
+                                                    <label className="inline-flex items-center w-full p-2 rounded-md hover:bg-slate-700/50 cursor-pointer">
+                                                        <input
+                                                            type="checkbox"
+                                                            className="h-4 w-4 rounded bg-slate-600 border-slate-500 text-teal-400 focus:ring-teal-400/50"
+                                                            checked={selectedCategories.includes(cat.name)}
+                                                            onChange={() => handleCategorySelection(cat.name)}
+                                                        />
+                                                        <span className="ml-3 text-sm text-white">{cat.name}</span>
+                                                    </label>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+        
+                        {filteredCategoryPriorityData.length > 0 ? (
+                            <div className="h-96">{categoryPriorityChartElement}</div>
+                        ) : (
+                            <div className="h-64 flex items-center justify-center text-white/60 bg-black/10 rounded-lg">
+                                <p>No categories selected or no data for this period.</p>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Category Completion Status */}
+                    <div>
+                        <div className="flex justify-center items-center gap-2 mb-2">
+                            <h3 className="text-lg font-semibold text-white text-center">Category Completion Status</h3>
+                            <button onClick={() => openInsightModal('Category Completion Status', filteredCategoryCompletionStatusData, <div className="h-96">{categoryCompletionStatusChartElement}</div>)} className="p-1 text-purple-400 hover:text-purple-300 transition" title="Get AI Insights"><SparklesIcon /></button>
+                        </div>
+                        {filteredCategoryCompletionStatusData.length > 0 ? (
+                            <div className="h-96">{categoryCompletionStatusChartElement}</div>
+                        ) : (
+                            <div className="h-64 flex items-center justify-center text-white/60 bg-black/10 rounded-lg">
+                                <p>No categories selected or no data for this period.</p>
+                            </div>
+                        )}
+                    </div>
+                    
+                    {/* Focus Time by Category (Bar) */}
+                    <div>
+                        <div className="flex justify-center items-center gap-2 mb-2">
+                            <h3 className="text-lg font-semibold text-white text-center">Focus Time by Category</h3>
+                            <button onClick={() => openInsightModal('Focus Time by Category', aggregatedData.tagAnalysisData, <div className="h-96">{focusByCategoryBarChartElement}</div>)} className="p-1 text-purple-400 hover:text-purple-300 transition" title="Get AI Insights"><SparklesIcon /></button>
+                        </div>
+                        <div className="h-96">
+                            {aggregatedData.tagAnalysisData.length > 0 ? (
+                                focusByCategoryBarChartElement
+                            ) : (
+                                <div className="flex items-center justify-center h-full text-white/60 bg-black/10 rounded-lg">
+                                    No tagged tasks with completed sessions in this date range.
                                 </div>
                             )}
                         </div>
                     </div>
-    
-                    {filteredCategoryPriorityData.length > 0 ? (
-                        <div className="h-96">{categoryPriorityChartElement}</div>
-                    ) : (
-                        <div className="h-64 flex items-center justify-center text-white/60 bg-black/10 rounded-lg">
-                            <p>No categories selected or no data for this period.</p>
+
+                    {/* Focus Distribution (Pie) */}
+                    <div>
+                        <div className="flex justify-center items-center gap-2 mb-2">
+                            <h3 className="text-lg font-semibold text-white text-center">Focus Distribution (%)</h3>
+                            <button onClick={() => openInsightModal('Focus Distribution (%)', pieChartData, <div className="h-96">{focusDistributionPieChartElement}</div>)} className="p-1 text-purple-400 hover:text-purple-300 transition" title="Get AI Insights"><SparklesIcon /></button>
                         </div>
-                    )}
-                </div>
-                <div className="mt-8">
-                    <div className="flex justify-center items-center gap-2 mb-2">
-                        <h3 className="text-lg font-semibold text-white text-center">Category Completion Status</h3>
-                        <button onClick={() => openInsightModal('Category Completion Status', filteredCategoryCompletionStatusData, <div className="h-96">{categoryCompletionStatusChartElement}</div>)} className="p-1 text-purple-400 hover:text-purple-300 transition" title="Get AI Insights"><SparklesIcon /></button>
-                    </div>
-                    {/* Category filter is shared from the chart above */}
-                    {filteredCategoryCompletionStatusData.length > 0 ? (
-                        <div className="h-96">{categoryCompletionStatusChartElement}</div>
-                    ) : (
-                        <div className="h-64 flex items-center justify-center text-white/60 bg-black/10 rounded-lg">
-                            <p>No categories selected or no data for this period.</p>
+                        <div className="h-96">
+                            {pieChartData.length > 0 ? (
+                                focusDistributionPieChartElement
+                            ) : (
+                                <div className="flex items-center justify-center h-full text-white/60 bg-black/10 rounded-lg">
+                                    No data to display.
+                                </div>
+                            )}
                         </div>
-                    )}
-                </div>
-            </div>
-
-            {/* --- Section 5: Focus Breakdown --- */}
-            <div className="mt-8 space-y-6">
-                <div>
-                    <div className="flex justify-center items-center gap-2 mb-2">
-                        <h3 className="text-lg font-semibold text-white text-center">Focus Time by Category</h3>
-                        <button onClick={() => openInsightModal('Focus Time by Category', aggregatedData.tagAnalysisData, <div className="h-96">{focusByCategoryBarChartElement}</div>)} className="p-1 text-purple-400 hover:text-purple-300 transition" title="Get AI Insights"><SparklesIcon /></button>
-                    </div>
-                    <div className="h-96">
-                        {aggregatedData.tagAnalysisData.length > 0 ? (
-                            focusByCategoryBarChartElement
-                        ) : (
-                            <div className="flex items-center justify-center h-full text-white/60 bg-black/10 rounded-lg">
-                                No tagged tasks with completed sessions in this date range.
-                            </div>
-                        )}
                     </div>
                 </div>
-                <div>
-                     <div className="flex justify-center items-center gap-2 mb-2">
-                        <h3 className="text-lg font-semibold text-white text-center">Focus Distribution (%)</h3>
-                        <button onClick={() => openInsightModal('Focus Distribution (%)', pieChartData, <div className="h-96">{focusDistributionPieChartElement}</div>)} className="p-1 text-purple-400 hover:text-purple-300 transition" title="Get AI Insights"><SparklesIcon /></button>
-                    </div>
-                    <div className="h-96">
-                         {pieChartData.length > 0 ? (
-                            focusDistributionPieChartElement
-                        ) : (
-                            <div className="flex items-center justify-center h-full text-white/60 bg-black/10 rounded-lg">
-                                No data to display.
-                            </div>
-                        )}
-                    </div>
-                </div>
-            </div>
-
-            {/* --- Section 7: Overall Stats --- */}
-            <div className="mt-8 space-y-6">
-                 <div>
-                    <div className="flex justify-center items-center gap-2 mb-2">
-                        <h3 className="text-lg font-semibold text-white text-center">Overall Task Breakdown</h3>
-                        <button onClick={() => openInsightModal('Overall Task Breakdown', aggregatedData.taskBreakdownData, <div className="h-64">{taskBreakdownPieChartElement}</div>)} className="p-1 text-purple-400 hover:text-purple-300 transition" title="Get AI Insights"><SparklesIcon /></button>
-                    </div>
-                    <div className="h-64">{taskBreakdownPieChartElement}</div>
-                </div>
-                 <div>
-                    <div className="flex justify-center items-center gap-2 mb-2">
-                        <h3 className="text-lg font-semibold text-white text-center">Overall Project Breakdown</h3>
-                        <button onClick={() => openInsightModal('Overall Project Breakdown', aggregatedData.projectBreakdownData, <div className="h-64">{projectBreakdownPieChartElement}</div>)} className="p-1 text-purple-400 hover:text-purple-300 transition" title="Get AI Insights"><SparklesIcon /></button>
-                    </div>
-                    <div className="h-64">{projectBreakdownPieChartElement}</div>
-                </div>
-            </div>
-
-            {/* --- Section 8: Detailed Drill-down --- */}
-            <div className="mt-8">
-                <h3 className="text-lg font-semibold text-white text-center mb-2">Detailed Breakdown</h3>
-                <div className="flex justify-center gap-2 mb-4 bg-black/20 p-1 rounded-full max-w-lg mx-auto">
-                    {(['day', 'week', 'month', 'all'] as const).map(type => (
-                        <button 
-                            key={type} 
-                            onClick={() => setDetailViewType(type)} 
-                            className={`flex-1 p-2 text-sm rounded-full font-bold transition-colors ${detailViewType === type ? 'bg-white/20 text-white' : 'text-white/60 hover:bg-white/10'}`}
-                        >
-                            {type === 'day' ? 'Day' : type === 'week' ? 'Last 7 Days' : type === 'month' ? 'Last 30 Days' : 'Date Range'}
-                        </button>
-                    ))}
-                </div>
-                {detailViewType === 'day' && (
-                  <div className="flex gap-2 max-w-sm mx-auto">
-                      <input type="date" value={selectedDay} onChange={e => setSelectedDay(e.target.value)} className="bg-white/20 border border-white/30 rounded-lg p-2 text-white/80 w-full text-center" style={{colorScheme: 'dark'}} />
-                  </div>
-                )}
-                {detailedViewData ? (
-                    <div className="bg-black/20 p-3 mt-3 rounded-lg text-white text-sm space-y-1 max-w-lg mx-auto">
-                        <p><strong>{detailedViewData.startDate === detailedViewData.endDate ? 'Date' : 'Period'}:</strong> {detailedViewData.title}</p>
-                        <p><strong>Completed Tasks:</strong> {detailedViewData.completedTasksCount} / {detailedViewData.totalTasksCount}</p>
-                        <p><strong>Task Completion:</strong> {detailedViewData.completionPercentage}%</p>
-                        <p><strong>Total Focus Minutes:</strong> {detailedViewData.totalFocusMinutes}</p>
-                        <h4 className="font-bold pt-2">Tasks ({detailedViewData.tasks.length}):</h4>
-                         {detailedViewData.tasks.length > 0 ? (
-                            <ul className='list-disc list-inside max-h-48 overflow-y-auto pr-2 space-y-1'>
-                                {detailedViewData.tasks.sort((a,b) => a.due_date.localeCompare(b.due_date)).map(t => (
-                                    <li key={t.id} className={t.completed_at ? 'text-green-400' : 'text-amber-400'}>
-                                        <span className="font-mono text-xs">{t.due_date}:</span> {t.text} - {t.completed_at ? 'Completed' : 'Incomplete'}
-                                    </li>
-                                ))}
-                            </ul>
-                        ) : <p className="text-white/60">No tasks were due in this period.</p>}
-                    </div>
-                ) : (
-                    <div className="bg-black/20 p-3 mt-3 rounded-lg text-white/70 text-sm text-center max-w-lg mx-auto">
-                         {detailViewType === 'day' ? 'Select a day to see details.' : 'Loading data...'}
-                    </div>
-                )}
-            </div>
+            )}
             
+            {activeTab === 'priorities' && (
+                <div key="priorities" className="animate-fadeIn space-y-8">
+                     {/* Priority Focus Distribution */}
+                     <div>
+                        <div className="flex justify-center items-center gap-2 mb-2">
+                            <h3 className="text-lg font-semibold text-white text-center">Priority Focus Distribution</h3>
+                            <button onClick={() => openInsightModal('Priority Focus Distribution', priorityFocusData, <div className="h-72">{priorityFocusChartElement}</div>)} className="p-1 text-purple-400 hover:text-purple-300 transition" title="Get AI Insights"><SparklesIcon /></button>
+                        </div>
+                        <div className="h-72">{priorityFocusChartElement}</div>
+                    </div>
+                    {/* Task Completion Rate by Priority */}
+                    <div>
+                        <div className="flex justify-center items-center gap-2 mb-2">
+                            <h3 className="text-lg font-semibold text-white text-center">Task Completion Rate by Priority</h3>
+                            <button onClick={() => openInsightModal('Task Completion Rate by Priority', taskCompletionByPriorityData, <div className="h-72">{completionRateChartElement}</div>)} className="p-1 text-purple-400 hover:text-purple-300 transition" title="Get AI Insights"><SparklesIcon /></button>
+                        </div>
+                        <div className="h-72">{completionRateChartElement}</div>
+                    </div>
+                </div>
+            )}
+
             {modalState && (
                 <AIInsightModal
                     isOpen={modalState.isOpen}

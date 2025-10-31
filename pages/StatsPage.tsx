@@ -24,6 +24,7 @@ const StatsPage: React.FC = () => {
     const [consistencyPomodoroHistory, setConsistencyPomodoroHistory] = useState<PomodoroHistory[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [activeTab, setActiveTab] = useState<'dashboard' | 'tasks' | 'categories' | 'priorities'>('dashboard');
 
     const fetchData = useCallback(async (start: string, end: string) => {
         setIsLoading(true);
@@ -81,6 +82,13 @@ const StatsPage: React.FC = () => {
     useEffect(() => {
         fetchData(historyRange.start, historyRange.end);
     }, [historyRange, fetchData]);
+
+    const tabs = [
+        { key: 'dashboard', label: 'Dashboard' },
+        { key: 'tasks', label: 'Tasks' },
+        { key: 'categories', label: 'Categories' },
+        { key: 'priorities', label: 'Priorities' },
+    ];
     
     if (isLoading) {
         return <div className="flex justify-center items-center h-64"><Spinner /></div>;
@@ -91,22 +99,42 @@ const StatsPage: React.FC = () => {
     }
 
     return (
-        <HistoryPanel
-            logs={logs}
-            tasks={tasks}
-            projects={projects}
-            allProjects={allProjects}
-            targets={targets}
-            allTargets={allTargets}
-            allTasks={allTasks}
-            historyRange={historyRange}
-            setHistoryRange={setHistoryRange}
-            settings={settings}
-            pomodoroHistory={pomodoroHistory}
-            consistencyLogs={consistencyLogs}
-            timelinePomodoroHistory={timelinePomodoroHistory}
-            consistencyPomodoroHistory={consistencyPomodoroHistory}
-        />
+        <div>
+            <div className="mb-4">
+                <div className="flex justify-center gap-1 sm:gap-2 bg-slate-800/50 p-1 rounded-full max-w-xl mx-auto">
+                    {tabs.map(tab => (
+                        <button
+                            key={tab.key}
+                            onClick={() => setActiveTab(tab.key as any)}
+                            className={`flex-1 p-2 text-xs sm:text-sm rounded-full font-bold transition-colors whitespace-nowrap ${
+                                activeTab === tab.key
+                                    ? 'bg-slate-700 text-white shadow-inner'
+                                    : 'text-slate-400 hover:bg-slate-700/50 hover:text-white'
+                            }`}
+                        >
+                            {tab.label}
+                        </button>
+                    ))}
+                </div>
+            </div>
+            <HistoryPanel
+                logs={logs}
+                tasks={tasks}
+                projects={projects}
+                allProjects={allProjects}
+                targets={targets}
+                allTargets={allTargets}
+                allTasks={allTasks}
+                historyRange={historyRange}
+                setHistoryRange={setHistoryRange}
+                settings={settings}
+                pomodoroHistory={pomodoroHistory}
+                consistencyLogs={consistencyLogs}
+                timelinePomodoroHistory={timelinePomodoroHistory}
+                consistencyPomodoroHistory={consistencyPomodoroHistory}
+                activeTab={activeTab}
+            />
+        </div>
     );
 };
 
