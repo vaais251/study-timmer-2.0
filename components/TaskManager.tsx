@@ -4,6 +4,7 @@ import Panel from './common/Panel';
 import { PostponeIcon, DuplicateIcon, MoreVerticalIcon, UndoIcon, EditIcon, BringForwardIcon, CalendarIcon } from './common/Icons';
 import { getTodayDateString } from '../utils/date';
 import PrioritySelector from './common/PrioritySelector';
+import ExplanationTooltip from './common/ExplanationTooltip';
 
 interface TaskSettingsDropdownProps {
     task: Task;
@@ -333,56 +334,72 @@ const TaskInputGroup: React.FC<TaskInputGroupProps> = ({ onAddTask, placeholder,
     };
 
     return (
-        <div className="flex flex-col gap-2 mb-4">
-            <div className="flex flex-col sm:flex-row flex-wrap gap-2">
-                <input 
-                    type="text" 
-                    value={text}
-                    onChange={(e) => setText(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && handleAdd()}
-                    placeholder={placeholder}
-                    className="flex-grow bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50"
-                />
-                <input 
-                    type="number"
-                    max="10"
-                    value={poms}
-                    onChange={(e) => setPoms(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && handleAdd()}
-                    placeholder="Poms"
-                    title="Number of Pomodoros"
-                    className="w-full sm:w-20 text-center bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50 disabled:opacity-50"
-                    disabled={isStopwatch}
-                />
+        <div className="flex flex-col gap-3 mb-4">
+            <input 
+                type="text" 
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && handleAdd()}
+                placeholder={placeholder}
+                className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50"
+            />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                    <label className="text-xs text-white/70 mb-1 flex items-center gap-1.5">
+                        Project
+                        <ExplanationTooltip title="Projects" content="Assign this task to a larger project to track progress towards a bigger goal." />
+                    </label>
+                    <select value={selectedProject} onChange={handleProjectChange} className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white focus:outline-none focus:bg-white/30 focus:border-white/50">
+                        <option value="none" className="bg-gray-800">No Project</option>
+                        {activeProjects.map(p => <option key={p.id} value={p.id} className="bg-gray-800">{p.name}</option>)}
+                        <option value="new" className="text-blue-300 bg-gray-800">-- Create New Project --</option>
+                    </select>
+                </div>
+                 <div>
+                     <label className="text-xs text-white/70 mb-1 flex items-center gap-1.5">
+                        Tags
+                        <ExplanationTooltip title="Tags" content="Add comma-separated tags (e.g., 'coding', 'research') to categorize your work. This powers the Mastery Tracker and helps you see where your time goes." />
+                    </label>
+                    <input 
+                        type="text"
+                        value={tags}
+                        onChange={(e) => setTags(e.target.value)}
+                        placeholder="e.g., coding, research"
+                        className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50"
+                    />
+                </div>
             </div>
-            <div className="flex flex-col sm:flex-row flex-wrap gap-2">
-                 <select value={selectedProject} onChange={handleProjectChange} className="flex-grow bg-white/20 border border-white/30 rounded-lg p-3 text-white focus:outline-none focus:bg-white/30 focus:border-white/50">
-                    <option value="none" className="bg-gray-800">No Project</option>
-                    {activeProjects.map(p => <option key={p.id} value={p.id} className="bg-gray-800">{p.name}</option>)}
-                    <option value="new" className="text-blue-300 bg-gray-800">-- Create New Project --</option>
-                </select>
-                <input 
-                    type="text"
-                    value={tags}
-                    onChange={(e) => setTags(e.target.value)}
-                    placeholder="Tags (comma-separated)"
-                    className="flex-grow bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50"
-                />
-                 {isPlanning && (
+            {isPlanning && (
+                <div>
+                    <label className="text-xs text-white/70 mb-1">Due Date</label>
                     <input 
                         type="date"
                         value={dueDate}
                         min={getTomorrow()}
                         onChange={e => setDueDate(e.target.value)}
-                        className="bg-white/20 border border-white/30 rounded-lg p-3 text-white/80 focus:outline-none focus:bg-white/30 focus:border-white/50 text-center"
+                        className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white/80 focus:outline-none focus:bg-white/30 focus:border-white/50 text-center"
                         style={{colorScheme: 'dark'}}
                     />
-                 )}
-            </div>
-             <div className="flex flex-col sm:flex-row flex-wrap gap-2 justify-between">
-                <div className="flex items-center gap-4">
-                    <PrioritySelector priority={priority} setPriority={setPriority} />
-                    <label className="flex items-center gap-2 text-white/80 cursor-pointer text-sm">
+                </div>
+            )}
+            <div className="flex flex-col sm:flex-row gap-4 justify-between items-center sm:items-end">
+                <div className="flex items-end gap-4">
+                    <div>
+                        <label className="text-xs text-white/70 mb-1 flex items-center gap-1.5">
+                            Poms
+                            <ExplanationTooltip title="What are 'Poms'?" content="Stands for Pomodoro sessions. Estimate how many focus sessions (e.g., 25 minutes) this task will take. This is for planning and tracking your effort." />
+                        </label>
+                        <input 
+                            type="number"
+                            max="10"
+                            min="1"
+                            value={poms}
+                            onChange={(e) => setPoms(e.target.value)}
+                            className="w-20 text-center bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50 disabled:opacity-50"
+                            disabled={isStopwatch}
+                        />
+                    </div>
+                     <label className="flex items-center gap-2 text-white/80 cursor-pointer text-sm pb-2">
                         <input
                             type="checkbox"
                             checked={isStopwatch}
@@ -390,10 +407,20 @@ const TaskInputGroup: React.FC<TaskInputGroupProps> = ({ onAddTask, placeholder,
                             className="h-4 w-4 rounded bg-slate-600 border-slate-500 text-teal-400 focus:ring-teal-400/50"
                         />
                         Stopwatch
+                        <ExplanationTooltip title="Stopwatch Mode" content="For open-ended tasks where you don't know the duration. The timer will count up. Your total focus time is logged when you manually complete the task." />
                     </label>
                 </div>
-                <button onClick={handleAdd} className={`p-3 sm:px-4 rounded-lg font-bold text-white transition hover:scale-105 ${buttonClass}`}>{buttonText}</button>
-             </div>
+                 <div className="flex items-end gap-3">
+                     <div>
+                         <label className="text-xs text-white/70 mb-1 flex items-center gap-1.5">
+                            Priority
+                            <ExplanationTooltip title="Task Priority" content="Set a priority from 1 (Highest) to 4 (Lowest). This helps you decide what to work on next and can be used for sorting your task list." />
+                        </label>
+                        <PrioritySelector priority={priority} setPriority={setPriority} />
+                    </div>
+                    <button onClick={handleAdd} className={`self-end p-3 sm:px-4 rounded-lg font-bold text-white transition hover:scale-105 ${buttonClass}`}>{buttonText}</button>
+                </div>
+            </div>
         </div>
     );
 };

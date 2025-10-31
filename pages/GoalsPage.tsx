@@ -6,6 +6,7 @@ import * as dbService from '../services/dbService';
 import Spinner from '../components/common/Spinner';
 import { getTodayDateString, getMonthStartDateString } from '../utils/date';
 import PrioritySelector from '../components/common/PrioritySelector';
+import ExplanationTooltip from '../components/common/ExplanationTooltip';
 
 const getDaysAgo = (days: number): string => {
     const date = new Date();
@@ -883,7 +884,13 @@ const CommitmentsPanel: React.FC<{
     
     return (
         <Panel title="💪 My Commitments">
-            <p className="text-white/80 text-center text-sm mb-4">What will you hold yourself accountable for? Commitments have a 2-hour grace period for edits, then lock for reflection.</p>
+            <div className="text-center mb-4 flex justify-center items-center gap-2">
+                <p className="text-white/80 text-sm">What will you hold yourself accountable for?</p>
+                 <ExplanationTooltip 
+                    title="About Commitments"
+                    content="Commitments are promises to yourself. They have a <strong>2-hour 'grace period'</strong> for edits, after which they lock to encourage reflection.<br/><br/>- After locking, you can mark a commitment as 'Completed' or 'Broken'.<br/>- If a due date is set, it completes automatically after it passes.<br/>- If no due date, you can manually complete it after one month."
+                />
+            </div>
             <div className="space-y-2 mb-4">
                 <div className="relative">
                     <input
@@ -1309,7 +1316,13 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
             </Panel>
 
             <Panel title="🎯 Key Targets">
-                <p className="text-white/80 text-center text-sm mb-4">Specific, measurable outcomes with a deadline to keep you on track.</p>
+                <div className="text-center mb-4 flex justify-center items-center gap-2">
+                    <p className="text-white/80 text-sm">Specific, measurable outcomes with a deadline to keep you on track.</p>
+                    <ExplanationTooltip 
+                        title="Goals vs. Targets"
+                        content="A <strong>Target</strong> is a specific, measurable, and time-bound milestone (e.g., 'Finish Chapter 3 by Friday').<br/><br/>A <strong>Goal</strong> is a high-level, long-term ambition (e.g., 'Write a book').<br/><br/>Targets are the concrete steps to achieve your Goals."
+                    />
+                </div>
                 <div className="flex flex-col gap-2 mb-4">
                     <div className="flex flex-col sm:flex-row gap-2">
                         <input
@@ -1403,18 +1416,36 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
                     <input type="text" value={newProjectName} onChange={e => setNewProjectName(e.target.value)} placeholder="New Project Name" className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50" />
                     <textarea value={newProjectDescription} onChange={e => setNewProjectDescription(e.target.value)} placeholder="Project Description (Optional)" className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50" rows={2}></textarea>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                        <input type="date" value={newProjectDeadline} onChange={e => setNewProjectDeadline(e.target.value)} className="bg-white/20 border border-white/30 rounded-lg p-3 text-white/80 w-full text-center" style={{colorScheme: 'dark'}} />
-                        <select value={criteriaType} onChange={e => setCriteriaType(e.target.value as any)} className="bg-white/20 border border-white/30 rounded-lg p-3 text-white focus:outline-none focus:bg-white/30 focus:border-white/50 w-full">
-                            <option value="manual" className="bg-gray-800">Manual Completion</option>
-                            <option value="task_count" className="bg-gray-800">Complete by Task Count</option>
-                            <option value="duration_minutes" className="bg-gray-800">Complete by Time Duration</option>
-                        </select>
+                        <div>
+                            <label className="text-xs text-white/70 mb-1 flex items-center gap-1.5">
+                                Deadline
+                                <ExplanationTooltip title="Project Deadline" content="An optional due date for your project. The project's status will change to 'Due' if it's not completed by this date, reminding you to reassess." />
+                            </label>
+                            <input type="date" value={newProjectDeadline} onChange={e => setNewProjectDeadline(e.target.value)} className="bg-white/20 border border-white/30 rounded-lg p-3 text-white/80 w-full text-center" style={{colorScheme: 'dark'}} />
+                        </div>
+                        <div>
+                            <label className="text-xs text-white/70 mb-1 flex items-center gap-1.5">
+                                Completion Criteria
+                                <ExplanationTooltip title="Completion Criteria" content="How is this project 'done'?<br/><br/>- <strong>Manual:</strong> You decide when it's complete.<br/>- <strong>Task Count:</strong> Automatically completes after a set number of linked tasks are finished.<br/>- <strong>Time Duration:</strong> Automatically completes after you've logged a certain number of focus minutes on linked tasks." />
+                            </label>
+                            <select value={criteriaType} onChange={e => setCriteriaType(e.target.value as any)} className="bg-white/20 border border-white/30 rounded-lg p-3 text-white focus:outline-none focus:bg-white/30 focus:border-white/50 w-full">
+                                <option value="manual" className="bg-gray-800">Manual Completion</option>
+                                <option value="task_count" className="bg-gray-800">Complete by Task Count</option>
+                                <option value="duration_minutes" className="bg-gray-800">Complete by Time Duration</option>
+                            </select>
+                        </div>
                     </div>
                     {criteriaType !== 'manual' && (
                         <input type="number" value={criteriaValue} onChange={e => setCriteriaValue(e.target.value)} placeholder={criteriaType === 'task_count' ? '# of tasks to complete' : 'Total minutes of focus'} className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50" />
                     )}
                     <div className="flex flex-col sm:flex-row gap-2 justify-between items-center pt-1">
-                        <PrioritySelector priority={newProjectPriority} setPriority={setNewProjectPriority} />
+                         <div>
+                            <label className="text-xs text-white/70 mb-1 flex items-center gap-1.5">
+                                Priority
+                                <ExplanationTooltip title="Project Priority" content="Set a priority from 1 (Highest) to 4 (Lowest). This helps organize your projects list." />
+                            </label>
+                            <PrioritySelector priority={newProjectPriority} setPriority={setNewProjectPriority} />
+                        </div>
                         <button onClick={handleAddProject} className="w-full sm:w-auto p-3 rounded-lg font-bold text-white transition hover:scale-105 bg-gradient-to-br from-blue-500 to-sky-600">Add Project</button>
                     </div>
                 </div>
