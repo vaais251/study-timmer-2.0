@@ -942,6 +942,52 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
         return categoryPriorityDistributionData.filter(d => selectedCategories.includes(d.name));
     }, [categoryPriorityDistributionData, selectedCategories]);
 
+    const [visibleCompletionStatusForDistribution, setVisibleCompletionStatusForDistribution] = useState({
+        completed: true,
+        incomplete: true,
+    });
+
+    const handleCompletionStatusDistributionLegendClick = (o: any) => {
+        const { dataKey } = o;
+        if (dataKey in visibleCompletionStatusForDistribution) {
+            setVisibleCompletionStatusForDistribution(prev => ({ ...prev, [dataKey as keyof typeof prev]: !prev[dataKey as keyof typeof prev] }));
+        }
+    };
+
+    const categoryCompletionStatusData = useMemo(() => {
+        const categoryMap = new Map<string, { name: string, completed: number, incomplete: number }>();
+
+        tasks.forEach(task => {
+            if (task.tags && task.tags.length > 0) {
+                task.tags.forEach(tag => {
+                    const normalizedTag = tag.trim().toLowerCase();
+                    if (normalizedTag) {
+                        const displayName = normalizedTag.charAt(0).toUpperCase() + normalizedTag.slice(1);
+                        if (!categoryMap.has(normalizedTag)) {
+                            categoryMap.set(normalizedTag, { name: displayName, completed: 0, incomplete: 0 });
+                        }
+                        const categoryData = categoryMap.get(normalizedTag)!;
+                        if (task.completed_at) {
+                            categoryData.completed++;
+                        } else {
+                            categoryData.incomplete++;
+                        }
+                    }
+                });
+            }
+        });
+
+        return Array.from(categoryMap.values()).sort((a, b) => {
+            const totalA = a.completed + a.incomplete;
+            const totalB = b.completed + b.incomplete;
+            return totalB - totalA;
+        });
+    }, [tasks]);
+
+    const filteredCategoryCompletionStatusData = useMemo(() => {
+        return categoryCompletionStatusData.filter(d => selectedCategories.includes(d.name));
+    }, [categoryCompletionStatusData, selectedCategories]);
+
 
     const detailedViewData = useMemo(() => {
         const today = getTodayDateString();
@@ -1252,6 +1298,27 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
         </ResponsiveContainer>
     );
 
+    const categoryCompletionStatusChartElement = (
+        <ResponsiveContainer width="100%" height="100%">
+            <BarChart
+                data={filteredCategoryCompletionStatusData}
+                margin={{ top: 5, right: 20, left: -10, bottom: 5 }}
+            >
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.2)" />
+                <XAxis dataKey="name" stroke="rgba(255,255,255,0.7)" tick={{ fontSize: 10 }} angle={-45} textAnchor="end" height={60} interval={0} />
+                <YAxis stroke="rgba(255,255,255,0.7)" allowDecimals={false} />
+                <Tooltip
+                    contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }}
+                    itemStyle={{ color: 'white' }}
+                    labelStyle={{ color: 'white', fontWeight: 'bold' }}
+                />
+                <Legend wrapperStyle={{fontSize: "12px", cursor: 'pointer'}} onClick={handleCompletionStatusDistributionLegendClick}/>
+                <Bar dataKey="completed" stackId="a" fill="#34D399" name="Completed" hide={!visibleCompletionStatusForDistribution.completed} />
+                <Bar dataKey="incomplete" stackId="a" fill="#F87171" name="Incomplete" hide={!visibleCompletionStatusForDistribution.incomplete} />
+            </BarChart>
+        </ResponsiveContainer>
+    );
+
     const focusByCategoryBarChartElement = (
         <ResponsiveContainer width="100%" height="100%">
             <BarChart
@@ -1463,6 +1530,20 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
     
                     {filteredCategoryPriorityData.length > 0 ? (
                         <div className="h-96">{categoryPriorityChartElement}</div>
+                    ) : (
+                        <div className="h-64 flex items-center justify-center text-white/60 bg-black/10 rounded-lg">
+                            <p>No categories selected or no data for this period.</p>
+                        </div>
+                    )}
+                </div>
+                <div className="mt-8">
+                    <div className="flex justify-center items-center gap-2 mb-2">
+                        <h3 className="text-lg font-semibold text-white text-center">Category Completion Status</h3>
+                        <button onClick={() => openInsightModal('Category Completion Status', filteredCategoryCompletionStatusData, <div className="h-96">{categoryCompletionStatusChartElement}</div>)} className="p-1 text-purple-400 hover:text-purple-300 transition" title="Get AI Insights"><SparklesIcon /></button>
+                    </div>
+                    {/* Category filter is shared from the chart above */}
+                    {filteredCategoryCompletionStatusData.length > 0 ? (
+                        <div className="h-96">{categoryCompletionStatusChartElement}</div>
                     ) : (
                         <div className="h-64 flex items-center justify-center text-white/60 bg-black/10 rounded-lg">
                             <p>No categories selected or no data for this period.</p>
