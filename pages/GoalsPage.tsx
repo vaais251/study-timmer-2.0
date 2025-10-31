@@ -145,8 +145,12 @@ const ProjectTimeAnalysisDashboard: React.FC<{
             }
         });
 
+        const tasksInRange = isAllTime
+            ? allTasks
+            : allTasks.filter(t => t.due_date >= dateRange.start && t.due_date <= dateRange.end);
+        
         const tasksPerProject = new Map<string, number>();
-        allTasks.forEach(task => {
+        tasksInRange.forEach(task => {
             if (task.project_id) {
                 tasksPerProject.set(task.project_id, (tasksPerProject.get(task.project_id) || 0) + 1);
             }
@@ -175,7 +179,7 @@ const ProjectTimeAnalysisDashboard: React.FC<{
     };
     
     const today = getTodayDateString();
-    const isAllTime = !dateRange.start && !dateRange.end;
+    const isAllTime = !dateRange.start || !dateRange.end;
     const isThisWeek = dateRange.start === getDaysAgo(6) && dateRange.end === today;
     const isThisMonth = dateRange.start === getMonthStartDateString() && dateRange.end === today;
 
@@ -228,8 +232,7 @@ const ProjectTimeAnalysisDashboard: React.FC<{
     };
 
     return (
-        <div className="bg-slate-800/50 rounded-xl p-4 sm:p-6 mt-6 border border-slate-700/80">
-             <h3 className="text-xl font-bold text-white text-center mb-4">Project Time Analysis</h3>
+        <Panel title="Project Time Analysis">
             <div className="mb-4 space-y-2">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                      <input type="date" value={dateRange.start} onChange={e => setDateRange(p => ({...p, start: e.target.value}))} className="bg-white/20 border border-white/30 rounded-lg p-2 text-white/80 w-full text-center" style={{colorScheme: 'dark'}}/>
@@ -1014,9 +1017,8 @@ const CommitmentsPanel: React.FC<{
     };
     
     return (
-        <div className="bg-slate-800/50 rounded-xl p-4 sm:p-6 mt-6 border border-slate-700/80">
-            <h3 className="text-xl font-bold text-white text-center mb-2">My Commitments</h3>
-            <div className="text-center mb-4 flex justify-center items-center gap-2">
+        <Panel title="My Commitments">
+            <div className="text-center mb-4 flex justify-center items-center gap-2 -mt-4">
                 <p className="text-white/80 text-sm">What will you hold yourself accountable for?</p>
                  <ExplanationTooltip 
                     title="About Commitments"
@@ -1065,7 +1067,7 @@ const CommitmentsPanel: React.FC<{
                     {dateRange.start && dateRange.end ? `No ${view} commitments in this date range.` : `No ${view} commitments.`}
                 </p>}
             </ul>
-        </div>
+        </Panel>
     )
 }
 
@@ -1444,9 +1446,8 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
                 {activeTab === 'overview' && (
                     <div className="space-y-6 animate-fadeIn">
                         {/* Core Goals */}
-                        <div className="bg-slate-800/50 rounded-xl p-4 sm:p-6 border border-slate-700/80">
-                             <h3 className="text-xl font-bold text-white text-center mb-2">My Core Goals</h3>
-                            <p className="text-white/80 text-center text-sm mb-4">Your guiding stars. What long-term ambitions are you working towards?</p>
+                        <Panel title="My Core Goals">
+                            <p className="text-white/80 text-center text-sm mb-4 -mt-4">Your guiding stars. What long-term ambitions are you working towards?</p>
                             <div className="relative mb-4">
                                 <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none text-amber-300">
                                     <StarIcon />
@@ -1476,11 +1477,10 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
                                 ))}
                                 {goals.length === 0 && <p className="text-center text-white/60 p-4 col-span-1 lg:col-span-2">Set your first high-level goal to get started!</p>}
                             </ul>
-                        </div>
+                        </Panel>
                         {/* Key Targets */}
-                         <div className="bg-slate-800/50 rounded-xl p-4 sm:p-6 border border-slate-700/80">
-                             <h3 className="text-xl font-bold text-white text-center mb-2">Key Targets</h3>
-                             <div className="text-center mb-4 flex justify-center items-center gap-2">
+                         <Panel title="Key Targets">
+                             <div className="text-center mb-4 flex justify-center items-center gap-2 -mt-4">
                                 <p className="text-white/80 text-sm">Specific, measurable outcomes with a deadline to keep you on track.</p>
                                 <ExplanationTooltip 
                                     title="Goals vs. Targets"
@@ -1562,7 +1562,7 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
                                     </p>}
                                 </ul>
                             )}
-                        </div>
+                        </Panel>
                     </div>
                 )}
                 
@@ -1578,9 +1578,8 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
                         </div>
 
                         {projectSubTab === 'list' && (
-                             <div className="bg-slate-800/50 rounded-xl p-4 sm:p-6 mt-6 border border-slate-700/80">
-                                 <h3 className="text-xl font-bold text-white text-center mb-2">Projects</h3>
-                                <p className="text-white/80 text-center text-sm mb-4">Group your tasks into larger projects to track overall progress.</p>
+                             <Panel title="Projects">
+                                <p className="text-white/80 text-center text-sm mb-4 -mt-4">Group your tasks into larger projects to track overall progress.</p>
                                 <div className="bg-black/20 p-3 rounded-lg mb-4 space-y-2">
                                     <input type="text" value={newProjectName} onChange={e => setNewProjectName(e.target.value)} placeholder="New Project Name" className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50" />
                                     <textarea value={newProjectDescription} onChange={e => setNewProjectDescription(e.target.value)} placeholder="Project Description (Optional)" className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50" rows={2}></textarea>
@@ -1659,7 +1658,7 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
                                         visibleDueProjects
                                     ).length === 0 && <p className="text-center text-white/60 p-4">No projects match the current filter.</p>}
                                 </ul>
-                            </div>
+                            </Panel>
                         )}
                         {projectSubTab === 'analysis' && (
                             <div className="animate-fadeIn">
