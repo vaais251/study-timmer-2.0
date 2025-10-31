@@ -1123,41 +1123,19 @@ export const getConsistencyLogs = async (days = 180): Promise<DbDailyLog[]> => {
     const startDateString = getTodayDateString(startDate);
     const todayString = getTodayDateString();
 
-    // Fetch all tasks due within the date range to get total and completed counts.
     const { data, error } = await supabase
-        .from('tasks')
-        .select('due_date, completed_at')
+        .from('daily_logs')
+        .select('date, completed_sessions, total_focus_minutes')
         .eq('user_id', user.id)
-        .gte('due_date', startDateString)
-        .lte('due_date', todayString);
+        .gte('date', startDateString)
+        .lte('date', todayString);
 
     if (error) {
-        console.error("Error fetching tasks for consistency logs:", JSON.stringify(error, null, 2));
+        console.error("Error fetching consistency logs:", JSON.stringify(error, null, 2));
         return [];
     }
-
-    // Aggregate counts and completion status by day.
-    const statsByDay = new Map<string, { completed: number; total: number }>();
-    if (data) {
-        data.forEach(task => {
-            const dateString = task.due_date;
-            if (!statsByDay.has(dateString)) {
-                statsByDay.set(dateString, { completed: 0, total: 0 });
-            }
-            const dayStat = statsByDay.get(dateString)!;
-            dayStat.total++;
-            if (task.completed_at) {
-                dayStat.completed++;
-            }
-        });
-    }
-
-    // Map the aggregated data to the DbDailyLog structure, using the percentage for `completed_sessions`.
-    return Array.from(statsByDay.entries()).map(([date, stats]) => ({
-        date: date,
-        completed_sessions: stats.total > 0 ? Math.round((stats.completed / stats.total) * 100) : 0,
-        total_focus_minutes: 0, // Not used by the tracker, but required by the type
-    }));
+    
+    return data || [];
 };
 
 // --- AI Memories ---

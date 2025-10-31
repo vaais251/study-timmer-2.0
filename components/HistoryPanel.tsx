@@ -52,14 +52,15 @@ const StatCard: React.FC<{title: string, children: React.ReactNode}> = ({ title,
 
 interface DayDetailTooltipProps {
     date: string;
+    value: number;
+    category: string;
     allTasks: Task[];
     pomodoroHistory: PomodoroHistory[];
-    logs: DbDailyLog[];
     position: { top: number; left: number };
     onClose: () => void;
 }
 
-const DayDetailTooltip: React.FC<DayDetailTooltipProps> = ({ date, allTasks, pomodoroHistory, logs, position, onClose }) => {
+const DayDetailTooltip: React.FC<DayDetailTooltipProps> = ({ date, value, category, allTasks, pomodoroHistory, position, onClose }) => {
     const tooltipRef = useRef<HTMLDivElement>(null);
 
     const details = useMemo(() => {
@@ -67,10 +68,9 @@ const DayDetailTooltip: React.FC<DayDetailTooltipProps> = ({ date, allTasks, pom
         const completedTasksCount = tasksForDay.filter(t => t.completed_at).length;
         const totalTasks = tasksForDay.length;
         
-        const log = logs.find(l => l.date === date);
-        const completionPercentage = log ? log.completed_sessions : (totalTasks > 0 ? Math.round((completedTasksCount / totalTasks) * 100) : 0);
+        const completionPercentage = totalTasks > 0 ? Math.round((completedTasksCount / totalTasks) * 100) : 0;
 
-        const focusMinutes = pomodoroHistory
+        const overallFocusMinutes = pomodoroHistory
             .filter(h => h.ended_at.startsWith(date))
             .reduce((sum, h) => sum + (Number(h.duration_minutes) || 0), 0);
         
@@ -79,9 +79,9 @@ const DayDetailTooltip: React.FC<DayDetailTooltipProps> = ({ date, allTasks, pom
             completedTasksCount,
             totalTasks,
             completionPercentage,
-            focusMinutes
+            overallFocusMinutes
         };
-    }, [date, allTasks, pomodoroHistory, logs]);
+    }, [date, allTasks, pomodoroHistory]);
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -108,8 +108,12 @@ const DayDetailTooltip: React.FC<DayDetailTooltipProps> = ({ date, allTasks, pom
             <button onClick={onClose} className="absolute top-2 right-2 text-slate-400 hover:text-white text-xl">&times;</button>
             <h4 className="font-bold text-white mb-2">{new Date(date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</h4>
             <div className="space-y-1 text-white/80">
+                <p><strong>Focus ({category === 'Overall' ? 'Total' : category}):</strong> <span className="font-semibold text-white">{value} min</span></p>
+                {category !== 'Overall' && (
+                    <p><strong>Total Day Focus:</strong> <span className="font-semibold text-white">{details.overallFocusMinutes} min</span></p>
+                )}
                 <p><strong>Task Completion:</strong> <span className="font-semibold text-white">{details.completionPercentage}%</span> ({details.completedTasksCount}/{details.totalTasks})</p>
-                <p><strong>Focus Time:</strong> <span className="font-semibold text-white">{details.focusMinutes} min</span></p>
+                
                 {details.tasksForDay.length > 0 && (
                     <div>
                         <h5 className="font-semibold mt-2 text-white">Tasks:</h5>
@@ -132,12 +136,58 @@ const DayDetailTooltip: React.FC<DayDetailTooltipProps> = ({ date, allTasks, pom
 
 
 // --- New Component: Consistency Tracker ---
-const ConsistencyTracker = ({ logs, allTasks, pomodoroHistory }: { logs: DbDailyLog[], allTasks: Task[], pomodoroHistory: PomodoroHistory[] }) => {
+const ConsistencyTracker: React.FC<{
+    logs: DbDailyLog[];
+    allTasks: Task[];
+    pomodoroHistory: PomodoroHistory[];
+    openInsightModal: (chartTitle: string, chartData: any, chartElement: React.ReactNode) => void;
+    isForModal?: boolean;
+}> = ({ logs, allTasks, pomodoroHistory, openInsightModal, isForModal = false }) => {
     const [selectedDay, setSelectedDay] = useState<string | null>(null);
     const [tooltipPosition, setTooltipPosition] = useState<{ top: number; left: number } | null>(null);
     const containerRef = useRef<HTMLDivElement>(null);
+    const [selectedCategory, setSelectedCategory] = useState<string>('Overall');
 
+    const allCategories = useMemo(() => {
+        const tags = new Set<string>();
+        allTasks.forEach(task => {
+            task.tags?.forEach(tag => {
+                const capitalized = tag.trim().charAt(0).toUpperCase() + tag.trim().slice(1).toLowerCase();
+                tags.add(capitalized);
+            });
+        });
+        return ['Overall', ...Array.from(tags).sort()];
+    }, [allTasks]);
+
+    const activityData = useMemo(() => {
+        if (selectedCategory === 'Overall') {
+            return logs.map(log => ({
+                date: log.date,
+                value: log.total_focus_minutes,
+            }));
+        }
+
+        const categoryMinutesByDate = new Map<string, number>();
+        const taskMap = new Map<string, Task>(allTasks.map(t => [t.id, t]));
+        const lowerCaseCategory = selectedCategory.toLowerCase();
+
+        pomodoroHistory.forEach(historyItem => {
+            const task = historyItem.task_id ? taskMap.get(historyItem.task_id) : null;
+            if (task && task.tags?.map(t => t.trim().toLowerCase()).includes(lowerCaseCategory)) {
+                const date = historyItem.ended_at.split('T')[0];
+                const currentMinutes = categoryMinutesByDate.get(date) || 0;
+                categoryMinutesByDate.set(date, currentMinutes + (Number(historyItem.duration_minutes) || 0));
+            }
+        });
+
+        return Array.from(categoryMinutesByDate.entries()).map(([date, minutes]) => ({
+            date,
+            value: Math.round(minutes)
+        }));
+    }, [selectedCategory, logs, pomodoroHistory, allTasks]);
+    
     const handleDayClick = (day: { date: string }, event: React.MouseEvent) => {
+        if (isForModal) return;
         event.stopPropagation();
         if (selectedDay === day.date) {
             setSelectedDay(null);
@@ -155,8 +205,10 @@ const ConsistencyTracker = ({ logs, allTasks, pomodoroHistory }: { logs: DbDaily
         }
     };
     
-    const { weeks, monthLabels } = useMemo(() => {
-        const activityMap: Map<string, number> = new Map(logs.map(log => [log.date, log.completed_sessions]));
+    const { weeks, monthLabels, maxValue } = useMemo(() => {
+        const activityMap: Map<string, number> = new Map(activityData.map(d => [d.date, d.value]));
+        const maxValue = Math.max(1, ...activityData.map(d => d.value));
+
         const today = new Date();
         const daysToShow = 180; // Approx 6 months
         const days = Array.from({ length: daysToShow }, (_, i) => {
@@ -171,18 +223,23 @@ const ConsistencyTracker = ({ logs, allTasks, pomodoroHistory }: { logs: DbDaily
             ...Array(firstDayOfWeek).fill(null),
             ...days.map(date => {
                 const dateString = getTodayDateString(date);
-                const percentage = activityMap.get(dateString) || 0;
+                const value = activityMap.get(dateString) || 0;
 
-                let colorClass = 'bg-gray-800'; // Corresponds to GitHub's no-contribution color
-                if (percentage > 0 && percentage < 25) colorClass = 'bg-emerald-900';
-                if (percentage >= 25 && percentage < 50) colorClass = 'bg-emerald-700';
-                if (percentage >= 50 && percentage < 75) colorClass = 'bg-emerald-500';
-                if (percentage >= 75) colorClass = 'bg-emerald-300';
+                let colorClass = 'bg-gray-800'; // 0 value
+                if (value > 0) {
+                    const shades = [
+                        'bg-emerald-900', 'bg-emerald-800', 'bg-emerald-700',
+                        'bg-emerald-600', 'bg-emerald-500', 'bg-emerald-400',
+                        'bg-emerald-300', 'bg-emerald-200', 'bg-emerald-100', 'bg-emerald-50'
+                    ];
+                    const shadeIndex = Math.min(shades.length - 1, Math.floor((value / maxValue) * shades.length));
+                    colorClass = shades[shadeIndex];
+                }
 
                 return {
                     date: dateString,
                     colorClass,
-                    percentage,
+                    value,
                     month: date.getMonth(),
                 };
             })
@@ -208,69 +265,105 @@ const ConsistencyTracker = ({ logs, allTasks, pomodoroHistory }: { logs: DbDaily
             }
         });
 
-        return { weeks, monthLabels };
-    }, [logs]);
+        return { weeks, monthLabels, maxValue };
+    }, [activityData]);
 
-    return (
-        <div ref={containerRef} className="relative bg-black/20 p-4 rounded-lg overflow-x-auto">
-            <div className="inline-block">
-                <div className="flex" style={{ paddingLeft: '2.5rem', paddingBottom: '0.5rem' }}>
-                    {monthLabels.map((month, index) => {
-                        const nextMonth = monthLabels[index + 1];
-                        const colSpan = nextMonth ? nextMonth.startColumn - month.startColumn : weeks.length - month.startColumn;
-                        // Cell width (w-3) is 12px, gap is 4px. Total per column = 16px.
-                        return (
-                            <div key={month.name} className="text-xs text-white/50" style={{ minWidth: `${colSpan * 16}px` }}>
-                                {month.name}
-                            </div>
-                        );
-                    })}
+    const chartMarkup = (
+        <div className="inline-block">
+            <div className="flex" style={{ paddingLeft: '2.5rem', paddingBottom: '0.5rem' }}>
+                {monthLabels.map((month, index) => {
+                    const nextMonth = monthLabels[index + 1];
+                    const colSpan = nextMonth ? nextMonth.startColumn - month.startColumn : weeks.length - month.startColumn;
+                    return (
+                        <div key={month.name} className="text-xs text-white/50" style={{ minWidth: `${colSpan * 16}px` }}>
+                            {month.name}
+                        </div>
+                    );
+                })}
+            </div>
+            <div className="flex gap-3">
+                <div className="grid grid-rows-7 text-xs text-white/50 w-8 shrink-0 text-right pr-2">
+                    <span></span>
+                    <span className="self-center">Mon</span>
+                    <span></span>
+                    <span className="self-center">Wed</span>
+                    <span></span>
+                    <span className="self-center">Fri</span>
+                    <span></span>
                 </div>
-                <div className="flex gap-3">
-                    <div className="grid grid-rows-7 text-xs text-white/50 w-8 shrink-0 text-right pr-2">
-                        <span></span>
-                        <span className="self-center">Mon</span>
-                        <span></span>
-                        <span className="self-center">Wed</span>
-                        <span></span>
-                        <span className="self-center">Fri</span>
-                        <span></span>
-                    </div>
-                    
-                    <div className="flex gap-1">
-                        {weeks.map((week, weekIndex) => (
-                            <div key={weekIndex} className="grid grid-rows-7 gap-1">
-                                {week.map((day, dayIndex) => (
-                                    day 
-                                    ? <div 
-                                        key={day.date} 
-                                        className={`w-3 h-3 rounded-sm ${day.colorClass} cursor-pointer transition-transform hover:scale-125 hover:ring-2 hover:ring-white/80`} 
-                                        title={`${day.percentage}% tasks completed on ${day.date}`}
-                                        onClick={(e) => handleDayClick(day, e)}
-                                      />
-                                    : <div key={`ph-${weekIndex}-${dayIndex}`} className="w-3 h-3" />
-                                ))}
-                            </div>
-                        ))}
-                    </div>
+                
+                <div className="flex gap-1">
+                    {weeks.map((week, weekIndex) => (
+                        <div key={weekIndex} className="grid grid-rows-7 gap-1">
+                            {week.map((day, dayIndex) => (
+                                day 
+                                ? <div 
+                                    key={day.date} 
+                                    className={`w-3 h-3 rounded-sm ${day.colorClass} ${!isForModal ? 'cursor-pointer transition-transform hover:scale-125 hover:ring-2 hover:ring-white/80' : ''}`} 
+                                    title={`${day.value} focus minutes on ${day.date}`}
+                                    onClick={(e) => handleDayClick(day, e)}
+                                  />
+                                : <div key={`ph-${weekIndex}-${dayIndex}`} className="w-3 h-3" />
+                            ))}
+                        </div>
+                    ))}
                 </div>
             </div>
+        </div>
+    );
 
-            <div className="flex justify-end items-center mt-4 text-xs text-white/60 gap-2 pr-4">
+    const dataForAI = activityData.map(d => ({ date: d.date, minutes: d.value }));
+
+    const handleOpenModal = () => {
+        const modalChartElement = <ConsistencyTracker logs={logs} allTasks={allTasks} pomodoroHistory={pomodoroHistory} openInsightModal={openInsightModal} isForModal={true} />;
+        openInsightModal(`Daily Focus Consistency: ${selectedCategory}`, dataForAI, modalChartElement);
+    };
+
+    return (
+        <div ref={containerRef} className="relative bg-black/20 p-4 rounded-lg">
+            {!isForModal && (
+                <div className="flex flex-col sm:flex-row justify-center items-center gap-2 mb-4">
+                    <h3 className="text-lg font-semibold text-white">Daily Focus:</h3>
+                    <select
+                        value={selectedCategory}
+                        onChange={e => setSelectedCategory(e.target.value)}
+                        className="bg-slate-700/50 border border-slate-600 rounded-lg py-1 px-3 text-white focus:outline-none focus:ring-2 focus:ring-teal-400"
+                    >
+                        {allCategories.map(cat => <option key={cat} value={cat} className="bg-slate-800">{cat}</option>)}
+                    </select>
+                    <button onClick={handleOpenModal} className="p-1 text-purple-400 hover:text-purple-300 transition" title="Get AI Insights">
+                        <SparklesIcon />
+                    </button>
+                </div>
+            )}
+            {isForModal && <h3 className="text-lg font-semibold text-white text-center mb-4">Daily Focus: {selectedCategory}</h3>}
+
+            <div className="overflow-x-auto">
+                {chartMarkup}
+            </div>
+
+            <div className="flex justify-end items-center mt-4 text-xs text-white/60 gap-1 pr-4">
                 <span>Less</span>
                 <div className="w-3 h-3 rounded-sm bg-gray-800"></div>
                 <div className="w-3 h-3 rounded-sm bg-emerald-900"></div>
+                <div className="w-3 h-3 rounded-sm bg-emerald-800"></div>
                 <div className="w-3 h-3 rounded-sm bg-emerald-700"></div>
+                <div className="w-3 h-3 rounded-sm bg-emerald-600"></div>
                 <div className="w-3 h-3 rounded-sm bg-emerald-500"></div>
+                <div className="w-3 h-3 rounded-sm bg-emerald-400"></div>
                 <div className="w-3 h-3 rounded-sm bg-emerald-300"></div>
+                <div className="w-3 h-3 rounded-sm bg-emerald-200"></div>
+                <div className="w-3 h-3 rounded-sm bg-emerald-100"></div>
+                <div className="w-3 h-3 rounded-sm bg-emerald-50"></div>
                 <span>More</span>
             </div>
-             {selectedDay && tooltipPosition && (
+             {!isForModal && selectedDay && tooltipPosition && (
                 <DayDetailTooltip
                     date={selectedDay}
+                    value={weeks.flat().find(d => d?.date === selectedDay)?.value || 0}
+                    category={selectedCategory}
                     allTasks={allTasks}
                     pomodoroHistory={pomodoroHistory}
-                    logs={logs}
                     position={tooltipPosition}
                     onClose={() => setSelectedDay(null)}
                 />
@@ -587,7 +680,8 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                 tagAnalysisData: [],
                 focusLineChartData: [],
                 dailyTaskVolumeChartData: [],
-                averageDailyFocus: 0
+                averageDailyFocus: 0,
+                dayDiff: 1,
             };
         }
 
@@ -803,7 +897,8 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
             totalFocus, completedCount, totalTasks, pomsDone, pomsEst, projectsCompleted, targetsCompleted,
             totalProjectsInRange, totalTargetsInRange,
             lineChartData, taskBreakdownData, projectBreakdownData, tagAnalysisData, focusLineChartData, dailyTaskVolumeChartData,
-            averageDailyFocus
+            averageDailyFocus,
+            dayDiff
         };
     }, [logs, tasks, allTasks, projects, allProjects, targets, allTargets, historyRange, settings, pomodoroHistory]);
     
@@ -1056,8 +1151,6 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
     };
 
     // Chart Element Definitions for Modal Reuse
-    const consistencyTrackerElement = <ConsistencyTracker logs={consistencyLogs} allTasks={allTasks} pomodoroHistory={consistencyPomodoroHistory} />;
-
     const dailyFocusChartElement = (
         <ResponsiveContainer width="100%" height="100%">
             <LineChart data={aggregatedData.focusLineChartData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
@@ -1261,7 +1354,8 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
             {/* --- Section 2: KPIs --- */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-white">
                 <StatCard title="Time & Tasks">
-                    <div className="flex justify-around items-center h-full">
+                    <div className="grid grid-cols-2 gap-y-2 h-full content-center">
+                        <StatItem label="Days Shown" value={aggregatedData.dayDiff} />
                         <StatItem label="Total Focus" value={formatMinutesToHours(aggregatedData.totalFocus)} />
                         <StatItem label="Avg Daily Focus" value={formatMinutesToHours(aggregatedData.averageDailyFocus)} />
                         <StatItem label="Tasks Done" value={`${aggregatedData.completedCount} / ${aggregatedData.totalTasks}`} />
@@ -1285,17 +1379,12 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
 
             {/* --- Section 3: Consistency Tracker --- */}
             <div className="mt-8">
-                <div className="flex justify-center items-center gap-2 mb-4">
-                    <h3 className="text-lg font-semibold text-white text-center">Daily Consistency Tracker</h3>
-                    <button
-                        onClick={() => openInsightModal('Daily Consistency Tracker', consistencyLogs, consistencyTrackerElement)}
-                        className="p-1 text-purple-400 hover:text-purple-300 transition"
-                        title="Get AI Insights for this chart"
-                    >
-                        <SparklesIcon />
-                    </button>
-                </div>
-                {consistencyTrackerElement}
+                <ConsistencyTracker
+                    logs={consistencyLogs}
+                    allTasks={allTasks}
+                    pomodoroHistory={consistencyPomodoroHistory}
+                    openInsightModal={openInsightModal}
+                />
             </div>
 
             {/* --- Section 4: Time-based Trends --- */}
