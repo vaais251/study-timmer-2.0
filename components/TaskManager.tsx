@@ -208,7 +208,7 @@ const TaskItem = React.forwardRef<HTMLLIElement, TaskItemProps>(({ task, isCompl
                 ? 'bg-white/5 text-white/50 cursor-default' 
                 : isDraggable
                 ? 'bg-white/10 hover:bg-white/20'
-                : 'bg-white/5 border border-dashed border-amber-400/30'
+                : 'bg-white/10'
         } ${priorityClass} ${animationClass}`}
         {...dragProps}
     >
@@ -242,13 +242,13 @@ const TaskItem = React.forwardRef<HTMLLIElement, TaskItemProps>(({ task, isCompl
                     <BringForwardIcon />
                 </button>
             )}
-            {isDraggable && onMove && (
+            {onMove && (
                 <>
                     <button onClick={() => onMove(task.id, 'postpone')} className="p-1 text-amber-300 hover:text-amber-200 transition" title="Postpone to Tomorrow"><PostponeIcon /></button>
                     <button onClick={() => onMove(task.id, 'duplicate')} className="p-1 text-amber-300 hover:text-amber-200 transition" title="Duplicate for Tomorrow"><DuplicateIcon /></button>
                 </>
             )}
-             {isDraggable && (
+             {!isCompleted && (
                 <>
                     <button onClick={() => setIsEditing(true)} className="p-1 text-sky-300 hover:text-sky-200 transition" title="Edit Task"><EditIcon /></button>
                     <button onClick={() => setIsSettingsOpen(o => !o)} className="p-1 text-cyan-300 hover:text-cyan-200 transition" title="Custom Timers"><MoreVerticalIcon /></button>
@@ -513,10 +513,11 @@ interface TaskManagerProps {
     onUpdateTaskTimers: (id: string, newTimers: { focus: number | null, break: number | null }) => void;
     onUpdateTask: (id: string, newText: string, newTags: string[], newPoms: number, projectId: string | null, priority: number | null) => void;
     onMarkTaskIncomplete: (id: string) => void;
+    todaySortBy: 'default' | 'priority';
+    onSortTodayByChange: (sortBy: 'default' | 'priority') => void;
 }
 
-const TaskManager: React.FC<TaskManagerProps> = ({ tasksToday, tasksForTomorrow, tasksFuture, completedToday, projects, settings, onAddTask, onAddProject, onDeleteTask, onMoveTask, onBringTaskForward, onReorderTasks, onUpdateTaskTimers, onUpdateTask, onMarkTaskIncomplete }) => {
-    const [sortTodayBy, setSortTodayBy] = useState<'default' | 'priority'>('default');
+const TaskManager: React.FC<TaskManagerProps> = ({ tasksToday, tasksForTomorrow, tasksFuture, completedToday, projects, settings, onAddTask, onAddProject, onDeleteTask, onMoveTask, onBringTaskForward, onReorderTasks, onUpdateTaskTimers, onUpdateTask, onMarkTaskIncomplete, todaySortBy, onSortTodayByChange }) => {
     
     const dragItemToday = React.useRef<number | null>(null);
     const dragOverItemToday = React.useRef<number | null>(null);
@@ -539,20 +540,6 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasksToday, tasksForTomorrow,
         }
         prevTasksCount.current = allTasks.length;
     }, [allTasks]);
-
-    const sortedTasksToday = useMemo(() => {
-        if (sortTodayBy === 'priority') {
-            return [...tasksToday].sort((a, b) => {
-                const priorityA = a.priority ?? 5;
-                const priorityB = b.priority ?? 5;
-                if (priorityA !== priorityB) {
-                    return priorityA - priorityB;
-                }
-                return (a.task_order ?? Infinity) - (b.task_order ?? Infinity);
-            });
-        }
-        return tasksToday;
-    }, [tasksToday, sortTodayBy]);
 
     const handleDragStartToday = (_: React.DragEvent<HTMLLIElement>, position: number) => { dragItemToday.current = position; };
     const handleDragEnterToday = (_: React.DragEvent<HTMLLIElement>, position: number) => { dragOverItemToday.current = position; };
@@ -622,18 +609,18 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasksToday, tasksForTomorrow,
                 <CategoryFocusDropdown tasks={tasksToday} settings={settings} title="Est. Focus by Category" />
                 <div className="flex justify-end mb-2">
                     <button
-                        onClick={() => setSortTodayBy(s => s === 'default' ? 'priority' : 'default')}
+                        onClick={() => onSortTodayByChange(todaySortBy === 'default' ? 'priority' : 'default')}
                         className="text-xs text-cyan-300 hover:text-cyan-200 font-semibold px-3 py-1 rounded-full hover:bg-white/10 transition"
-                        aria-label={`Sort tasks by ${sortTodayBy === 'default' ? 'priority' : 'default order'}`}
+                        aria-label={`Sort tasks by ${todaySortBy === 'default' ? 'priority' : 'default order'}`}
                     >
-                        Sort by: {sortTodayBy === 'default' ? 'Default' : 'Priority'}
+                        Sort by: {todaySortBy === 'default' ? 'Default' : 'Priority'}
                     </button>
                 </div>
                 <ul 
                     className="max-h-64 overflow-y-auto pr-2"
                     onDragOver={(e) => e.preventDefault()}
                 >
-                    {sortedTasksToday.map((task) => (
+                    {tasksToday.map((task) => (
                         <TaskItem 
                             key={task.id} 
                             task={task} 
@@ -645,12 +632,12 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasksToday, tasksForTomorrow,
                             onUpdateTaskTimers={onUpdateTaskTimers}
                             onUpdateTask={onUpdateTask}
                             isJustAdded={task.id === justAddedTaskId}
-                            dragProps={{ 
+                            dragProps={todaySortBy === 'default' ? { 
                                 draggable: true, 
                                 onDragStart: (e: React.DragEvent<HTMLLIElement>) => handleDragStartToday(e, tasksToday.findIndex(t => t.id === task.id)),
                                 onDragEnter: (e: React.DragEvent<HTMLLIElement>) => handleDragEnterToday(e, tasksToday.findIndex(t => t.id === task.id)),
                                 onDragEnd: handleDropToday
-                            }}
+                            } : undefined}
                         />
                     ))}
                     {completedToday.map(task => (

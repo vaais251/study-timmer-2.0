@@ -19,6 +19,8 @@ interface PlanPageProps {
     onUpdateTaskTimers: (id: string, newTimers: { focus: number | null, break: number | null }) => void;
     onUpdateTask: (id: string, newText: string, newTags: string[], newPoms: number, projectId: string | null, priority: number | null) => void;
     onMarkTaskIncomplete: (id: string) => void;
+    todaySortBy: 'default' | 'priority';
+    onSortTodayByChange: (sortBy: 'default' | 'priority') => void;
 }
 
 const PlanPage: React.FC<PlanPageProps> = (props) => {
@@ -40,6 +42,8 @@ const PlanPage: React.FC<PlanPageProps> = (props) => {
                 onUpdateTaskTimers={props.onUpdateTaskTimers}
                 onUpdateTask={props.onUpdateTask}
                 onMarkTaskIncomplete={props.onMarkTaskIncomplete}
+                todaySortBy={props.todaySortBy}
+                onSortTodayByChange={props.onSortTodayByChange}
             />
             <ExpertiseTracker />
         </>

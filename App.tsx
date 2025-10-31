@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
@@ -113,6 +114,8 @@ const App: React.FC = () => {
     const [isModalVisible, setIsModalVisible] = useState(false);
     const [modalContent, setModalContent] = useState({ title: '', message: '', nextMode: 'focus' as Mode, showCommentBox: false });
     const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+    const [todaySortBy, setTodaySortBy] = useState<'default' | 'priority'>('default');
+
 
     const timerInterval = useRef<number | null>(null);
     const notificationInterval = useRef<number | null>(null);
@@ -125,7 +128,26 @@ const App: React.FC = () => {
     tomorrowDate.setDate(tomorrowDate.getDate() + 1);
     const tomorrowString = getTodayDateString(tomorrowDate);
 
-    const tasksToday = useMemo(() => tasks.filter(t => t.due_date === todayString && !t.completed_at), [tasks, todayString]);
+    const tasksToday = useMemo(() => {
+        const todayTasks = tasks.filter(t => t.due_date === todayString && !t.completed_at);
+    
+        if (todaySortBy === 'priority') {
+            // Sort by priority (1 is highest), then by the default task order as a tie-breaker.
+            return todayTasks.sort((a, b) => {
+                const priorityA = a.priority ?? 5; // Use a high number for null priority to sort it last
+                const priorityB = b.priority ?? 5;
+                if (priorityA !== priorityB) {
+                    return priorityA - priorityB;
+                }
+                return (a.task_order ?? Infinity) - (b.task_order ?? Infinity);
+            });
+        }
+        
+        // For 'default', the list is already sorted by `task_order` from the database fetch.
+        // The `.filter()` operation preserves this order.
+        return todayTasks;
+    }, [tasks, todayString, todaySortBy]);
+
     const tasksForTomorrow = useMemo(() => tasks.filter(t => t.due_date === tomorrowString && !t.completed_at), [tasks, tomorrowString]);
     const tasksFuture = useMemo(() => tasks.filter(t => t.due_date > tomorrowString && !t.completed_at), [tasks, tomorrowString]);
     const completedToday = useMemo(() => tasks.filter(t => !!t.completed_at && t.due_date === todayString), [tasks, todayString]);
@@ -848,6 +870,9 @@ const App: React.FC = () => {
     };
 
     const handleReorderTasks = async (reorderedTasks: Task[]) => {
+        // When the user manually reorders, switch back to the default sort order.
+        setTodaySortBy('default');
+        
         // Optimistically update UI to feel snappy
         setTasks(currentTasks => {
             const reorderedIds = new Set(reorderedTasks.map(t => t.id));
@@ -1113,6 +1138,8 @@ const App: React.FC = () => {
                     onUpdateTaskTimers={handleUpdateTaskTimers}
                     onUpdateTask={handleUpdateTask}
                     onMarkTaskIncomplete={handleMarkTaskIncomplete}
+                    todaySortBy={todaySortBy}
+                    onSortTodayByChange={setTodaySortBy}
                 />;
             case 'stats':
                 return <StatsPage />;
