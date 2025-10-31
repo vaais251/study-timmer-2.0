@@ -1,5 +1,7 @@
+
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { Goal, Target, Project, Task, PomodoroHistory, Commitment, ProjectUpdate } from '../types';
+// FIX: Import the 'Commitment' type to resolve multiple 'Cannot find name' errors.
+import { Goal, Target, Project, Task, PomodoroHistory, ProjectUpdate, Commitment } from '../types';
 import Panel from '../components/common/Panel';
 import { TrashIcon, EditIcon, StarIcon, LockIcon, CheckIcon, TargetIcon as GoalsIcon, RescheduleIcon } from '../components/common/Icons';
 import * as dbService from '../services/dbService';
@@ -7,7 +9,7 @@ import Spinner from '../components/common/Spinner';
 import { getTodayDateString, getMonthStartDateString } from '../utils/date';
 import PrioritySelector from '../components/common/PrioritySelector';
 import ExplanationTooltip from '../components/common/ExplanationTooltip';
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, PieChart, Pie, Cell, Legend } from 'recharts';
 
 
 const getDaysAgo = (days: number): string => {
@@ -35,8 +37,7 @@ const ProjectDailyFocusChart: React.FC<{
     projectName: string | null;
     allTasks: Task[];
     allHistory: PomodoroHistory[];
-    dateRange: { start: string; end: string };
-}> = ({ projectId, projectName, allTasks, allHistory, dateRange }) => {
+}> = ({ projectId, projectName, allTasks, allHistory }) => {
     const chartData = useMemo(() => {
         if (!projectId) return [];
 
@@ -47,7 +48,6 @@ const ProjectDailyFocusChart: React.FC<{
         if (projectTaskIds.size === 0) return [];
 
         const dataByDate = new Map<string, number>();
-        const isAllTime = !dateRange.start || !dateRange.end;
 
         const historyForProject = allHistory.filter(h => h.task_id && projectTaskIds.has(h.task_id));
 
@@ -55,7 +55,7 @@ const ProjectDailyFocusChart: React.FC<{
             const date = h.ended_at.split('T')[0];
             const minutes = Number(h.duration_minutes) || 0;
             
-            if (minutes > 0 && (isAllTime || (date >= dateRange.start && date <= dateRange.end))) {
+            if (minutes > 0) {
                 dataByDate.set(date, (dataByDate.get(date) || 0) + minutes);
             }
         }
@@ -68,207 +68,44 @@ const ProjectDailyFocusChart: React.FC<{
             }))
             .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-    }, [projectId, allTasks, allHistory, dateRange]);
+    }, [projectId, allTasks, allHistory]);
 
     if (!projectId) {
         return null;
     }
 
-    if (chartData.length === 0) {
-        return (
-             <div className="mt-4 p-4 text-center text-sm text-white/60 bg-black/20 rounded-lg animate-fadeIn">
-                No focus time recorded for "{projectName}" in this period.
-            </div>
-        );
-    }
-
     return (
-        <div className="mt-4 bg-black/20 p-4 rounded-lg animate-fadeIn">
-            <h4 className="text-md font-bold text-white text-center mb-4">Daily Focus Minutes: <span className="text-cyan-300">{projectName}</span></h4>
-            <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                        data={chartData}
-                        margin={{ top: 5, right: 20, left: -10, bottom: 5 }}
-                    >
-                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-                        <XAxis dataKey="displayDate" stroke="rgba(255,255,255,0.7)" tick={{ fontSize: 10 }} />
-                        <YAxis stroke="rgba(255,255,255,0.7)" unit="m" allowDecimals={false} />
-                        <Tooltip
-                            cursor={{ fill: 'rgba(255,255,255,0.1)' }}
-                            contentStyle={{ background: 'rgba(30,41,59,0.9)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }}
-                            itemStyle={{ color: '#67e8f9' }} // cyan-300
-                            labelStyle={{ color: 'white', fontWeight: 'bold' }}
-                        />
-                        <Bar dataKey="minutes" fill="#22d3ee" />
-                    </BarChart>
-                </ResponsiveContainer>
-            </div>
+        <div className="mt-8 pt-6 border-t border-slate-700 animate-fadeIn">
+             <h3 className="text-lg font-bold text-white text-center mb-4">Daily Focus Minutes: <span className="text-cyan-300">{projectName}</span></h3>
+            {chartData.length === 0 ? (
+                 <div className="p-4 text-center text-sm text-white/60 bg-black/20 rounded-lg">
+                    No focus time recorded for "{projectName}".
+                </div>
+            ) : (
+                <div className="h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                        <BarChart
+                            data={chartData}
+                            margin={{ top: 5, right: 20, left: -10, bottom: 5 }}
+                        >
+                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                            <XAxis dataKey="displayDate" stroke="rgba(255,255,255,0.7)" tick={{ fontSize: 10 }} />
+                            <YAxis stroke="rgba(255,255,255,0.7)" unit="m" allowDecimals={false} />
+                            <Tooltip
+                                cursor={{ fill: 'rgba(255,255,255,0.1)' }}
+                                contentStyle={{ background: 'rgba(30,41,59,0.9)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }}
+                                itemStyle={{ color: '#67e8f9' }} // cyan-300
+                                labelStyle={{ color: 'white', fontWeight: 'bold' }}
+                            />
+                            <Bar dataKey="minutes" fill="#22d3ee" />
+                        </BarChart>
+                    </ResponsiveContainer>
+                </div>
+            )}
         </div>
     );
 };
 
-
-const ProjectTimeAnalysisDashboard: React.FC<{
-    allProjects: Project[];
-    allTasks: Task[];
-    allHistory: PomodoroHistory[];
-}> = ({ allProjects, allTasks, allHistory }) => {
-    const [dateRange, setDateRange] = useState({ start: getMonthStartDateString(), end: getTodayDateString() });
-    const [statusFilter, setStatusFilter] = useState<'active' | 'completed' | 'due'>('active');
-    const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
-
-    const projectTimeData = useMemo(() => {
-        const isAllTime = !dateRange.start || !dateRange.end;
-
-        const filteredHistory = isAllTime 
-            ? allHistory 
-            : allHistory.filter(h => {
-                const hDate = h.ended_at.split('T')[0];
-                return hDate >= dateRange.start && hDate <= dateRange.end;
-            });
-
-        const taskProjectMap = new Map<string, string>();
-        allTasks.forEach(task => {
-            if (task.project_id) {
-                taskProjectMap.set(task.id, task.project_id);
-            }
-        });
-
-        const timePerProject = new Map<string, number>();
-        filteredHistory.forEach(h => {
-            if (h.task_id) {
-                const projectId = taskProjectMap.get(h.task_id);
-                if (projectId) {
-                    timePerProject.set(projectId, (timePerProject.get(projectId) || 0) + (Number(h.duration_minutes) || 0));
-                }
-            }
-        });
-
-        const tasksInRange = isAllTime
-            ? allTasks
-            : allTasks.filter(t => t.due_date >= dateRange.start && t.due_date <= dateRange.end);
-        
-        const tasksPerProject = new Map<string, number>();
-        tasksInRange.forEach(task => {
-            if (task.project_id) {
-                tasksPerProject.set(task.project_id, (tasksPerProject.get(task.project_id) || 0) + 1);
-            }
-        });
-
-        return allProjects.map(p => ({
-            ...p,
-            timeSpent: timePerProject.get(p.id) || 0,
-            taskCount: tasksPerProject.get(p.id) || 0,
-            targetTime: p.completion_criteria_type === 'duration_minutes' ? p.completion_criteria_value : null
-        }));
-    }, [allProjects, allTasks, allHistory, dateRange]);
-    
-    const filteredProjectData = useMemo(() => {
-        return projectTimeData.filter(p => p.status === statusFilter);
-    }, [projectTimeData, statusFilter]);
-
-    const handleSetRangePreset = (preset: 'week' | 'month' | 'all') => {
-        if (preset === 'all') {
-            setDateRange({ start: '', end: '' });
-        } else if (preset === 'week') {
-            setDateRange({ start: getDaysAgo(6), end: getTodayDateString() });
-        } else if (preset === 'month') {
-            setDateRange({ start: getMonthStartDateString(), end: getTodayDateString() });
-        }
-    };
-    
-    const today = getTodayDateString();
-    const isAllTime = !dateRange.start || !dateRange.end;
-    const isThisWeek = dateRange.start === getDaysAgo(6) && dateRange.end === today;
-    const isThisMonth = dateRange.start === getMonthStartDateString() && dateRange.end === today;
-
-    const selectedProject = useMemo(() => {
-        if (!selectedProjectId) return null;
-        return allProjects.find(p => p.id === selectedProjectId);
-    }, [selectedProjectId, allProjects]);
-
-
-    const ProjectTimeBar: React.FC<{project: (typeof projectTimeData)[0]}> = ({ project }) => {
-        const progress = (project.targetTime && project.targetTime > 0)
-            ? Math.min(100, (project.timeSpent / project.targetTime) * 100)
-            : -1;
-        
-        const isSelected = selectedProjectId === project.id;
-        
-        return (
-             <button 
-                onClick={() => setSelectedProjectId(prev => prev === project.id ? null : project.id)}
-                className={`w-full text-left transition-all duration-200 rounded-lg ${isSelected ? 'ring-2 ring-cyan-400 shadow-lg' : 'hover:ring-1 hover:ring-white/20'}`}
-             >
-                 <div className="bg-black/20 p-3 rounded-lg">
-                    <div className="flex justify-between items-start text-sm mb-2">
-                        <span className="font-bold text-white truncate pr-2">{project.name}</span>
-                        <div className="flex flex-col items-end gap-1 text-white/80 whitespace-nowrap">
-                            <div className="flex items-center gap-2">
-                                <svg className="w-4 h-4 text-cyan-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>
-                                <span><span className="font-semibold text-white">{project.taskCount}</span> tasks</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <svg className="w-4 h-4 text-teal-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                                <span><span className="font-semibold text-white">{project.timeSpent}</span> min</span>
-                            </div>
-                        </div>
-                    </div>
-                    {progress !== -1 && (
-                        <div>
-                            <div className="flex justify-between items-center text-xs mb-1 text-white/70">
-                                <span>Time Goal Progress</span>
-                                <span>{project.timeSpent}m / {project.targetTime}m</span>
-                            </div>
-                            <div className="w-full bg-black/30 rounded-full h-2.5 shadow-inner">
-                                <div className="bg-gradient-to-r from-cyan-400 to-blue-500 h-2.5 rounded-full" style={{width: `${progress}%`}}></div>
-                            </div>
-                        </div>
-                    )}
-                </div>
-            </button>
-        )
-    };
-
-    return (
-        <Panel title="Project Time Analysis">
-            <div className="mb-4 space-y-2">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                     <input type="date" value={dateRange.start} onChange={e => setDateRange(p => ({...p, start: e.target.value}))} className="bg-white/20 border border-white/30 rounded-lg p-2 text-white/80 w-full text-center" style={{colorScheme: 'dark'}}/>
-                     <input type="date" value={dateRange.end} onChange={e => setDateRange(p => ({...p, end: e.target.value}))} className="bg-white/20 border border-white/30 rounded-lg p-2 text-white/80 w-full text-center" style={{colorScheme: 'dark'}}/>
-                </div>
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 text-sm">
-                    <button onClick={() => handleSetRangePreset('week')} className={`p-2 rounded-lg transition font-semibold ${isThisWeek ? 'bg-white/20 text-white' : 'bg-white/10 hover:bg-white/20 text-white/80'}`}>This Week</button>
-                    <button onClick={() => handleSetRangePreset('month')} className={`p-2 rounded-lg transition font-semibold ${isThisMonth ? 'bg-white/20 text-white' : 'bg-white/10 hover:bg-white/20 text-white/80'}`}>This Month</button>
-                    <button className={`p-2 rounded-lg transition font-semibold bg-white/10 hover:bg-white/20 text-white/80`}>Date Range</button>
-                    <button onClick={() => handleSetRangePreset('all')} className={`p-2 rounded-lg transition font-semibold ${isAllTime ? 'bg-white/20 text-white' : 'bg-white/10 hover:bg-white/20 text-white/80'}`}>All Time</button>
-                </div>
-            </div>
-             <div className="flex justify-center gap-2 mb-4 bg-black/20 p-1 rounded-full">
-                {(['active', 'completed', 'due'] as const).map(status => (
-                    <button key={status} onClick={() => setStatusFilter(status)} className={`flex-1 p-2 text-sm rounded-full font-bold transition-colors ${statusFilter === status ? 'bg-white/20 text-white' : 'text-white/60 hover:bg-white/10'}`}>
-                        {status.charAt(0).toUpperCase() + status.slice(1)}
-                    </button>
-                ))}
-            </div>
-            <div className="space-y-2 max-h-60 overflow-y-auto pr-2">
-                {filteredProjectData.length > 0 ? (
-                    filteredProjectData.map(p => <ProjectTimeBar key={p.id} project={p} />)
-                ) : (
-                    <p className="text-center text-sm text-white/60 py-4">No projects with tracked time found for this status and date range.</p>
-                )}
-            </div>
-            <ProjectDailyFocusChart
-                projectId={selectedProjectId}
-                projectName={selectedProject?.name || null}
-                allTasks={allTasks}
-                allHistory={allHistory}
-                dateRange={dateRange}
-            />
-        </Panel>
-    );
-};
 
 const ActivityLog: React.FC<{ projectId: string, tasks: Task[] }> = ({ projectId, tasks }) => {
     const [updates, setUpdates] = useState<ProjectUpdate[]>([]);
@@ -424,9 +261,11 @@ interface ProjectItemProps {
     tasks: Task[];
     onUpdateProject: (id: string, updates: Partial<Project>) => void;
     onDeleteProject: (id: string) => void;
+    isSelected: boolean;
+    onSelect: () => void;
 }
 
-const ProjectItem: React.FC<ProjectItemProps> = ({ project, tasks, onUpdateProject, onDeleteProject }) => {
+const ProjectItem: React.FC<ProjectItemProps> = ({ project, tasks, onUpdateProject, onDeleteProject, isSelected, onSelect }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [editName, setEditName] = useState(project.name);
     const [editDescription, setEditDescription] = useState(project.description || '');
@@ -531,14 +370,15 @@ const ProjectItem: React.FC<ProjectItemProps> = ({ project, tasks, onUpdateProje
     const priorityClass = priorityBorderColors[project.priority as number] ?? '';
 
     return (
-        <div className={`p-3 rounded-lg ${bgColor} ${priorityClass} transition-all`}>
+        <div className={`p-3 rounded-lg ${bgColor} ${priorityClass} transition-all ${isSelected ? 'ring-2 ring-cyan-400' : 'hover:bg-white/20'}`}>
             <div className="flex items-center justify-between">
-                <div className="flex items-start gap-3 flex-grow min-w-0">
+                <div className="flex items-start gap-3 flex-grow min-w-0 cursor-pointer" onClick={onSelect}>
                     {isManual && (
                         <input 
                             type="checkbox" 
                             checked={isComplete} 
                             onChange={handleManualCompleteToggle} 
+                            onClick={e => e.stopPropagation()}
                             disabled={!isEditable}
                             className="h-5 w-5 rounded bg-white/20 border-white/30 text-green-400 focus:ring-green-400 flex-shrink-0 cursor-pointer disabled:cursor-not-allowed mt-1" 
                             aria-label={`Mark project ${project.name} as complete`}
@@ -1129,7 +969,7 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
     const [projectDateRange, setProjectDateRange] = useState({ start: '', end: '' });
     const [showProjectDateFilter, setShowProjectDateFilter] = useState(false);
     const [projectSortBy, setProjectSortBy] = useState<'default' | 'priority'>('default');
-    const [projectSubTab, setProjectSubTab] = useState<'list' | 'analysis'>('list');
+    const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
 
 
     useEffect(() => {
@@ -1568,105 +1408,102 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
                 
                 {activeTab === 'projects' && (
                      <div className="space-y-6 animate-fadeIn">
-                        <div className="flex justify-center gap-2 -mb-2 bg-slate-800/50 p-1 rounded-full max-w-sm mx-auto">
-                             <button onClick={() => setProjectSubTab('list')} className={`flex-1 p-2 text-sm rounded-full font-bold transition-colors ${projectSubTab === 'list' ? 'bg-white/20 text-white' : 'text-white/60 hover:bg-white/10'}`}>
-                                Project List
-                            </button>
-                             <button onClick={() => setProjectSubTab('analysis')} className={`flex-1 p-2 text-sm rounded-full font-bold transition-colors ${projectSubTab === 'analysis' ? 'bg-white/20 text-white' : 'text-white/60 hover:bg-white/10'}`}>
-                                Time Analysis
-                            </button>
-                        </div>
-
-                        {projectSubTab === 'list' && (
-                             <Panel title="Projects">
-                                <p className="text-white/80 text-center text-sm mb-4 -mt-4">Group your tasks into larger projects to track overall progress.</p>
-                                <div className="bg-black/20 p-3 rounded-lg mb-4 space-y-2">
-                                    <input type="text" value={newProjectName} onChange={e => setNewProjectName(e.target.value)} placeholder="New Project Name" className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50" />
-                                    <textarea value={newProjectDescription} onChange={e => setNewProjectDescription(e.target.value)} placeholder="Project Description (Optional)" className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50" rows={2}></textarea>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                        <div>
-                                            <label className="text-xs text-white/70 mb-1 flex items-center gap-1.5">
-                                                Deadline
-                                                <ExplanationTooltip title="Project Deadline" content="An optional due date for your project. The project's status will change to 'Due' if it's not completed by this date, reminding you to reassess." />
-                                            </label>
-                                            <input type="date" value={newProjectDeadline} onChange={e => setNewProjectDeadline(e.target.value)} className="bg-white/20 border border-white/30 rounded-lg p-3 text-white/80 w-full text-center" style={{colorScheme: 'dark'}} />
-                                        </div>
-                                        <div>
-                                            <label className="text-xs text-white/70 mb-1 flex items-center gap-1.5">
-                                                Completion Criteria
-                                                <ExplanationTooltip title="Completion Criteria" content="How is this project 'done'?<br/><br/>- <strong>Manual:</strong> You decide when it's complete.<br/>- <strong>Task Count:</strong> Automatically completes after a set number of linked tasks are finished.<br/>- <strong>Time Duration:</strong> Automatically completes after you've logged a certain number of focus minutes on linked tasks." />
-                                            </label>
-                                            <select value={criteriaType} onChange={e => setCriteriaType(e.target.value as any)} className="bg-white/20 border border-white/30 rounded-lg p-3 text-white focus:outline-none focus:bg-white/30 focus:border-white/50 w-full">
-                                                <option value="manual" className="bg-gray-800">Manual Completion</option>
-                                                <option value="task_count" className="bg-gray-800">Complete by Task Count</option>
-                                                <option value="duration_minutes" className="bg-gray-800">Complete by Time Duration</option>
-                                            </select>
-                                        </div>
+                        <Panel title="Projects">
+                            <p className="text-white/80 text-center text-sm mb-4 -mt-4">Group your tasks into larger projects to track overall progress.</p>
+                            <div className="bg-black/20 p-3 rounded-lg mb-4 space-y-2">
+                                <input type="text" value={newProjectName} onChange={e => setNewProjectName(e.target.value)} placeholder="New Project Name" className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50" />
+                                <textarea value={newProjectDescription} onChange={e => setNewProjectDescription(e.target.value)} placeholder="Project Description (Optional)" className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50" rows={2}></textarea>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                    <div>
+                                        <label className="text-xs text-white/70 mb-1 flex items-center gap-1.5">
+                                            Deadline
+                                            <ExplanationTooltip title="Project Deadline" content="An optional due date for your project. The project's status will change to 'Due' if it's not completed by this date, reminding you to reassess." />
+                                        </label>
+                                        <input type="date" value={newProjectDeadline} onChange={e => setNewProjectDeadline(e.target.value)} className="bg-white/20 border border-white/30 rounded-lg p-3 text-white/80 w-full text-center" style={{colorScheme: 'dark'}} />
                                     </div>
-                                    {criteriaType !== 'manual' && (
-                                        <input type="number" value={criteriaValue} onChange={e => setCriteriaValue(e.target.value)} placeholder={criteriaType === 'task_count' ? '# of tasks to complete' : 'Total minutes of focus'} className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50" />
-                                    )}
-                                    <div className="flex flex-col sm:flex-row gap-2 justify-between items-center pt-1">
-                                        <div>
-                                            <label className="text-xs text-white/70 mb-1 flex items-center gap-1.5">
-                                                Priority
-                                                <ExplanationTooltip title="Project Priority" content="Set a priority from 1 (Highest) to 4 (Lowest). This helps organize your projects list." />
-                                            </label>
-                                            <PrioritySelector priority={newProjectPriority} setPriority={setNewProjectPriority} />
-                                        </div>
-                                        <button onClick={handleAddProject} className="w-full sm:w-auto p-3 rounded-lg font-bold text-white transition hover:scale-105 bg-gradient-to-br from-blue-500 to-sky-600">Add Project</button>
+                                    <div>
+                                        <label className="text-xs text-white/70 mb-1 flex items-center gap-1.5">
+                                            Completion Criteria
+                                            <ExplanationTooltip title="Completion Criteria" content="How is this project 'done'?<br/><br/>- <strong>Manual:</strong> You decide when it's complete.<br/>- <strong>Task Count:</strong> Automatically completes after a set number of linked tasks are finished.<br/>- <strong>Time Duration:</strong> Automatically completes after you've logged a certain number of focus minutes on linked tasks." />
+                                        </label>
+                                        <select value={criteriaType} onChange={e => setCriteriaType(e.target.value as any)} className="bg-white/20 border border-white/30 rounded-lg p-3 text-white focus:outline-none focus:bg-white/30 focus:border-white/50 w-full">
+                                            <option value="manual" className="bg-gray-800">Manual Completion</option>
+                                            <option value="task_count" className="bg-gray-800">Complete by Task Count</option>
+                                            <option value="duration_minutes" className="bg-gray-800">Complete by Time Duration</option>
+                                        </select>
                                     </div>
                                 </div>
-                                
-                                <div className="flex justify-center gap-2 mb-4 bg-black/20 p-1 rounded-full">
-                                    {(['active', 'completed', 'due'] as const).map(status => (
-                                        <button key={status} onClick={() => setProjectStatusFilter(status)} className={`flex-1 p-2 text-sm rounded-full font-bold transition-colors ${projectStatusFilter === status ? 'bg-white/20 text-white' : 'text-white/60 hover:bg-white/10'}`}>
-                                            {status.charAt(0).toUpperCase() + status.slice(1)} ({
-                                                status === 'active' ? activeProjects.length :
-                                                status === 'completed' ? projects.filter(p=>p.status === 'completed').length :
-                                                projects.filter(p=>p.status === 'due').length
-                                            })
-                                        </button>
-                                    ))}
-                                </div>
-
-                                <ProjectFilterControls />
-                                
-                                <div className="flex justify-end mb-2 -mt-2">
-                                    <button
-                                        onClick={() => setProjectSortBy(s => s === 'default' ? 'priority' : 'default')}
-                                        className="text-xs text-cyan-300 hover:text-cyan-200 font-semibold px-3 py-1 rounded-full hover:bg-white/10 transition"
-                                        aria-label={`Sort projects by ${projectSortBy === 'default' ? 'priority' : 'date'}`}
-                                    >
-                                        Sort by: {projectSortBy === 'default' ? 'Default' : 'Priority'}
-                                    </button>
-                                </div>
-                                
-                                <ul className="space-y-2 max-h-96 overflow-y-auto pr-2">
-                                    {(
-                                        projectStatusFilter === 'active' ? activeProjects :
-                                        projectStatusFilter === 'completed' ? visibleCompletedProjects :
-                                        visibleDueProjects
-                                    ).map(project => (
-                                        <li key={project.id}>
-                                            <ProjectItem project={project} tasks={allTasks} onUpdateProject={onUpdateProject} onDeleteProject={onDeleteProject} />
-                                        </li>
-                                    ))}
-                                    {(
-                                        projectStatusFilter === 'active' ? activeProjects :
-                                        projectStatusFilter === 'completed' ? visibleCompletedProjects :
-                                        visibleDueProjects
-                                    ).length === 0 && <p className="text-center text-white/60 p-4">No projects match the current filter.</p>}
-                                </ul>
-                            </Panel>
-                        )}
-                        {projectSubTab === 'analysis' && (
-                            <div className="animate-fadeIn">
-                                {isLoadingStats ? <Spinner /> : (
-                                    <ProjectTimeAnalysisDashboard allProjects={projects} allTasks={allTasks} allHistory={allHistory} />
+                                {criteriaType !== 'manual' && (
+                                    <input type="number" value={criteriaValue} onChange={e => setCriteriaValue(e.target.value)} placeholder={criteriaType === 'task_count' ? '# of tasks to complete' : 'Total minutes of focus'} className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50" />
                                 )}
+                                <div className="flex flex-col sm:flex-row gap-2 justify-between items-center pt-1">
+                                    <div>
+                                        <label className="text-xs text-white/70 mb-1 flex items-center gap-1.5">
+                                            Priority
+                                            <ExplanationTooltip title="Project Priority" content="Set a priority from 1 (Highest) to 4 (Lowest). This helps organize your projects list." />
+                                        </label>
+                                        <PrioritySelector priority={newProjectPriority} setPriority={setNewProjectPriority} />
+                                    </div>
+                                    <button onClick={handleAddProject} className="w-full sm:w-auto p-3 rounded-lg font-bold text-white transition hover:scale-105 bg-gradient-to-br from-blue-500 to-sky-600">Add Project</button>
+                                </div>
                             </div>
-                        )}
+                            
+                            <div className="flex justify-center gap-2 mb-4 bg-black/20 p-1 rounded-full">
+                                {(['active', 'completed', 'due'] as const).map(status => (
+                                    <button key={status} onClick={() => setProjectStatusFilter(status)} className={`flex-1 p-2 text-sm rounded-full font-bold transition-colors ${projectStatusFilter === status ? 'bg-white/20 text-white' : 'text-white/60 hover:bg-white/10'}`}>
+                                        {status.charAt(0).toUpperCase() + status.slice(1)} ({
+                                            status === 'active' ? activeProjects.length :
+                                            status === 'completed' ? projects.filter(p=>p.status === 'completed').length :
+                                            projects.filter(p=>p.status === 'due').length
+                                        })
+                                    </button>
+                                ))}
+                            </div>
+
+                            <ProjectFilterControls />
+                            
+                            <div className="flex justify-end mb-2 -mt-2">
+                                <button
+                                    onClick={() => setProjectSortBy(s => s === 'default' ? 'priority' : 'default')}
+                                    className="text-xs text-cyan-300 hover:text-cyan-200 font-semibold px-3 py-1 rounded-full hover:bg-white/10 transition"
+                                    aria-label={`Sort projects by ${projectSortBy === 'default' ? 'priority' : 'date'}`}
+                                >
+                                    Sort by: {projectSortBy === 'default' ? 'Default' : 'Priority'}
+                                </button>
+                            </div>
+                            
+                            <ul className="space-y-2 max-h-96 overflow-y-auto pr-2">
+                                {(
+                                    projectStatusFilter === 'active' ? activeProjects :
+                                    projectStatusFilter === 'completed' ? visibleCompletedProjects :
+                                    visibleDueProjects
+                                ).map(project => (
+                                    <li key={project.id}>
+                                        <ProjectItem 
+                                            project={project} 
+                                            tasks={allTasks} 
+                                            onUpdateProject={onUpdateProject} 
+                                            onDeleteProject={onDeleteProject} 
+                                            isSelected={project.id === selectedProjectId}
+                                            onSelect={() => setSelectedProjectId(prev => prev === project.id ? null : project.id)}
+                                        />
+                                    </li>
+                                ))}
+                                {(
+                                    projectStatusFilter === 'active' ? activeProjects :
+                                    projectStatusFilter === 'completed' ? visibleCompletedProjects :
+                                    visibleDueProjects
+                                ).length === 0 && <p className="text-center text-white/60 p-4">No projects match the current filter.</p>}
+                            </ul>
+                             {selectedProjectId && !isLoadingStats && (
+                                <ProjectDailyFocusChart
+                                    projectId={selectedProjectId}
+                                    projectName={projects.find(p => p.id === selectedProjectId)?.name || null}
+                                    allTasks={allTasks}
+                                    allHistory={allHistory}
+                                />
+                            )}
+                        </Panel>
                     </div>
                 )}
 
