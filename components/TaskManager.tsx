@@ -340,7 +340,7 @@ const TaskInputGroup: React.FC<TaskInputGroupProps> = ({ onAddTask, placeholder,
     };
 
     return (
-        <div className="flex flex-col gap-3 mb-4">
+        <div className="space-y-4 mb-4">
             <input 
                 type="text" 
                 value={text}
@@ -349,7 +349,7 @@ const TaskInputGroup: React.FC<TaskInputGroupProps> = ({ onAddTask, placeholder,
                 placeholder={placeholder}
                 className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50"
             />
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-4">
                 <div>
                     <label className="text-xs text-white/70 mb-1 flex items-center gap-1.5">
                         Project
@@ -388,8 +388,8 @@ const TaskInputGroup: React.FC<TaskInputGroupProps> = ({ onAddTask, placeholder,
                     />
                 </div>
             )}
-            <div className="flex flex-col sm:flex-row gap-4 justify-between items-center sm:items-end">
-                <div className="flex items-end gap-4">
+            <div className="flex flex-wrap justify-between items-end gap-4 pt-1">
+                <div className="flex items-end gap-3">
                     <div>
                         <label className="text-xs text-white/70 mb-1 flex items-center gap-1.5">
                             Poms
@@ -401,7 +401,7 @@ const TaskInputGroup: React.FC<TaskInputGroupProps> = ({ onAddTask, placeholder,
                             min="1"
                             value={poms}
                             onChange={(e) => setPoms(e.target.value)}
-                            className="w-20 text-center bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50 disabled:opacity-50"
+                            className="w-16 h-12 text-center bg-white/20 border border-white/30 rounded-lg p-2 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50 disabled:opacity-50"
                             disabled={isStopwatch}
                         />
                     </div>
@@ -424,7 +424,7 @@ const TaskInputGroup: React.FC<TaskInputGroupProps> = ({ onAddTask, placeholder,
                         </label>
                         <PrioritySelector priority={priority} setPriority={setPriority} />
                     </div>
-                    <button onClick={handleAdd} className={`self-end p-3 sm:px-4 rounded-lg font-bold text-white transition hover:scale-105 ${buttonClass}`}>{buttonText}</button>
+                    <button onClick={handleAdd} className={`h-12 px-6 rounded-lg font-bold text-white transition hover:scale-105 ${buttonClass}`}>{buttonText}</button>
                 </div>
             </div>
         </div>
