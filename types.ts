@@ -10,6 +10,7 @@ export interface Project {
     created_at: string;
     name: string;
     description: string | null;
+    start_date: string | null;
     deadline: string | null;
     status: 'active' | 'completed' | 'due';
     completed_at: string | null; // Set when status becomes 'completed'
@@ -17,6 +18,7 @@ export interface Project {
     completion_criteria_value: number | null;
     progress_value: number; // stores completed tasks or minutes
     priority: number | null;
+    active_days: number[] | null;
 }
 
 // Corresponds to the `project_updates` table

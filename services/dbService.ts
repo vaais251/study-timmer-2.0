@@ -384,10 +384,12 @@ export const getProjects = async (): Promise<Project[] | null> => {
 export const addProject = async (
     name: string, 
     description: string | null,
+    startDate: string | null,
     deadline: string | null, 
     criteriaType: Project['completion_criteria_type'],
     criteriaValue: number | null,
-    priority: number | null
+    priority: number | null,
+    activeDays: number[] | null
 ): Promise<Project | null> => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return null;
@@ -396,13 +398,15 @@ export const addProject = async (
         .insert({ 
             name, 
             description,
-            user_id: user.id, 
+            user_id: user.id,
+            start_date: startDate,
             deadline,
             completion_criteria_type: criteriaType,
             completion_criteria_value: criteriaValue,
             status: 'active',
             progress_value: 0,
             priority,
+            active_days: activeDays,
         })
         .select()
         .single();
@@ -490,6 +494,7 @@ export const rescheduleProject = async (projectId: string, newDeadline: string |
         ...rest,
         name: `${originalProject.name} (rescheduled)`,
         status: 'active' as const,
+        start_date: getTodayDateString(),
         deadline: newDeadline,
         progress_value: 0,
         completed_at: null,

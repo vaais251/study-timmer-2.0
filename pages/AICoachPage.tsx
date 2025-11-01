@@ -25,7 +25,7 @@ interface AICoachPageProps {
     projects: Project[];
     allCommitments: Commitment[];
     onAddTask: (text: string, poms: number, dueDate: string, projectId: string | null, tags: string[], priority: number | null) => Promise<void>;
-    onAddProject: (name: string, description: string | null, deadline: string | null, criteria: {type: Project['completion_criteria_type'], value: number | null}, priority: number | null) => Promise<string | null>;
+    onAddProject: (name: string, description: string | null, startDate: string | null, deadline: string | null, criteria: {type: Project['completion_criteria_type'], value: number | null}, priority: number | null, activeDays: number[] | null) => Promise<string | null>;
     onAddTarget: (text: string, deadline: string, priority: number | null) => Promise<void>;
     onAddCommitment: (text: string, dueDate: string | null) => Promise<void>;
     onRescheduleItem: (itemId: string, itemType: 'project' | 'target' | 'commitment', newDate: string | null) => Promise<void>;
@@ -61,10 +61,16 @@ const toolDeclarations: FunctionDeclaration[] = [
             properties: {
                 name: { type: Type.STRING, description: 'The name of the new project.' },
                 description: { type: Type.STRING, description: 'A brief description of the project.' },
+                startDate: { type: Type.STRING, description: 'An optional start date for the project in YYYY-MM-DD format.' },
                 deadline: { type: Type.STRING, description: 'The deadline for the project in YYYY-MM-DD format.' },
                 criteriaType: { type: Type.STRING, enum: ['manual', 'task_count', 'duration_minutes'], description: 'The completion criteria type. Defaults to "manual".' },
                 criteriaValue: { type: Type.INTEGER, description: 'The target value for task_count or duration_minutes criteria.' },
-                priority: { type: Type.INTEGER, description: 'An optional priority from 1 (highest) to 4 (lowest).' }
+                priority: { type: Type.INTEGER, description: 'An optional priority from 1 (highest) to 4 (lowest).' },
+                activeDays: { 
+                    type: Type.ARRAY, 
+                    description: 'An array of numbers (0-6, where Sunday is 0) for the days the project is active. If empty or null, it is active every day.', 
+                    items: { type: Type.INTEGER } 
+                },
             },
             required: ['name']
         }
@@ -429,11 +435,13 @@ const AICoachPage: React.FC<AICoachPageProps> = (props) => {
                 name: p.name,
                 description: p.description,
                 status: p.status,
+                start_date: p.start_date,
                 deadline: p.deadline,
                 completion_criteria_type: p.completion_criteria_type,
                 completion_criteria_value: p.completion_criteria_value,
                 progress_value: p.progress_value,
                 priority: p.priority,
+                active_days: p.active_days
             })),
             commitments: allCommitments.map(c => ({ id: c.id, text: c.text, due_date: c.due_date })),
             tasks: contextTasks.map(t => ({
@@ -472,7 +480,7 @@ const AICoachPage: React.FC<AICoachPageProps> = (props) => {
                         await onAddTask(args.text as string, (args.poms as number) || 1, (args.dueDate as string) || getTodayDateString(), (args.projectId as string) || null, (args.tags as string[]) || [], (args.priority as number) || null);
                         functionResultPayload = { success: true, message: `Task "${args.text as string}" added.` };
                     } else if (name === 'addProject') {
-                        await onAddProject(args.name as string, (args.description as string) || null, (args.deadline as string) || null, {type: (args.criteriaType as Project['completion_criteria_type']) || 'manual', value: (args.criteriaValue as number) || null}, (args.priority as number) || null);
+                        await onAddProject(args.name as string, (args.description as string) || null, (args.startDate as string) || null, (args.deadline as string) || null, {type: (args.criteriaType as Project['completion_criteria_type']) || 'manual', value: (args.criteriaValue as number) || null}, (args.priority as number) || null, (args.activeDays as number[]) || null);
                         functionResultPayload = { success: true, message: `Project "${args.name as string}" created.` };
                     } else if (name === 'addTarget') {
                         await onAddTarget(args.text as string, args.deadline as string, (args.priority as number) || null);

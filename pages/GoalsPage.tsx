@@ -1,4 +1,5 @@
 
+
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 // FIX: Import the 'Commitment' type to resolve multiple 'Cannot find name' errors.
 import { Goal, Target, Project, Task, PomodoroHistory, ProjectUpdate, Commitment } from '../types';
@@ -30,6 +31,54 @@ const isOlderThanOrEqualToTwoDays = (dateString: string): boolean => {
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     
     return diffDays >= 2;
+};
+
+const getProjectDurationText = (project: Project): string => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Start date is either specified or the creation date.
+    const startDate = new Date((project.start_date || project.created_at.split('T')[0]) + 'T00:00:00');
+    
+    // 1. Upcoming projects
+    if (project.start_date && startDate > today) {
+         return `(Starts on ${startDate.toLocaleDateString()})`;
+    }
+    
+    // 2. Completed or Due projects have a fixed duration
+    let fixedEndDate: Date | null = null;
+    if (project.status === 'completed' && project.completed_at) {
+        fixedEndDate = new Date(project.completed_at);
+    } else if (project.status === 'due' && project.deadline) {
+        fixedEndDate = new Date(project.deadline + 'T00:00:00');
+    }
+
+    if (fixedEndDate) {
+        const effectiveStartDate = startDate > fixedEndDate ? new Date(project.created_at) : startDate;
+        
+        // Normalize dates to midnight to count days inclusively
+        const endDay = new Date(fixedEndDate);
+        endDay.setHours(0,0,0,0);
+        const startDay = new Date(effectiveStartDate);
+        startDay.setHours(0,0,0,0);
+        
+        const diffTime = endDay.getTime() - startDay.getTime();
+        const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+        
+        const dayCount = diffDays + 1;
+        
+        if (dayCount <= 0) return '(Took less than a day)';
+        return `(Took ${dayCount} day${dayCount > 1 ? 's' : ''})`;
+    }
+
+    // 3. Active, ongoing projects
+    const diffTime = today.getTime() - startDate.getTime();
+    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+    
+    const dayCount = diffDays + 1;
+    if (dayCount <= 0) return '(Started today)';
+    
+    return `(Ongoing for ${dayCount} day${dayCount > 1 ? 's' : ''})`;
 };
 
 const ProjectDailyFocusChart: React.FC<{
@@ -256,6 +305,31 @@ const priorityBorderColors: { [key: number]: string } = {
     4: 'border-l-4 border-slate-500',
 };
 
+const DaySelector: React.FC<{ selectedDays: number[], onDayToggle: (dayIndex: number) => void }> = ({ selectedDays, onDayToggle }) => {
+    const days = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+    return (
+        <div className="flex justify-center gap-1.5">
+            {days.map((day, index) => {
+                const isSelected = selectedDays.includes(index);
+                return (
+                    <button
+                        key={index}
+                        type="button"
+                        onClick={() => onDayToggle(index)}
+                        className={`w-9 h-9 rounded-full text-xs font-bold transition-all transform hover:scale-110 ${
+                            isSelected ? 'bg-cyan-500 text-white shadow-md' : 'bg-slate-600 hover:bg-slate-500 text-slate-300'
+                        }`}
+                        title={`Toggle ${['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][index]}`}
+                    >
+                        {day}
+                    </button>
+                );
+            })}
+        </div>
+    );
+};
+
+
 interface ProjectItemProps {
     project: Project;
     tasks: Task[];
@@ -269,10 +343,12 @@ const ProjectItem: React.FC<ProjectItemProps> = ({ project, tasks, onUpdateProje
     const [isEditing, setIsEditing] = useState(false);
     const [editName, setEditName] = useState(project.name);
     const [editDescription, setEditDescription] = useState(project.description || '');
+    const [editStartDate, setEditStartDate] = useState(project.start_date || '');
     const [editDeadline, setEditDeadline] = useState(project.deadline || '');
     const [editCriteriaType, setEditCriteriaType] = useState(project.completion_criteria_type);
     const [editCriteriaValue, setEditCriteriaValue] = useState(project.completion_criteria_value?.toString() || '');
     const [editPriority, setEditPriority] = useState<number>(project.priority ?? 3);
+    const [editActiveDays, setEditActiveDays] = useState<number[]>(project.active_days || []);
     const [isLogVisible, setIsLogVisible] = useState(false);
 
     const { progress, progressText, isComplete, isDue, isManual, isEditable } = useMemo(() => {
@@ -320,10 +396,12 @@ const ProjectItem: React.FC<ProjectItemProps> = ({ project, tasks, onUpdateProje
         const updates: Partial<Project> = {
             name: editName.trim(),
             description: editDescription.trim() || null,
+            start_date: editStartDate || null,
             deadline: editDeadline || null,
             completion_criteria_type: editCriteriaType,
             completion_criteria_value: value,
-            priority: editPriority
+            priority: editPriority,
+            active_days: editActiveDays.length > 0 ? editActiveDays : null,
         };
         onUpdateProject(project.id, updates);
         setIsEditing(false);
@@ -332,26 +410,47 @@ const ProjectItem: React.FC<ProjectItemProps> = ({ project, tasks, onUpdateProje
     const handleCancel = () => {
         setEditName(project.name);
         setEditDescription(project.description || '');
+        setEditStartDate(project.start_date || '');
         setEditDeadline(project.deadline || '');
         setEditCriteriaType(project.completion_criteria_type);
         setEditCriteriaValue(project.completion_criteria_value?.toString() || '');
         setEditPriority(project.priority ?? 3);
+        setEditActiveDays(project.active_days || []);
         setIsEditing(false);
     };
 
+    const handleDayToggle = (dayIndex: number) => {
+        setEditActiveDays(prev => 
+            prev.includes(dayIndex) 
+                ? prev.filter(d => d !== dayIndex)
+                : [...prev, dayIndex]
+        );
+    };
+
+    const activeDaysString = useMemo(() => {
+        if (!project.active_days || project.active_days.length === 0) return null;
+        const dayMap = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        return project.active_days.sort().map(d => dayMap[d]).join(', ');
+    }, [project.active_days]);
+
     if (isEditing) {
         return (
-            <div className="bg-white/20 p-3 rounded-lg ring-2 ring-cyan-400 space-y-2">
+            <div className="bg-white/20 p-3 rounded-lg ring-2 ring-cyan-400 space-y-3">
                 <input type="text" value={editName} onChange={e => setEditName(e.target.value)} placeholder="Project Name" className="w-full bg-white/20 border border-white/30 rounded-lg p-2 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50" />
                 <textarea value={editDescription} onChange={e => setEditDescription(e.target.value)} placeholder="Project Description (Optional)" className="w-full bg-white/20 border border-white/30 rounded-lg p-2 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50" rows={2}></textarea>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    <input type="date" value={editStartDate} onChange={e => setEditStartDate(e.target.value)} className="bg-white/20 border border-white/30 rounded-lg p-2 text-white/80 w-full text-center" style={{colorScheme: 'dark'}} />
                     <input type="date" value={editDeadline} onChange={e => setEditDeadline(e.target.value)} className="bg-white/20 border border-white/30 rounded-lg p-2 text-white/80 w-full text-center" style={{colorScheme: 'dark'}} />
-                    <select value={editCriteriaType} onChange={e => setEditCriteriaType(e.target.value as any)} className="bg-white/20 border border-white/30 rounded-lg p-2 text-white focus:outline-none focus:bg-white/30 focus:border-white/50 w-full">
-                        <option value="manual" className="bg-gray-800">Manual</option>
-                        <option value="task_count" className="bg-gray-800">Task Count</option>
-                        <option value="duration_minutes" className="bg-gray-800">Time Duration</option>
-                    </select>
                 </div>
+                <div className="space-y-2">
+                    <label className="text-xs text-white/70">Active Days (leave blank for all days)</label>
+                    <DaySelector selectedDays={editActiveDays} onDayToggle={handleDayToggle} />
+                </div>
+                <select value={editCriteriaType} onChange={e => setEditCriteriaType(e.target.value as any)} className="bg-white/20 border border-white/30 rounded-lg p-2 text-white focus:outline-none focus:bg-white/30 focus:border-white/50 w-full">
+                    <option value="manual" className="bg-gray-800">Manual</option>
+                    <option value="task_count" className="bg-gray-800">Task Count</option>
+                    <option value="duration_minutes" className="bg-gray-800">Time Duration</option>
+                </select>
                 {editCriteriaType !== 'manual' && (
                     <input type="number" value={editCriteriaValue} onChange={e => setEditCriteriaValue(e.target.value)} placeholder={editCriteriaType === 'task_count' ? '# of tasks' : 'Minutes of focus'} className="w-full bg-white/20 border border-white/30 rounded-lg p-2 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50" />
                 )}
@@ -371,7 +470,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({ project, tasks, onUpdateProje
 
     return (
         <div className={`p-3 rounded-lg ${bgColor} ${priorityClass} transition-all ${isSelected ? 'ring-2 ring-cyan-400' : 'hover:bg-white/20'}`}>
-            <div className="flex items-center justify-between">
+            <div className="flex items-start justify-between">
                 <div className="flex items-start gap-3 flex-grow min-w-0 cursor-pointer" onClick={onSelect}>
                     {isManual && (
                         <input 
@@ -385,12 +484,22 @@ const ProjectItem: React.FC<ProjectItemProps> = ({ project, tasks, onUpdateProje
                         />
                     )}
                     <div className="flex-grow min-w-0">
-                        <span className={`text-white font-bold ${isComplete ? 'line-through' : ''}`}>{project.name}</span>
-                        {project.deadline && (
-                            <span className={`block text-xs mt-1 ${isDue && !isComplete ? 'text-red-400 font-bold' : 'text-amber-300/80'}`}>
-                                Due: {new Date(project.deadline + 'T00:00:00').toLocaleDateString()}
-                            </span>
-                        )}
+                        <div>
+                             <span className={`text-white font-bold ${isComplete ? 'line-through' : ''}`}>{project.name}</span>
+                             <span className="text-sm text-white/60 ml-2 font-normal">{getProjectDurationText(project)}</span>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs mt-1">
+                            {project.deadline && (
+                                <span className={isDue && !isComplete ? 'text-red-400 font-bold' : 'text-amber-300/80'}>
+                                    Due: {new Date(project.deadline + 'T00:00:00').toLocaleDateString()}
+                                </span>
+                            )}
+                            {activeDaysString && (
+                                <span className="text-cyan-300/80">
+                                    Active: {activeDaysString}
+                                </span>
+                            )}
+                        </div>
                          {project.description && <p className="text-sm text-white/70 mt-1 italic">{project.description}</p>}
                     </div>
                 </div>
@@ -924,7 +1033,7 @@ interface GoalsPageProps {
     onAddTarget: (text: string, deadline: string, priority: number | null) => void;
     onUpdateTarget: (id: string, updates: Partial<Target>) => void;
     onDeleteTarget: (id: string) => void;
-    onAddProject: (name: string, description: string | null, deadline: string | null, criteria: {type: Project['completion_criteria_type'], value: number | null}, priority: number | null) => Promise<string | null>;
+    onAddProject: (name: string, description: string | null, startDate: string | null, deadline: string | null, criteria: {type: Project['completion_criteria_type'], value: number | null}, priority: number | null, activeDays: number[] | null) => Promise<string | null>;
     onUpdateProject: (id: string, updates: Partial<Project>) => void;
     onDeleteProject: (id: string) => void;
     onAddCommitment: (text: string, dueDate: string | null) => void;
@@ -954,8 +1063,10 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
     // Project form state
     const [newProjectName, setNewProjectName] = useState('');
     const [newProjectDescription, setNewProjectDescription] = useState('');
+    const [newProjectStartDate, setNewProjectStartDate] = useState('');
     const [newProjectDeadline, setNewProjectDeadline] = useState('');
     const [newProjectPriority, setNewProjectPriority] = useState<number>(3);
+    const [newProjectActiveDays, setNewProjectActiveDays] = useState<number[]>([]);
     const [criteriaType, setCriteriaType] = useState<Project['completion_criteria_type']>('manual');
     const [criteriaValue, setCriteriaValue] = useState('');
     
@@ -971,6 +1082,7 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
     const [projectSortBy, setProjectSortBy] = useState<'default' | 'priority'>('default');
     const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
 
+    const todayString = getTodayDateString();
 
     useEffect(() => {
         const fetchStatsData = async () => {
@@ -994,13 +1106,23 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
                 return;
             }
 
-            onAddProject(newProjectName.trim(), newProjectDescription.trim() || null, newProjectDeadline || null, { type: criteriaType, value }, newProjectPriority);
+            onAddProject(
+                newProjectName.trim(), 
+                newProjectDescription.trim() || null, 
+                newProjectStartDate || null, 
+                newProjectDeadline || null, 
+                { type: criteriaType, value }, 
+                newProjectPriority,
+                newProjectActiveDays.length > 0 ? newProjectActiveDays : null
+            );
             
             // Reset form
             setNewProjectName('');
             setNewProjectDescription('');
+            setNewProjectStartDate('');
             setNewProjectDeadline('');
             setNewProjectPriority(3);
+            setNewProjectActiveDays([]);
             setCriteriaType('manual');
             setCriteriaValue('');
         }
@@ -1022,6 +1144,14 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
         }
     };
     
+    const handleNewProjectDayToggle = (dayIndex: number) => {
+        setNewProjectActiveDays(prev =>
+            prev.includes(dayIndex)
+                ? prev.filter(d => d !== dayIndex)
+                : [...prev, dayIndex]
+        );
+    };
+    
     const oneMonthAgo = useMemo(() => {
         const d = new Date();
         d.setMonth(d.getMonth() - 1);
@@ -1041,6 +1171,12 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
         return { visibleGoals: visible, hiddenGoalsCount: goals.length - visible.length };
     }, [goals, showArchivedGoals, oneMonthAgo]);
 
+    const upcomingProjects = useMemo(() => {
+        return projects
+            .filter(p => p.start_date && p.start_date > todayString && p.status !== 'completed')
+            .sort((a,b) => (a.start_date || '').localeCompare(b.start_date || ''));
+    }, [projects, todayString]);
+
     const {
         activeProjects,
         visibleCompletedProjects,
@@ -1050,10 +1186,12 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
     } = useMemo(() => {
         const thirtyDaysAgo = new Date();
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        
+        const nonUpcomingProjects = projects.filter(p => !upcomingProjects.some(up => up.id === p.id));
 
-        const allActive = projects.filter(p => p.status === 'active');
-        const allCompleted = projects.filter(p => p.status === 'completed');
-        const allDue = projects.filter(p => p.status === 'due');
+        const allActive = nonUpcomingProjects.filter(p => p.status === 'active');
+        const allCompleted = nonUpcomingProjects.filter(p => p.status === 'completed');
+        const allDue = nonUpcomingProjects.filter(p => p.status === 'due');
 
         if (projectSortBy === 'priority') {
             const sortByPriority = (a: Project, b: Project) => {
@@ -1096,7 +1234,21 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
             hiddenCompletedProjectsCount: hiddenCompleted,
             hiddenDueProjectsCount: hiddenDue,
         };
-    }, [projects, projectDateRange, projectSortBy]);
+    }, [projects, upcomingProjects, projectDateRange, projectSortBy]);
+    
+    const projectsActiveToday = useMemo(() => {
+        const dayOfWeek = new Date().getDay();
+        return activeProjects.filter(p => 
+            !p.active_days || p.active_days.length === 0 || p.active_days.includes(dayOfWeek)
+        );
+    }, [activeProjects]);
+
+    const projectsInactiveToday = useMemo(() => {
+        const dayOfWeek = new Date().getDay();
+        return activeProjects.filter(p => 
+            p.active_days && p.active_days.length > 0 && !p.active_days.includes(dayOfWeek)
+        );
+    }, [activeProjects]);
     
     const {
         pendingTargets,
@@ -1250,6 +1402,77 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
         overview: { icon: <StarIcon />, label: "Overview" },
         projects: { icon: <GoalsIcon />, label: "Projects" },
         commitments: { icon: <LockIcon />, label: "Commitments" },
+    };
+
+    const renderProjectsList = () => {
+        let listToShow;
+        if (projectStatusFilter === 'active') {
+             return (
+                <>
+                    {projectsActiveToday.length > 0 && (
+                        <>
+                            <h3 className="text-lg font-bold text-white mb-2 text-center">Active Today</h3>
+                             <ul className="space-y-2 max-h-96 overflow-y-auto pr-2">
+                                {projectsActiveToday.map(project => (
+                                    <li key={project.id}>
+                                        <ProjectItem 
+                                            project={project} 
+                                            tasks={allTasks} 
+                                            onUpdateProject={onUpdateProject} 
+                                            onDeleteProject={onDeleteProject} 
+                                            isSelected={project.id === selectedProjectId}
+                                            onSelect={() => setSelectedProjectId(prev => prev === project.id ? null : project.id)}
+                                        />
+                                    </li>
+                                ))}
+                            </ul>
+                        </>
+                    )}
+                     {projectsInactiveToday.length > 0 && (
+                        <>
+                            <h3 className={`text-lg font-bold text-white mb-2 text-center ${projectsActiveToday.length > 0 ? 'mt-6' : ''}`}>Inactive Today</h3>
+                             <ul className="space-y-2 max-h-96 overflow-y-auto pr-2">
+                                {projectsInactiveToday.map(project => (
+                                    <li key={project.id} className="opacity-60 hover:opacity-100 transition-opacity">
+                                        <ProjectItem 
+                                            project={project} 
+                                            tasks={allTasks} 
+                                            onUpdateProject={onUpdateProject} 
+                                            onDeleteProject={onDeleteProject} 
+                                            isSelected={project.id === selectedProjectId}
+                                            onSelect={() => setSelectedProjectId(prev => prev === project.id ? null : project.id)}
+                                        />
+                                    </li>
+                                ))}
+                            </ul>
+                        </>
+                    )}
+                    {activeProjects.length === 0 && <p className="text-center text-white/60 p-4">No active projects. Add one to get started!</p>}
+                </>
+             )
+        } else if (projectStatusFilter === 'completed') {
+            listToShow = visibleCompletedProjects;
+        } else { // 'due'
+            listToShow = visibleDueProjects;
+        }
+
+        return (
+             <ul className="space-y-2 max-h-96 overflow-y-auto pr-2">
+                {listToShow.map(project => (
+                     <li key={project.id}>
+                        <ProjectItem 
+                            project={project} 
+                            tasks={allTasks} 
+                            onUpdateProject={onUpdateProject} 
+                            onDeleteProject={onDeleteProject} 
+                            isSelected={project.id === selectedProjectId}
+                            onSelect={() => setSelectedProjectId(prev => prev === project.id ? null : project.id)}
+                        />
+                    </li>
+                ))}
+                {listToShow.length === 0 && <p className="text-center text-white/60 p-4">No projects match the current filter.</p>}
+            </ul>
+        );
     };
 
     return (
@@ -1410,10 +1633,14 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
                      <div className="space-y-6 animate-fadeIn">
                         <Panel title="Projects">
                             <p className="text-white/80 text-center text-sm mb-4 -mt-4">Group your tasks into larger projects to track overall progress.</p>
-                            <div className="bg-black/20 p-3 rounded-lg mb-4 space-y-2">
+                            <div className="bg-black/20 p-3 rounded-lg mb-4 space-y-3">
                                 <input type="text" value={newProjectName} onChange={e => setNewProjectName(e.target.value)} placeholder="New Project Name" className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50" />
                                 <textarea value={newProjectDescription} onChange={e => setNewProjectDescription(e.target.value)} placeholder="Project Description (Optional)" className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50" rows={2}></textarea>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                    <div>
+                                        <label className="text-xs text-white/70 mb-1">Start Date (Optional)</label>
+                                        <input type="date" value={newProjectStartDate} onChange={e => setNewProjectStartDate(e.target.value)} className="bg-white/20 border border-white/30 rounded-lg p-3 text-white/80 w-full text-center" style={{colorScheme: 'dark'}} />
+                                    </div>
                                     <div>
                                         <label className="text-xs text-white/70 mb-1 flex items-center gap-1.5">
                                             Deadline
@@ -1421,22 +1648,29 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
                                         </label>
                                         <input type="date" value={newProjectDeadline} onChange={e => setNewProjectDeadline(e.target.value)} className="bg-white/20 border border-white/30 rounded-lg p-3 text-white/80 w-full text-center" style={{colorScheme: 'dark'}} />
                                     </div>
-                                    <div>
-                                        <label className="text-xs text-white/70 mb-1 flex items-center gap-1.5">
-                                            Completion Criteria
-                                            <ExplanationTooltip title="Completion Criteria" content="How is this project 'done'?<br/><br/>- <strong>Manual:</strong> You decide when it's complete.<br/>- <strong>Task Count:</strong> Automatically completes after a set number of linked tasks are finished.<br/>- <strong>Time Duration:</strong> Automatically completes after you've logged a certain number of focus minutes on linked tasks." />
-                                        </label>
-                                        <select value={criteriaType} onChange={e => setCriteriaType(e.target.value as any)} className="bg-white/20 border border-white/30 rounded-lg p-3 text-white focus:outline-none focus:bg-white/30 focus:border-white/50 w-full">
-                                            <option value="manual" className="bg-gray-800">Manual Completion</option>
-                                            <option value="task_count" className="bg-gray-800">Complete by Task Count</option>
-                                            <option value="duration_minutes" className="bg-gray-800">Complete by Time Duration</option>
-                                        </select>
-                                    </div>
+                                </div>
+                                 <div className="space-y-2">
+                                    <label className="text-xs text-white/70 mb-1 flex items-center gap-1.5 justify-center">
+                                        Active Days
+                                        <ExplanationTooltip title="Active Days" content="Select specific days of the week to work on this project. Tasks can only be assigned to it on these days. Leave blank for the project to be active every day." />
+                                    </label>
+                                    <DaySelector selectedDays={newProjectActiveDays} onDayToggle={handleNewProjectDayToggle} />
+                                </div>
+                                <div>
+                                    <label className="text-xs text-white/70 mb-1 flex items-center gap-1.5">
+                                        Completion Criteria
+                                        <ExplanationTooltip title="Completion Criteria" content="How is this project 'done'?<br/><br/>- <strong>Manual:</strong> You decide when it's complete.<br/>- <strong>Task Count:</strong> Automatically completes after a set number of linked tasks are finished.<br/>- <strong>Time Duration:</strong> Automatically completes after you've logged a certain number of focus minutes on linked tasks." />
+                                    </label>
+                                    <select value={criteriaType} onChange={e => setCriteriaType(e.target.value as any)} className="bg-white/20 border border-white/30 rounded-lg p-3 text-white focus:outline-none focus:bg-white/30 focus:border-white/50 w-full">
+                                        <option value="manual" className="bg-gray-800">Manual Completion</option>
+                                        <option value="task_count" className="bg-gray-800">Complete by Task Count</option>
+                                        <option value="duration_minutes" className="bg-gray-800">Complete by Time Duration</option>
+                                    </select>
                                 </div>
                                 {criteriaType !== 'manual' && (
                                     <input type="number" value={criteriaValue} onChange={e => setCriteriaValue(e.target.value)} placeholder={criteriaType === 'task_count' ? '# of tasks to complete' : 'Total minutes of focus'} className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50" />
                                 )}
-                                <div className="flex flex-col sm:flex-row gap-2 justify-between items-center pt-1">
+                                <div className="flex flex-col sm:flex-row gap-3 justify-between items-center pt-1">
                                     <div>
                                         <label className="text-xs text-white/70 mb-1 flex items-center gap-1.5">
                                             Priority
@@ -1447,14 +1681,14 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
                                     <button onClick={handleAddProject} className="w-full sm:w-auto p-3 rounded-lg font-bold text-white transition hover:scale-105 bg-gradient-to-br from-blue-500 to-sky-600">Add Project</button>
                                 </div>
                             </div>
-                            
+
                             <div className="flex justify-center gap-2 mb-4 bg-black/20 p-1 rounded-full">
                                 {(['active', 'completed', 'due'] as const).map(status => (
                                     <button key={status} onClick={() => setProjectStatusFilter(status)} className={`flex-1 p-2 text-sm rounded-full font-bold transition-colors ${projectStatusFilter === status ? 'bg-white/20 text-white' : 'text-white/60 hover:bg-white/10'}`}>
                                         {status.charAt(0).toUpperCase() + status.slice(1)} ({
                                             status === 'active' ? activeProjects.length :
-                                            status === 'completed' ? projects.filter(p=>p.status === 'completed').length :
-                                            projects.filter(p=>p.status === 'due').length
+                                            status === 'completed' ? projects.filter(p=>p.status === 'completed' && !upcomingProjects.some(up => up.id === p.id)).length :
+                                            projects.filter(p=>p.status === 'due' && !upcomingProjects.some(up => up.id === p.id)).length
                                         })
                                     </button>
                                 ))}
@@ -1472,29 +1706,8 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
                                 </button>
                             </div>
                             
-                            <ul className="space-y-2 max-h-96 overflow-y-auto pr-2">
-                                {(
-                                    projectStatusFilter === 'active' ? activeProjects :
-                                    projectStatusFilter === 'completed' ? visibleCompletedProjects :
-                                    visibleDueProjects
-                                ).map(project => (
-                                    <li key={project.id}>
-                                        <ProjectItem 
-                                            project={project} 
-                                            tasks={allTasks} 
-                                            onUpdateProject={onUpdateProject} 
-                                            onDeleteProject={onDeleteProject} 
-                                            isSelected={project.id === selectedProjectId}
-                                            onSelect={() => setSelectedProjectId(prev => prev === project.id ? null : project.id)}
-                                        />
-                                    </li>
-                                ))}
-                                {(
-                                    projectStatusFilter === 'active' ? activeProjects :
-                                    projectStatusFilter === 'completed' ? visibleCompletedProjects :
-                                    visibleDueProjects
-                                ).length === 0 && <p className="text-center text-white/60 p-4">No projects match the current filter.</p>}
-                            </ul>
+                            {renderProjectsList()}
+
                              {selectedProjectId && !isLoadingStats && (
                                 <ProjectDailyFocusChart
                                     projectId={selectedProjectId}
@@ -1504,6 +1717,26 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
                                 />
                             )}
                         </Panel>
+
+                        {upcomingProjects.length > 0 && (
+                            <Panel title="🛰️ Upcoming Projects">
+                                <p className="text-white/80 text-center text-sm mb-4 -mt-4">These projects have a future start date and are not yet active.</p>
+                                <ul className="space-y-2 max-h-96 overflow-y-auto pr-2">
+                                    {upcomingProjects.map(project => (
+                                        <li key={project.id} className="opacity-70 hover:opacity-100 transition-opacity">
+                                            <ProjectItem 
+                                                project={project} 
+                                                tasks={allTasks} 
+                                                onUpdateProject={onUpdateProject} 
+                                                onDeleteProject={onDeleteProject} 
+                                                isSelected={project.id === selectedProjectId}
+                                                onSelect={() => setSelectedProjectId(prev => prev === project.id ? null : project.id)}
+                                            />
+                                        </li>
+                                    ))}
+                                </ul>
+                            </Panel>
+                        )}
                     </div>
                 )}
 

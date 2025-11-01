@@ -134,7 +134,7 @@ export async function generateContent(prompt: string): Promise<string> {
 export interface AgentContext {
     goals: Pick<Goal, 'id' | 'text'>[];
     targets: Pick<Target, 'id' | 'text' | 'deadline' | 'completed_at' | 'priority'>[];
-    projects: Pick<Project, 'id' | 'name' | 'description' | 'status' | 'deadline' | 'completion_criteria_type' | 'completion_criteria_value' | 'progress_value' | 'priority'>[];
+    projects: Pick<Project, 'id' | 'name' | 'description' | 'status' | 'start_date' | 'deadline' | 'completion_criteria_type' | 'completion_criteria_value' | 'progress_value' | 'priority' | 'active_days'>[];
     commitments: Pick<Commitment, 'id' | 'text' | 'due_date'>[];
     tasks: Pick<Task, 'id' | 'text' | 'due_date' | 'completed_at' | 'project_id' | 'completed_poms' | 'total_poms' | 'comments' | 'priority' | 'tags'>[];
     dailyLogs: { date: string; total_focus_minutes: number; completed_sessions: number }[];
@@ -199,12 +199,14 @@ You have access to the user's data, structured in the following tables. Use this
     *   \`id\` (string, PK): Unique identifier.
     *   \`name\` (string): Project name.
     *   \`description\` (string | null): Detailed project description.
+    *   \`start_date\` (date string | null): An optional date for when the project is planned to begin.
     *   \`deadline\` (date string | null): The project's due date.
     *   \`status\` (string): Current status: 'active', 'completed', or 'due'.
     *   \`completion_criteria_type\` (string): How completion is measured: 'manual', 'task_count', 'duration_minutes'.
     *   \`completion_criteria_value\` (number | null): The target value for the criteria (e.g., 10 for task_count).
     *   \`progress_value\` (number): Current progress towards the criteria value.
     *   \`priority\` (integer | null): Optional priority from 1 (highest) to 4 (lowest).
+    *   \`active_days\` (array of integers | null): Days of week it is active (0=Sun, 6=Sat). Null/empty means active all days.
 
 4.  **tasks** - Individual, actionable to-do items. The core unit of work.
     *   \`id\` (string, PK): Unique identifier.
@@ -267,7 +269,8 @@ ${context.projects.map(p => {
     let progress = '';
     if (p.completion_criteria_type === 'task_count') progress = `(${p.progress_value}/${p.completion_criteria_value} tasks)`;
     if (p.completion_criteria_type === 'duration_minutes') progress = `(${p.progress_value}/${p.completion_criteria_value} min)`;
-    return `- ${p.name} [${p.status}] ${progress} (Due: ${p.deadline || 'N/A'}, P:${p.priority || 3}, ID: ${p.id})`;
+    const activeDays = p.active_days && p.active_days.length > 0 ? p.active_days.join(',') : 'All';
+    return `- ${p.name} [${p.status}] ${progress} (Starts: ${p.start_date || 'N/A'}, Due: ${p.deadline || 'N/A'}, P:${p.priority || 3}, Active Days: ${activeDays}, ID: ${p.id})`;
 }).join('\n') || 'No projects.'}
 Note: When adding a task to a project, you MUST use the project's ID.
 

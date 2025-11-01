@@ -1,5 +1,6 @@
 
 
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
@@ -904,8 +905,8 @@ const App: React.FC = () => {
     };
 
     // --- Project Handlers ---
-    const handleAddProject = async (name: string, description: string | null = null, deadline: string | null = null, criteria: {type: Project['completion_criteria_type'], value: number | null} = {type: 'manual', value: null}, priority: number | null = null): Promise<string | null> => {
-        const newProject = await dbService.addProject(name, description, deadline, criteria.type, criteria.value, priority);
+    const handleAddProject = async (name: string, description: string | null = null, startDate: string | null = null, deadline: string | null = null, criteria: {type: Project['completion_criteria_type'], value: number | null} = {type: 'manual', value: null}, priority: number | null = null, activeDays: number[] | null = null): Promise<string | null> => {
+        const newProject = await dbService.addProject(name, description, startDate, deadline, criteria.type, criteria.value, priority, activeDays);
         if (newProject) {
             setProjects(prev => [...prev, newProject].sort((a, b) => a.name.localeCompare(b.name)));
             return newProject.id;
@@ -1130,7 +1131,7 @@ const App: React.FC = () => {
                     projects={projects}
                     settings={settings}
                     onAddTask={handleAddTask}
-                    onAddProject={(name) => handleAddProject(name, null, null, {type: 'manual', value: null}, null)}
+                    onAddProject={(name) => handleAddProject(name, null, null, null, {type: 'manual', value: null}, null, null)}
                     onDeleteTask={handleDeleteTask}
                     onMoveTask={handleMoveTask}
                     onBringTaskForward={handleBringTaskForward}
@@ -1150,7 +1151,7 @@ const App: React.FC = () => {
                     projects={projects}
                     allCommitments={activeCommitments}
                     onAddTask={handleAddTaskFromAI}
-                    onAddProject={(name, desc, deadline, criteria, priority) => handleAddProject(name, desc, deadline, criteria, priority)}
+                    onAddProject={handleAddProject}
                     onAddTarget={(text, deadline, priority) => handleAddTarget(text, deadline, priority)}
                     onAddCommitment={handleAddCommitment}
                     onRescheduleItem={handleRescheduleItemFromAI}

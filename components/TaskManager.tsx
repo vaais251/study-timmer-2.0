@@ -140,7 +140,10 @@ const TaskItem = React.forwardRef<HTMLLIElement, TaskItemProps>(({ task, isCompl
     };
     
     if (isEditing) {
-        const activeProjects = projects.filter(p => p.status === 'active');
+        const today = new Date();
+        const dayOfWeek = today.getDay();
+        const todayString = getTodayDateString(today);
+        const activeProjects = projects.filter(p => p.status === 'active' && (!p.start_date || p.start_date <= todayString) && (!p.active_days || p.active_days.length === 0 || p.active_days.includes(dayOfWeek)));
         return (
             <li ref={ref} className="bg-white/20 p-3 rounded-lg mb-2 ring-2 ring-cyan-400 animate-pulse-once">
                 <div className="flex flex-col gap-2">
@@ -296,7 +299,10 @@ const TaskInputGroup: React.FC<TaskInputGroupProps> = ({ onAddTask, placeholder,
     };
     const [dueDate, setDueDate] = useState(getTomorrow());
 
-    const activeProjects = projects.filter(p => p.status === 'active');
+    const today = new Date();
+    const dayOfWeek = today.getDay();
+    const todayString = getTodayDateString(today);
+    const activeProjects = projects.filter(p => p.status === 'active' && (!p.start_date || p.start_date <= todayString) && (!p.active_days || p.active_days.length === 0 || p.active_days.includes(dayOfWeek)));
 
     const handleAdd = () => {
         const pomsInt = isStopwatch ? -1 : parseInt(poms, 10);
