@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
@@ -895,7 +896,19 @@ const App: React.FC = () => {
             ? (appState.currentSession >= settings.sessionsPerCycle ? 1 : appState.currentSession + 1)
             : appState.currentSession;
         
-        const updatedTasksToday = finalTasksState.filter(t => t.due_date === getTodayDateString() && !t.completed_at);
+        let updatedTasksToday = finalTasksState.filter(t => t.due_date === getTodayDateString() && !t.completed_at);
+        if (todaySortBy === 'priority') {
+            // Re-apply sort to ensure the next task selected is correct
+            updatedTasksToday.sort((a, b) => {
+                const priorityA = a.priority ?? 5;
+                const priorityB = b.priority ?? 5;
+                if (priorityA !== priorityB) {
+                    return priorityA - priorityB;
+                }
+                return (a.task_order ?? Infinity) - (b.task_order ?? Infinity);
+            });
+        }
+        
         let newTime;
         let newTotalTime;
 
