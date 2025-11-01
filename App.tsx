@@ -122,6 +122,7 @@ const App: React.FC = () => {
     // New state for in-app notification system
     const [notifications, setNotifications] = useState<AppNotification[]>([]);
     const [isNotificationPanelOpen, setIsNotificationPanelOpen] = useState(false);
+    const [clearedNotificationIds, setClearedNotificationIds] = useState<Set<string>>(new Set());
     const unreadNotificationCount = useMemo(() => notifications.filter(n => !n.read).length, [notifications]);
 
 
@@ -129,7 +130,6 @@ const App: React.FC = () => {
     const notificationInterval = useRef<number | null>(null);
     const wakeLock = useRef<any | null>(null);
     const isInitialLoad = useRef(true);
-    const justClearedNotifications = useRef(false);
 
     // Derived state for tasks
     const todayString = getTodayDateString();
@@ -387,11 +387,6 @@ const App: React.FC = () => {
     // --- Notification System ---
     useEffect(() => {
         if (isLoading || !session) return;
-
-        if (justClearedNotifications.current) {
-            justClearedNotifications.current = false;
-            return;
-        }
     
         const existingIds = new Set(notifications.map(n => n.unique_id));
         const newNotifications: NewNotification[] = [];
@@ -399,7 +394,7 @@ const App: React.FC = () => {
         today.setHours(0, 0, 0, 0);
     
         const createNotificationPayload = (unique_id: string, message: string, type: AppNotification['type']) => {
-            if (!existingIds.has(unique_id)) {
+            if (!existingIds.has(unique_id) && !clearedNotificationIds.has(unique_id)) {
                 newNotifications.push({ unique_id, message, type });
             }
         };
@@ -471,7 +466,7 @@ const App: React.FC = () => {
             };
             addAndRefreshNotifications();
         }
-    }, [isLoading, session, projects, targets, historicalLogs, notifications]);
+    }, [isLoading, session, projects, targets, historicalLogs, notifications, clearedNotificationIds]);
 
     const handleMarkNotificationRead = async (id: string) => {
         const updated = await dbService.markNotificationRead(id);
@@ -485,9 +480,10 @@ const App: React.FC = () => {
 
     const handleClearAllNotifications = async () => {
         if (window.confirm("Are you sure you want to clear all notifications? This cannot be undone.")) {
+            const idsToClear = notifications.map(n => n.unique_id);
             const updated = await dbService.clearAllNotifications();
-            if (updated) {
-                justClearedNotifications.current = true;
+            if (updated) { // dbService returns [] on success
+                setClearedNotificationIds(prev => new Set([...prev, ...idsToClear]));
                 setNotifications(updated);
             }
         }

@@ -3,13 +3,26 @@ import { AppNotification } from '../../types';
 import { BellIcon, CheckIcon, TrashIcon, FilledStarIcon } from './Icons';
 
 const timeAgo = (isoString: string): string => {
+    if (!isoString) {
+        return 'just now';
+    }
     const date = new Date(isoString);
+    if (isNaN(date.getTime())) {
+        console.warn('Invalid date string passed to timeAgo:', isoString);
+        return 'a while ago';
+    }
     const now = new Date();
     const seconds = Math.round((now.getTime() - date.getTime()) / 1000);
+    
+    if (seconds < 0) {
+        return 'in the future';
+    }
+    
     const minutes = Math.round(seconds / 60);
     const hours = Math.round(minutes / 60);
     const days = Math.round(hours / 24);
 
+    if (seconds < 5) return 'just now';
     if (seconds < 60) return `${seconds}s ago`;
     if (minutes < 60) return `${minutes}m ago`;
     if (hours < 24) return `${hours}h ago`;
