@@ -38,6 +38,7 @@ export const CalendarIcon: React.FC = () => <svg {...iconWithStrokeProps}><rect 
 export const RescheduleIcon: React.FC = () => <svg {...iconWithStrokeProps}><path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>;
 export const SearchIcon: React.FC = () => <svg {...iconWithStrokeProps}><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>;
 export const QuestionMarkCircleIcon: React.FC = () => <svg {...iconWithStrokeProps}><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><circle cx="12" cy="17" r="1" fill="currentColor" stroke="none"/></svg>;
+export const BellIcon: React.FC = () => <svg {...iconWithStrokeProps}><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>;
 
 
 // Navbar Icons

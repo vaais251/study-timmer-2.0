@@ -1,11 +1,9 @@
-
-
-
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
 import * as dbService from './services/dbService';
-import { Task, Settings, Mode, Page, DbDailyLog, Project, Goal, Target, AppState, PomodoroHistory, Commitment, ChatMessage, AiMemory } from './types';
+import { NewNotification } from './services/dbService';
+import { Task, Settings, Mode, Page, DbDailyLog, Project, Goal, Target, AppState, PomodoroHistory, Commitment, ChatMessage, AiMemory, AppNotification } from './types';
 import { getTodayDateString } from './utils/date';
 import { playFocusStartSound, playFocusEndSound, playBreakStartSound, playBreakEndSound, playAlertLoop, resumeAudioContext } from './utils/audio';
 
@@ -20,6 +18,8 @@ import AuthPage from './pages/AuthPage';
 import LoadingAnimation from './components/common/LoadingAnimation';
 import GoalsPage from './pages/GoalsPage';
 import CommandPalette from './components/CommandPalette';
+import NotificationPanel from './components/common/NotificationPanel';
+import { BellIcon } from './components/common/Icons';
 
 // Reads from localStorage to initialize the timer state synchronously.
 const getInitialAppState = (): { initialState: AppState; initialPhaseEndTime: number | null; wasRestored: boolean } => {
@@ -55,7 +55,7 @@ const getInitialAppState = (): { initialState: AppState; initialPhaseEndTime: nu
     return { initialState: defaultState, initialPhaseEndTime: null, wasRestored: false };
 };
 
-const Notification: React.FC<{ message: string; onDismiss: () => void }> = ({ message, onDismiss }) => {
+const ToastNotification: React.FC<{ message: string; onDismiss: () => void }> = ({ message, onDismiss }) => {
     useEffect(() => {
         const timer = setTimeout(onDismiss, 3000);
         return () => clearTimeout(timer);
@@ -98,7 +98,7 @@ const App: React.FC = () => {
     const [todaysHistory, setTodaysHistory] = useState<PomodoroHistory[]>([]);
     const [historicalLogs, setHistoricalLogs] = useState<DbDailyLog[]>([]);
     const [aiMemories, setAiMemories] = useState<AiMemory[]>([]);
-    const [notification, setNotification] = useState<string | null>(null);
+    const [toastNotification, setToastNotification] = useState<string | null>(null);
     
     // State for AI Coach Chat - lifted up for persistence
     const [aiChatMessages, setAiChatMessages] = useState<ChatMessage[]>([
@@ -116,6 +116,11 @@ const App: React.FC = () => {
     const [modalContent, setModalContent] = useState({ title: '', message: '', nextMode: 'focus' as Mode, showCommentBox: false });
     const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
     const [todaySortBy, setTodaySortBy] = useState<'default' | 'priority'>('default');
+    
+    // New state for in-app notification system
+    const [notifications, setNotifications] = useState<AppNotification[]>([]);
+    const [isNotificationPanelOpen, setIsNotificationPanelOpen] = useState(false);
+    const unreadNotificationCount = useMemo(() => notifications.filter(n => !n.read).length, [notifications]);
 
 
     const timerInterval = useRef<number | null>(null);
@@ -183,7 +188,7 @@ const App: React.FC = () => {
             const startDate = getTodayDateString(fourteenDaysAgo);
 
             // Fetch raw data sources first
-            const [userSettings, userTasks, userProjects, userGoals, userTargets, userCommitments, allPomodoroHistoryForRange, userAiMemories] = await Promise.all([
+            const [userSettings, userTasks, userProjects, userGoals, userTargets, userCommitments, allPomodoroHistoryForRange, userAiMemories, userNotifications] = await Promise.all([
                 dbService.getSettings(),
                 dbService.getTasks(),
                 dbService.getProjects(),
@@ -191,7 +196,8 @@ const App: React.FC = () => {
                 dbService.getTargets(),
                 dbService.getCommitments(),
                 dbService.getPomodoroHistory(startDate, today), // Fetch raw history as the source of truth
-                dbService.getAiMemories()
+                dbService.getAiMemories(),
+                dbService.getNotifications()
             ]);
 
             // --- Process Pomodoro History to generate authoritative logs ---
@@ -267,6 +273,7 @@ const App: React.FC = () => {
 
 
             if (userAiMemories) setAiMemories(userAiMemories);
+            if (userNotifications) setNotifications(userNotifications);
             
             if (!didRestoreFromStorage) {
                 const firstTask = userTasks?.filter(t => t.due_date === getTodayDateString() && !t.completed_at)[0];
@@ -312,10 +319,10 @@ const App: React.FC = () => {
             setTodaysHistory([]);
             setHistoricalLogs([]);
             setAiMemories([]);
+            setNotifications([]);
             setAiChatMessages([{ role: 'model', text: 'Hello! I am your AI Coach. I have access to your goals, projects, and performance data. Ask me for insights, a weekly plan, or to add tasks for you!' }]);
             setDailyLog({ date: getTodayDateString(), completed_sessions: 0, total_focus_minutes: 0 });
             localStorage.removeItem('pomodoroAppState');
-
         } else if (!session) {
             // Initial state, no session, not loading.
             setIsLoading(false);
@@ -373,6 +380,108 @@ const App: React.FC = () => {
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, []);
+    
+    // --- Notification System ---
+    useEffect(() => {
+        if (isLoading || !session) return;
+    
+        const existingIds = new Set(notifications.map(n => n.unique_id));
+        const newNotifications: NewNotification[] = [];
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+    
+        const createNotificationPayload = (unique_id: string, message: string, type: AppNotification['type']) => {
+            if (!existingIds.has(unique_id)) {
+                newNotifications.push({ unique_id, message, type });
+            }
+        };
+    
+        // 1. Deadline Reminders
+        const tomorrow = new Date(today);
+        tomorrow.setDate(today.getDate() + 1);
+        const threeDaysFromNow = new Date(today);
+        threeDaysFromNow.setDate(today.getDate() + 3);
+        const tomorrowStr = getTodayDateString(tomorrow);
+        const threeDaysStr = getTodayDateString(threeDaysFromNow);
+    
+        [...projects, ...targets].forEach(item => {
+            if ('deadline' in item && item.deadline && item.status !== 'completed' && item.status !== 'incomplete') {
+                const itemName = 'name' in item ? item.name : item.text;
+                if (item.deadline === tomorrowStr) {
+                    createNotificationPayload(`deadline-${item.id}-1day`, `"${itemName}" is due tomorrow!`, 'deadline');
+                } else if (item.deadline === threeDaysStr) {
+                    createNotificationPayload(`deadline-${item.id}-3day`, `Reminder: "${itemName}" is due in 3 days.`, 'deadline');
+                }
+            }
+        });
+    
+        // 2. Milestone/Streak Alerts
+        const sortedLogs = [...historicalLogs].sort((a, b) => a.date.localeCompare(b.date));
+        let streak = 0;
+        if (sortedLogs.length > 0 && sortedLogs[sortedLogs.length - 1].date === getTodayDateString(today) && sortedLogs[sortedLogs.length - 1].total_focus_minutes > 0) {
+            streak = 1;
+            let lastDate = new Date(today);
+            for (let i = sortedLogs.length - 2; i >= 0; i--) {
+                const currentDate = new Date(sortedLogs[i].date + 'T00:00:00');
+                const expectedPreviousDate = new Date(lastDate);
+                expectedPreviousDate.setDate(lastDate.getDate() - 1);
+                if (currentDate.getTime() === expectedPreviousDate.getTime() && sortedLogs[i].total_focus_minutes > 0) {
+                    streak++;
+                    lastDate = currentDate;
+                } else if (currentDate < expectedPreviousDate) {
+                    break;
+                }
+            }
+        }
+        
+        const streakMilestones = [3, 7, 14, 30, 50, 100];
+        if (streak > 0 && streakMilestones.includes(streak)) {
+            createNotificationPayload(`streak-${streak}day`, `🎉 You've maintained a ${streak}-day focus streak! Keep it up!`, 'milestone');
+        }
+    
+        const weekStart = new Date(today);
+        weekStart.setDate(today.getDate() - today.getDay());
+        const weekStartDateStr = getTodayDateString(weekStart);
+        const weeklyMinutes = historicalLogs.filter(l => l.date >= weekStartDateStr).reduce((sum, l) => sum + l.total_focus_minutes, 0);
+        const weeklyHours = weeklyMinutes / 60;
+        const weeklyHourMilestones = [5, 10, 15, 20];
+        
+        for (const hours of weeklyHourMilestones) {
+            const unique_id = `weekly-focus-${hours}hr-${weekStartDateStr}`;
+            if (weeklyHours >= hours) {
+                createNotificationPayload(unique_id, `Amazing work! You've logged over ${hours} hours of focus this week.`, 'milestone');
+            }
+        }
+    
+        if (newNotifications.length > 0) {
+            const addAndRefreshNotifications = async () => {
+                await dbService.addNotifications(newNotifications);
+                const freshNotifications = await dbService.getNotifications();
+                if (freshNotifications) {
+                    setNotifications(freshNotifications);
+                }
+            };
+            addAndRefreshNotifications();
+        }
+    }, [isLoading, session, projects, targets, historicalLogs, notifications]);
+
+    const handleMarkNotificationRead = async (id: string) => {
+        const updated = await dbService.markNotificationRead(id);
+        if (updated) setNotifications(updated);
+    };
+
+    const handleMarkAllNotificationsRead = async () => {
+        const updated = await dbService.markAllNotificationsRead();
+        if (updated) setNotifications(updated);
+    };
+
+    const handleClearAllNotifications = async () => {
+        if (window.confirm("Are you sure you want to clear all notifications? This cannot be undone.")) {
+            const updated = await dbService.clearAllNotifications();
+            if (updated) setNotifications(updated);
+        }
+    };
+    // --- End Notification System ---
 
 
     // Stop Timer Logic
@@ -735,7 +844,7 @@ const App: React.FC = () => {
             isRunning: false,
         });
         setPhaseEndTime(null);
-        setNotification('Task completed and time saved!');
+        setToastNotification('Task completed and time saved!');
     };
 
     // Modal Continue Handler
@@ -769,7 +878,7 @@ const App: React.FC = () => {
             const newMemory = await dbService.addAiMemory('learning', cleanLearningContent, combinedTags, taskJustWorkedOn.id);
             if (newMemory) {
                 setAiMemories(prev => [newMemory, ...prev]);
-                setNotification('🧠 AI memory updated!');
+                setToastNotification('🧠 AI memory updated!');
             }
         }
 
@@ -1030,7 +1139,7 @@ const App: React.FC = () => {
         const newProjects = await dbService.rescheduleProject(id, newDeadline);
         if (newProjects) {
             setProjects(newProjects);
-            setNotification('Project rescheduled successfully!');
+            setToastNotification('Project rescheduled successfully!');
         }
     };
 
@@ -1043,7 +1152,7 @@ const App: React.FC = () => {
                 status: t.completed_at ? 'completed' as const : t.deadline < today ? 'incomplete' as const : 'active' as const,
             }));
             setTargets(augmentedTargets);
-            setNotification('Target rescheduled successfully!');
+            setToastNotification('Target rescheduled successfully!');
         }
     };
 
@@ -1051,7 +1160,7 @@ const App: React.FC = () => {
         const newCommitments = await dbService.rescheduleCommitment(id, newDueDate);
         if (newCommitments) {
             setAllCommitments(newCommitments);
-            setNotification('Commitment rescheduled successfully!');
+            setToastNotification('Commitment rescheduled successfully!');
         }
     };
 
@@ -1086,13 +1195,14 @@ const App: React.FC = () => {
         if (memories) {
             setAiMemories(memories);
         }
-        setNotification('🧠 AI memory updated!');
+        setToastNotification('🧠 AI memory updated!');
     };
 
     // Settings
     const handleSaveSettings = async (newSettings: Settings) => {
         await dbService.updateSettings(newSettings);
         setSettings(newSettings);
+        setToastNotification('Settings saved!');
     };
 
     if (!session) {
@@ -1191,12 +1301,30 @@ const App: React.FC = () => {
 
     return (
         <div className="bg-slate-900 text-slate-200 min-h-screen" style={{fontFamily: `'Inter', sans-serif`}}>
-            {notification && <Notification message={notification} onDismiss={() => setNotification(null)} />}
+            {toastNotification && <ToastNotification message={toastNotification} onDismiss={() => setToastNotification(null)} />}
             <Navbar 
                 currentPage={page} 
                 setPage={setPage} 
                 onLogout={() => supabase.auth.signOut()}
+                unreadNotificationCount={unreadNotificationCount}
+                onToggleNotifications={() => setIsNotificationPanelOpen(prev => !prev)}
             />
+            
+            {/* Notification button for mobile */}
+            <button
+                onClick={() => setIsNotificationPanelOpen(prev => !prev)}
+                className="md:hidden fixed top-4 right-4 z-30 p-3 rounded-full bg-slate-800/50 backdrop-blur-lg border border-slate-700/80 text-slate-300 hover:text-white"
+                aria-label={`View notifications (${unreadNotificationCount} unread)`}
+            >
+                <div className="relative">
+                    <BellIcon />
+                    {unreadNotificationCount > 0 && (
+                        <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center border-2 border-slate-800">
+                            {unreadNotificationCount > 9 ? '9+' : unreadNotificationCount}
+                        </span>
+                    )}
+                </div>
+            </button>
             
             <main className="md:pl-20 lg:pl-56 transition-all duration-300">
                 <div key={page} className="p-4 sm:p-6 pb-20 md:pb-6 max-w-4xl mx-auto animate-fadeIn">
@@ -1211,6 +1339,16 @@ const App: React.FC = () => {
                     nextMode={modalContent.nextMode}
                     showCommentBox={modalContent.showCommentBox}
                     onContinue={handleModalContinue}
+                />
+            )}
+            
+            {isNotificationPanelOpen && (
+                <NotificationPanel
+                    notifications={notifications}
+                    onMarkRead={handleMarkNotificationRead}
+                    onMarkAllRead={handleMarkAllNotificationsRead}
+                    onClearAll={handleClearAllNotifications}
+                    onClose={() => setIsNotificationPanelOpen(false)}
                 />
             )}
 

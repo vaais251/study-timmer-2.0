@@ -143,6 +143,16 @@ export interface AiMemory {
     source_task_id: string | null;
 }
 
+// For the new in-app notification system
+export interface AppNotification {
+  id: string;
+  message: string;
+  type: 'deadline' | 'milestone' | 'info';
+  created_at: string;
+  read: boolean;
+  unique_id: string;
+}
+
 
 // Supabase session and user for auth
 export type { Session, User };

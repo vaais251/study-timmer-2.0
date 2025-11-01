@@ -1,16 +1,16 @@
-
 import React from 'react';
 import { Page } from '../../types';
-import { TimerIcon, PlanIcon, StatsIcon, AIIcon, SettingsIcon, LogoutIcon, TargetIcon, CircleIcon, PlanIconFilled, StatsIconFilled, AIIconFilled } from '../common/Icons';
+import { TimerIcon, PlanIcon, StatsIcon, AIIcon, SettingsIcon, LogoutIcon, TargetIcon, CircleIcon, PlanIconFilled, StatsIconFilled, AIIconFilled, BellIcon } from '../common/Icons';
 
 interface NavItemProps {
     label: string;
     icon: React.ReactNode;
     isActive: boolean;
     onClick: () => void;
+    notificationCount?: number;
 }
 
-const NavItem: React.FC<NavItemProps> = ({ label, icon, isActive, onClick }) => {
+const NavItem: React.FC<NavItemProps> = ({ label, icon, isActive, onClick, notificationCount = 0 }) => {
     return (
         <button
             onClick={onClick}
@@ -21,7 +21,14 @@ const NavItem: React.FC<NavItemProps> = ({ label, icon, isActive, onClick }) => 
                 }`}
             aria-label={label}
         >
-            {icon}
+            <div className="relative">
+                {icon}
+                {notificationCount > 0 && (
+                    <span className="absolute -top-1 -right-2 w-4 h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center border-2 border-slate-800">
+                        {notificationCount}
+                    </span>
+                )}
+            </div>
             <span className="hidden lg:inline text-sm font-medium capitalize">{label}</span>
             {isActive && <div className="absolute left-0 top-1/2 -translate-y-1/2 h-6 w-1 bg-teal-400 rounded-r-full hidden md:block animate-slideInFromLeft"></div>}
             
@@ -37,9 +44,11 @@ interface NavbarProps {
     currentPage: Page;
     setPage: (page: Page) => void;
     onLogout: () => void;
+    unreadNotificationCount: number;
+    onToggleNotifications: () => void;
 }
 
-const Navbar: React.FC<NavbarProps> = ({ currentPage, setPage, onLogout }) => {
+const Navbar: React.FC<NavbarProps> = ({ currentPage, setPage, onLogout, unreadNotificationCount, onToggleNotifications }) => {
     const navItems = [
         { page: 'timer' as Page, icon: <TimerIcon />, iconInactive: <CircleIcon />, label: 'Timer' },
         { page: 'plan' as Page, icon: <PlanIcon />, iconInactive: <PlanIconFilled />, label: 'Plan' },
@@ -82,6 +91,7 @@ const Navbar: React.FC<NavbarProps> = ({ currentPage, setPage, onLogout }) => {
                     </div>
                 </div>
                  <div className="space-y-2">
+                    <NavItem label="Notifications" icon={<BellIcon />} isActive={false} onClick={onToggleNotifications} notificationCount={unreadNotificationCount} />
                     <NavItem label="Settings" icon={<SettingsIcon />} isActive={currentPage === 'settings'} onClick={() => setPage('settings')} />
                     <NavItem label="Logout" icon={<LogoutIcon />} isActive={false} onClick={onLogout} />
                 </div>

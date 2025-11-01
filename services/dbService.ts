@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient';
-import { Settings, Task, DbDailyLog, Project, Goal, Target, PomodoroHistory, Commitment, ProjectUpdate, AiMemory } from '../types';
+import { Settings, Task, DbDailyLog, Project, Goal, Target, PomodoroHistory, Commitment, ProjectUpdate, AiMemory, AppNotification } from '../types';
 import { getTodayDateString } from '../utils/date';
 
 // --- Settings ---
@@ -1216,4 +1216,93 @@ export const deleteAiMemory = async (id: string): Promise<boolean> => {
         return false;
     }
     return true;
+};
+
+// --- Notifications ---
+
+export const getNotifications = async (): Promise<AppNotification[] | null> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    const { data, error } = await supabase
+        .from('notifications')
+        .select('id, created_at, message, type, read, unique_id')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        console.error("Error fetching notifications:", JSON.stringify(error, null, 2));
+        return null;
+    }
+    return data;
+};
+
+export type NewNotification = {
+    message: string;
+    type: AppNotification['type'];
+    unique_id: string;
+};
+
+export const addNotifications = async (notifications: NewNotification[]): Promise<void> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user || notifications.length === 0) return;
+
+    const notificationsToInsert = notifications.map(n => ({
+        ...n,
+        user_id: user.id,
+    }));
+
+    const { error } = await supabase
+        .from('notifications')
+        .insert(notificationsToInsert, { onConflict: 'user_id, unique_id' }); // Use onConflict to ignore duplicates
+
+    if (error) {
+        console.error("Error adding notifications:", JSON.stringify(error, null, 2));
+    }
+};
+
+export const markNotificationRead = async (id: string): Promise<AppNotification[] | null> => {
+    const { error } = await supabase
+        .from('notifications')
+        .update({ read: true })
+        .eq('id', id);
+
+    if (error) {
+        console.error("Error marking notification as read:", JSON.stringify(error, null, 2));
+        return null;
+    }
+    return getNotifications();
+};
+
+export const markAllNotificationsRead = async (): Promise<AppNotification[] | null> => {
+     const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+    
+    const { error } = await supabase
+        .from('notifications')
+        .update({ read: true })
+        .eq('user_id', user.id)
+        .eq('read', false);
+
+    if (error) {
+        console.error("Error marking all notifications as read:", JSON.stringify(error, null, 2));
+        return null;
+    }
+    return getNotifications();
+};
+
+export const clearAllNotifications = async (): Promise<AppNotification[] | null> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    const { error } = await supabase
+        .from('notifications')
+        .delete()
+        .eq('user_id', user.id);
+
+    if (error) {
+        console.error("Error clearing all notifications:", JSON.stringify(error, null, 2));
+        return null;
+    }
+    return [];
 };
