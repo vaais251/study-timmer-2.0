@@ -1,10 +1,14 @@
 
 
+
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { PomodoroHistory, Task } from '../types';
 import * as dbService from '../services/dbService';
 import Panel from './common/Panel';
 import Spinner from './common/Spinner';
+import { ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
+
 
 const TEN_THOUSAND_HOURS_IN_MINUTES = 10000 * 60;
 
@@ -79,6 +83,150 @@ const FocusBreakdownChart: React.FC<{ data: { name: string; minutes: number }[],
     );
 };
 
+const COLORS = ["#22d3ee", "#a78bfa"]; // cyan, purple
+
+const DailyFocusTrendChart: React.FC<{
+    selectedCategories: [string | null, string | null];
+    history: PomodoroHistory[];
+    tasks: Task[];
+    dateRange: { start: string, end: string };
+}> = ({ selectedCategories, history, tasks, dateRange }) => {
+
+    const [visibility, setVisibility] = useState<{ [key: string]: boolean }>({});
+
+    const { dailyData, categoryNames, categoryDisplayNames } = useMemo(() => {
+        const [cat1, cat2] = selectedCategories;
+        const categoryNames = [cat1, cat2].filter((c): c is string => c !== null);
+        const categoryDisplayNames = categoryNames.map(name => name.charAt(0).toUpperCase() + name.slice(1));
+        
+        if (categoryNames.length === 0 || history.length === 0) return { dailyData: [], categoryNames: [], categoryDisplayNames: [] };
+        
+        const isAllTime = !dateRange.start || !dateRange.end;
+        let startDate: Date;
+        let endDate = new Date(); // Today
+        
+        if (isAllTime) {
+            const earliestTimestamp = Math.min(...history.map(h => new Date(h.ended_at).getTime()));
+            startDate = new Date(earliestTimestamp);
+            startDate.setHours(0,0,0,0);
+        } else {
+            startDate = new Date(dateRange.start + 'T00:00:00');
+            endDate = new Date(dateRange.end + 'T00:00:00');
+        }
+
+        const taskMap = new Map<string, string[]>();
+        tasks.forEach(task => {
+            if (task.id && task.tags?.length > 0) {
+                taskMap.set(task.id, task.tags.map(t => t.toLowerCase()));
+            }
+        });
+
+        const dataByDate = new Map<string, any>();
+        const loopDate = new Date(startDate);
+        while(loopDate <= endDate) {
+            const dateStr = loopDate.toISOString().split('T')[0];
+            const initialData: any = { 
+                date: new Date(dateStr + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+            };
+            categoryNames.forEach(name => { initialData[name] = 0; });
+            dataByDate.set(dateStr, initialData);
+            loopDate.setDate(loopDate.getDate() + 1);
+        }
+        
+        history.forEach(h => {
+            const historyDate = new Date(h.ended_at).toISOString().split('T')[0];
+            if (dataByDate.has(historyDate) && h.task_id) {
+                const dayData = dataByDate.get(historyDate);
+                const taskTags = taskMap.get(h.task_id);
+                if (dayData && taskTags) {
+                    categoryNames.forEach(catName => {
+                        if (taskTags.includes(catName)) {
+                            dayData[catName] += Number(h.duration_minutes) || 0;
+                        }
+                    });
+                }
+            }
+        });
+
+        const finalData = Array.from(dataByDate.values()).map(day => {
+            categoryNames.forEach(name => { day[name] = Math.round(day[name]); });
+            return day;
+        });
+
+        return { dailyData: finalData, categoryNames, categoryDisplayNames };
+
+    }, [selectedCategories, history, tasks, dateRange]);
+
+    useEffect(() => {
+        const [cat1, cat2] = selectedCategories;
+        const newVisibility: { [key: string]: boolean } = {};
+        if (cat1) newVisibility[cat1] = true;
+        if (cat2) newVisibility[cat2] = true;
+        setVisibility(newVisibility);
+    }, [selectedCategories]);
+
+    const handleLegendClick = (payload: any) => {
+        const { dataKey } = payload;
+        setVisibility(prev => ({ ...prev, [dataKey]: !prev[dataKey] }));
+    };
+
+    const totalMinutes = dailyData.reduce((total, day) => {
+        let dayTotal = 0;
+        categoryNames.forEach(cat => {
+            if (cat && visibility[cat]) {
+                dayTotal += (day[cat] || 0);
+            }
+        });
+        return total + dayTotal;
+    }, 0);
+
+    const title = categoryDisplayNames.length > 0 ? categoryDisplayNames.join(' vs ') : 'Daily Focus Trend';
+
+    return (
+        <div className="mt-6 bg-black/20 p-4 rounded-lg">
+            <h3 className="text-lg font-semibold text-white text-center mb-1">
+                Daily Focus Trend: <span className="text-cyan-300">{title}</span>
+            </h3>
+            {totalMinutes > 0 ? (
+                <div className="h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={dailyData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                            <XAxis dataKey="date" stroke="rgba(255,255,255,0.7)" tick={{ fontSize: 10 }} />
+                            <YAxis stroke="rgba(255,255,255,0.7)" unit="m" allowDecimals={false} />
+                            <Tooltip
+                                cursor={{ stroke: 'rgba(255,255,255,0.2)', strokeWidth: 1 }}
+                                contentStyle={{ background: 'rgba(30,41,59,0.9)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }}
+                                itemStyle={{ color: 'white' }}
+                                labelStyle={{ color: 'white', fontWeight: 'bold' }}
+                                formatter={(value: number) => [`${value} min`, 'Focus']}
+                            />
+                            <Legend onClick={handleLegendClick} wrapperStyle={{ cursor: 'pointer' }}/>
+                            {categoryNames.map((name, index) => (
+                                <Line 
+                                    key={name}
+                                    type="monotone"
+                                    dataKey={name}
+                                    name={name.charAt(0).toUpperCase() + name.slice(1)}
+                                    stroke={COLORS[index % COLORS.length]}
+                                    strokeWidth={2}
+                                    dot={false}
+                                    activeDot={{ r: 6 }}
+                                    hide={!visibility[name]}
+                                />
+                            ))}
+                        </LineChart>
+                    </ResponsiveContainer>
+                </div>
+            ) : (
+                <div className="h-64 flex items-center justify-center text-white/60">
+                    <p>No focus time recorded for the selected categories {!dateRange.start || !dateRange.end ? 'yet' : 'in this period'}.</p>
+                </div>
+            )}
+        </div>
+    );
+};
+
 
 const ExpertiseTracker: React.FC = () => {
     const [history, setHistory] = useState<PomodoroHistory[]>([]);
@@ -86,8 +234,51 @@ const ExpertiseTracker: React.FC = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
+    const [activeRange, setActiveRange] = useState<'week' | 'month' | 'all'>('all');
+    const [chartActiveRange, setChartActiveRange] = useState<'week' | 'month' | 'all'>('week');
+    
     const [dateRange, setDateRange] = useState<{ start: string; end: string }>({ start: '', end: '' });
     const [selectedCategories, setSelectedCategories] = useState<[string | null, string | null]>([null, null]);
+    
+    useEffect(() => {
+        const today = new Date();
+        const endDate = today.toISOString().split('T')[0];
+        let startDate = '';
+
+        if (activeRange === 'week') {
+            const sevenDaysAgo = new Date();
+            sevenDaysAgo.setDate(today.getDate() - 6);
+            startDate = sevenDaysAgo.toISOString().split('T')[0];
+            setDateRange({ start: startDate, end: endDate });
+        } else if (activeRange === 'month') {
+            const thirtyDaysAgo = new Date();
+            thirtyDaysAgo.setDate(today.getDate() - 29);
+            startDate = thirtyDaysAgo.toISOString().split('T')[0];
+            setDateRange({ start: startDate, end: endDate });
+        } else { // 'all'
+            setDateRange({ start: '', end: '' });
+        }
+    }, [activeRange]);
+    
+    const chartDateRange = useMemo(() => {
+        const today = new Date();
+        const endDate = today.toISOString().split('T')[0];
+        let startDate = '';
+
+        if (chartActiveRange === 'week') {
+            const sevenDaysAgo = new Date();
+            sevenDaysAgo.setDate(today.getDate() - 6);
+            startDate = sevenDaysAgo.toISOString().split('T')[0];
+            return { start: startDate, end: endDate };
+        } else if (chartActiveRange === 'month') {
+            const thirtyDaysAgo = new Date();
+            thirtyDaysAgo.setDate(today.getDate() - 29);
+            startDate = thirtyDaysAgo.toISOString().split('T')[0];
+            return { start: startDate, end: endDate };
+        } else { // 'all'
+            return { start: '', end: '' };
+        }
+    }, [chartActiveRange]);
 
     useEffect(() => {
         const fetchData = async () => {
@@ -232,10 +423,6 @@ const ExpertiseTracker: React.FC = () => {
             .sort((a,b) => b.minutes - a.minutes);
     }, [expertiseDataForDisplay, selectedCategories]);
 
-    const handleResetDates = () => {
-        setDateRange({ start: '', end: '' });
-    };
-
     const renderCategoryTracker = (categoryName: string | null, index: 0 | 1) => {
         const data = expertiseDataForDisplay.find(item => item.name === categoryName);
         
@@ -311,7 +498,7 @@ const ExpertiseTracker: React.FC = () => {
 
         return (
             <div className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4">
                     {renderCategoryTracker(selectedCategories[0], 0)}
                     {allExpertiseData.length > 1 && renderCategoryTracker(selectedCategories[1], 1)}
                 </div>
@@ -321,9 +508,29 @@ const ExpertiseTracker: React.FC = () => {
                         <FocusBreakdownChart data={rangeBreakdownData} dateRange={dateRange} />
                     ) : (
                         <div className="p-4 text-white/70 text-center h-48 flex items-center justify-center">
-                            <p>No focus time logged for these categories {!dateRange.start && !dateRange.end ? 'at all' : 'in this date range'}.</p>
+                            <p>No focus time logged for these categories {activeRange === 'all' ? 'at all' : 'in this date range'}.</p>
                         </div>
                     )}
+                </div>
+                
+                 <div className="bg-slate-800/50 rounded-xl p-4 sm:p-6 mt-6 border border-slate-700/80">
+                    <div className="flex justify-center gap-2 mb-4 bg-black/20 p-1 rounded-full max-w-sm mx-auto">
+                        {(['week', 'month', 'all'] as const).map(range => (
+                            <button 
+                                key={range}
+                                onClick={() => setChartActiveRange(range)} 
+                                className={`flex-1 p-2 text-sm rounded-full font-bold transition-colors ${chartActiveRange === range ? 'bg-white/20 text-white' : 'text-white/60 hover:bg-white/10'}`}
+                            >
+                                {range === 'week' ? 'Last 7 Days' : range === 'month' ? 'Last 30 Days' : 'All Time'}
+                            </button>
+                        ))}
+                    </div>
+                    <DailyFocusTrendChart 
+                        selectedCategories={selectedCategories}
+                        history={history}
+                        tasks={tasks}
+                        dateRange={chartDateRange}
+                    />
                 </div>
             </div>
         );
@@ -333,23 +540,16 @@ const ExpertiseTracker: React.FC = () => {
         <Panel title="🎓 Mastery Tracker">
              <div className="mb-4">
                 <p className="text-white/80 text-center text-sm mb-4">Track your focus time for each category on your journey to 10,000 hours of mastery.</p>
-                <div className="flex flex-col sm:flex-row items-center justify-center gap-2">
-                    <input 
-                        type="date" 
-                        value={dateRange.start}
-                        onChange={e => setDateRange(p => ({...p, start: e.target.value}))} 
-                        className="bg-white/20 border border-white/30 rounded-lg p-2 text-white/80 w-full text-center" style={{colorScheme: 'dark'}}
-                    />
-                    <span className="text-white">to</span>
-                    <input 
-                        type="date" 
-                        value={dateRange.end}
-                        onChange={e => setDateRange(p => ({...p, end: e.target.value}))} 
-                        className="bg-white/20 border border-white/30 rounded-lg p-2 text-white/80 w-full text-center" style={{colorScheme: 'dark'}}
-                    />
-                    <button onClick={handleResetDates} className="p-2 w-full sm:w-auto px-4 rounded-lg font-bold text-white transition hover:scale-105 bg-gradient-to-br from-gray-500 to-gray-600">
-                        All Time
-                    </button>
+                <div className="flex justify-center gap-2 mb-4 bg-black/20 p-1 rounded-full max-w-sm mx-auto">
+                    {(['week', 'month', 'all'] as const).map(range => (
+                        <button 
+                            key={range}
+                            onClick={() => setActiveRange(range)} 
+                            className={`flex-1 p-2 text-sm rounded-full font-bold transition-colors ${activeRange === range ? 'bg-white/20 text-white' : 'text-white/60 hover:bg-white/10'}`}
+                        >
+                            {range === 'week' ? 'Last 7 Days' : range === 'month' ? 'Last 30 Days' : 'All Time'}
+                        </button>
+                    ))}
                 </div>
             </div>
             {renderContent()}
