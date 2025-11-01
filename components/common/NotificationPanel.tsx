@@ -65,7 +65,7 @@ const NotificationPanel: React.FC<NotificationPanelProps> = ({ notifications, on
                                         </div>
                                         <div className="flex-grow">
                                             <p className="text-sm text-white/90">{n.message}</p>
-                                            <p className="text-xs text-slate-400 mt-1">{timeAgo(n.createdAt)}</p>
+                                            <p className="text-xs text-slate-400 mt-1">{timeAgo(n.created_at)}</p>
                                         </div>
                                         {!n.read && (
                                             <button onClick={() => onMarkRead(n.id)} className="p-1 text-slate-400 hover:text-white" title="Mark as read">

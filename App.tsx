@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
@@ -128,6 +129,7 @@ const App: React.FC = () => {
     const notificationInterval = useRef<number | null>(null);
     const wakeLock = useRef<any | null>(null);
     const isInitialLoad = useRef(true);
+    const justClearedNotifications = useRef(false);
 
     // Derived state for tasks
     const todayString = getTodayDateString();
@@ -385,6 +387,11 @@ const App: React.FC = () => {
     // --- Notification System ---
     useEffect(() => {
         if (isLoading || !session) return;
+
+        if (justClearedNotifications.current) {
+            justClearedNotifications.current = false;
+            return;
+        }
     
         const existingIds = new Set(notifications.map(n => n.unique_id));
         const newNotifications: NewNotification[] = [];
@@ -479,7 +486,10 @@ const App: React.FC = () => {
     const handleClearAllNotifications = async () => {
         if (window.confirm("Are you sure you want to clear all notifications? This cannot be undone.")) {
             const updated = await dbService.clearAllNotifications();
-            if (updated) setNotifications(updated);
+            if (updated) {
+                justClearedNotifications.current = true;
+                setNotifications(updated);
+            }
         }
     };
     // --- End Notification System ---
