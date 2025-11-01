@@ -53,6 +53,53 @@ export async function getChartInsight(chartTitle: string, chartData: any): Promi
     }
 }
 
+export async function getTabSummary(tabName: string, data: any): Promise<string> {
+    const prompt = `
+        You are a world-class data analyst and productivity coach. Your goal is to help a user understand their study and work habits to become more productive.
+        You are analyzing data from the "${tabName}" tab in their Pomodoro timer application's statistics page.
+
+        The data for this tab is provided below in JSON format. It may include data for multiple charts and KPIs. Analyze it holistically.
+
+        Data:
+        \`\`\`json
+        ${JSON.stringify(data, null, 2)}
+        \`\`\`
+
+        Based on this data, provide a detailed summary and analysis with actionable insights. Your analysis should be easy to read and structured with markdown.
+        
+        Specifically, please cover the following:
+        1.  **Overall Summary**: Start with a high-level summary of what this tab reveals about the user's productivity in the selected date range. What is the key story the data is telling?
+        2.  **Key Trends & Patterns**: Identify the most significant trends, patterns, or correlations across all the data provided for this tab.
+        3.  **Strengths & Weaknesses**: Point out areas where the user is doing well (e.g., high completion rate for priority tasks) and areas that could be improved (e.g., inconsistent focus on weekends).
+        4.  **Actionable Suggestions**: Provide concrete, actionable advice based on your holistic analysis of this tab. For example, if focus is low on weekends, suggest planning lighter tasks. If a certain category is taking a lot of time but has low completion, suggest breaking down tasks within that category.
+        
+        Keep your tone encouraging and helpful. The user wants to improve.
+    `;
+
+    try {
+        const ai = new GoogleGenAI({ apiKey: API_KEY });
+
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-pro',
+            contents: [{ parts: [{ text: prompt }] }],
+        });
+        
+        const text = response.text;
+        
+        if (text) {
+            return text;
+        } else {
+            return "The AI returned an empty response. You might want to try again.";
+        }
+    } catch (error) {
+        console.error("Error calling Gemini API for tab summary:", error);
+        if (error instanceof Error) {
+            return `An error occurred while contacting the AI. Details: ${error.message}`;
+        }
+        return "An unknown error occurred while contacting the AI.";
+    }
+}
+
 
 export async function generateContent(prompt: string): Promise<string> {
     try {

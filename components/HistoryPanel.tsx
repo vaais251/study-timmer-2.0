@@ -1,10 +1,12 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import Panel from './common/Panel';
 import { DbDailyLog, Task, Project, Target, Settings, PomodoroHistory } from '../types';
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, LineChart, Line, XAxis, YAxis, CartesianGrid, Legend, BarChart, Bar } from 'recharts';
 import { getTodayDateString } from '../utils/date';
 import AIInsightModal from './common/AIInsightModal';
 import { SparklesIcon, FilledStarIcon } from './common/Icons';
+import AISummaryModal from './common/AISummaryModal';
+import { getTabSummary } from '../services/geminiService';
 
 type ActiveTab = 'dashboard' | 'tasks' | 'categories' | 'priorities';
 
@@ -555,6 +557,83 @@ const CategoryTimelineChart = React.memo(({ tasks, history, historyRange, openIn
         return { data: finalData, tags: sortedTags, top4Tags };
 
     }, [view, tasks, history, historyRange]);
+
+    const { completionRateData } = useMemo(() => {
+        let startDate: Date;
+        let endDate: Date;
+    
+        const todayForComparison = new Date();
+        todayForComparison.setHours(0, 0, 0, 0);
+    
+        if (view === 'custom') {
+            startDate = new Date(historyRange.start + 'T00:00:00');
+            endDate = new Date(historyRange.end + 'T00:00:00');
+            if (endDate >= todayForComparison) {
+                const yesterday = new Date();
+                yesterday.setDate(yesterday.getDate() - 1);
+                yesterday.setHours(0, 0, 0, 0);
+                endDate = yesterday;
+            }
+            if (startDate > endDate) {
+                startDate = new Date(endDate);
+            }
+        } else {
+            const yesterday = new Date();
+            yesterday.setDate(yesterday.getDate() - 1);
+            endDate = yesterday;
+            startDate = new Date(endDate);
+            startDate.setDate(startDate.getDate() - (view === 'month' ? 29 : 6));
+        }
+    
+        const startDateString = getTodayDateString(startDate);
+        const endDateString = getTodayDateString(endDate);
+    
+        const dataByDate = new Map<string, any>();
+        const loopDate = new Date(startDate);
+        const finalEndDate = new Date(endDate);
+        finalEndDate.setHours(23, 59, 59, 999);
+        while (loopDate <= finalEndDate) {
+            const dateStr = getTodayDateString(loopDate);
+            dataByDate.set(dateStr, { date: new Date(dateStr + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) });
+            loopDate.setDate(loopDate.getDate() + 1);
+        }
+    
+        const tasksInRange = tasks.filter(t => t.due_date >= startDateString && t.due_date <= endDateString);
+    
+        tasksInRange.forEach(task => {
+            const dateStr = task.due_date;
+            const dayData = dataByDate.get(dateStr);
+            if (dayData && task.tags) {
+                task.tags.forEach(tag => {
+                    const normalizedTag = tag.trim().toLowerCase();
+                    if (tags.includes(normalizedTag)) {
+                        if (!dayData[normalizedTag]) {
+                            dayData[normalizedTag] = { total: 0, completed: 0 };
+                        }
+                        dayData[normalizedTag].total++;
+                        if (task.completed_at) {
+                            dayData[normalizedTag].completed++;
+                        }
+                    }
+                });
+            }
+        });
+    
+        const finalData = Array.from(dataByDate.values()).map(dayData => {
+            const rates: { [key: string]: number | string } = { date: dayData.date };
+            tags.forEach(tag => {
+                const tagData = dayData[tag];
+                if (tagData && tagData.total > 0) {
+                    rates[tag] = Math.round((tagData.completed / tagData.total) * 100);
+                } else {
+                    rates[tag] = 0;
+                }
+            });
+            return rates;
+        });
+    
+        return { completionRateData: finalData };
+    }, [view, tasks, historyRange, tags]);
     
     useEffect(() => {
         setVisibleTags(top4Tags);
@@ -608,46 +687,90 @@ const CategoryTimelineChart = React.memo(({ tasks, history, historyRange, openIn
     );
     
     return (
-        <div className="">
-            <div className="flex justify-center items-center gap-2 mb-2">
-                <h3 className="text-lg font-semibold text-white text-center">Category Focus Over Time</h3>
-                <button
-                    onClick={() => openInsightModal('Category Focus Over Time', data, <div className="h-96">{chartElement}</div>)}
-                    className="p-1 text-purple-400 hover:text-purple-300 transition"
-                    title="Get AI Insights for this chart"
-                >
-                    <SparklesIcon />
-                </button>
-            </div>
-             <div className="flex justify-center gap-2 mb-4 bg-black/20 p-1 rounded-full max-w-md mx-auto">
-                <button 
-                    onClick={() => setView('week')} 
-                    className={`flex-1 p-2 text-sm rounded-full font-bold transition-colors ${view === 'week' ? 'bg-white/20 text-white' : 'text-white/60 hover:bg-white/10'}`}
-                >
-                    This Week
-                </button>
-                 <button 
-                    onClick={() => setView('month')} 
-                    className={`flex-1 p-2 text-sm rounded-full font-bold transition-colors ${view === 'month' ? 'bg-white/20 text-white' : 'text-white/60 hover:bg-white/10'}`}
-                >
-                    This Month
-                </button>
-                 <button 
-                    onClick={() => setView('custom')} 
-                    className={`flex-1 p-2 text-sm rounded-full font-bold transition-colors ${view === 'custom' ? 'bg-white/20 text-white' : 'text-white/60 hover:bg-white/10'}`}
-                >
-                    Align to Range
-                </button>
-            </div>
-            {data.length > 0 && tags.length > 0 ? (
-                 <div className="h-96 mt-4">
-                    {chartElement}
+        <div className="space-y-8">
+            <div>
+                <div className="flex justify-center items-center gap-2 mb-2">
+                    <h3 className="text-lg font-semibold text-white text-center">Category Focus Over Time</h3>
+                    <button
+                        onClick={() => openInsightModal('Category Focus Over Time', data, <div className="h-96">{chartElement}</div>)}
+                        className="p-1 text-purple-400 hover:text-purple-300 transition"
+                        title="Get AI Insights for this chart"
+                    >
+                        <SparklesIcon />
+                    </button>
                 </div>
-            ) : (
-                <div className="h-64 flex items-center justify-center text-white/60 bg-black/10 rounded-lg">
-                    <p>No tagged focus sessions found for this period.</p>
+                 <div className="flex justify-center gap-2 mb-4 bg-black/20 p-1 rounded-full max-w-md mx-auto">
+                    <button 
+                        onClick={() => setView('week')} 
+                        className={`flex-1 p-2 text-sm rounded-full font-bold transition-colors ${view === 'week' ? 'bg-white/20 text-white' : 'text-white/60 hover:bg-white/10'}`}
+                    >
+                        This Week
+                    </button>
+                     <button 
+                        onClick={() => setView('month')} 
+                        className={`flex-1 p-2 text-sm rounded-full font-bold transition-colors ${view === 'month' ? 'bg-white/20 text-white' : 'text-white/60 hover:bg-white/10'}`}
+                    >
+                        This Month
+                    </button>
+                     <button 
+                        onClick={() => setView('custom')} 
+                        className={`flex-1 p-2 text-sm rounded-full font-bold transition-colors ${view === 'custom' ? 'bg-white/20 text-white' : 'text-white/60 hover:bg-white/10'}`}
+                    >
+                        Align to Range
+                    </button>
                 </div>
-            )}
+                {data.length > 0 && tags.length > 0 ? (
+                     <div className="h-96 mt-4">
+                        {chartElement}
+                    </div>
+                ) : (
+                    <div className="h-64 flex items-center justify-center text-white/60 bg-black/10 rounded-lg">
+                        <p>No tagged focus sessions found for this period.</p>
+                    </div>
+                )}
+            </div>
+
+            <div>
+                <div className="flex justify-center items-center gap-2 mb-2">
+                    <h3 className="text-lg font-semibold text-white text-center">Task Completion Rate by Category</h3>
+                </div>
+                {completionRateData.length > 0 && tags.length > 0 ? (
+                    <div className="h-96 mt-4">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <LineChart data={completionRateData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.2)" />
+                                <XAxis dataKey="date" stroke="rgba(255,255,255,0.7)" tick={{ fontSize: 10 }} />
+                                <YAxis stroke="rgba(255,255,255,0.7)" unit="%" domain={[0, 100]} />
+                                <Tooltip
+                                    contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }}
+                                    itemStyle={{ color: 'white' }}
+                                    labelStyle={{ color: 'white', fontWeight: 'bold' }}
+                                    formatter={(value: number) => [`${value.toFixed(0)}%`, 'Completion']}
+                                />
+                                <Legend wrapperStyle={{fontSize: "12px", cursor: 'pointer'}} onClick={handleLegendClick}/>
+                                {tags.map((tag) => (
+                                    <Line 
+                                        key={tag} 
+                                        type="monotone" 
+                                        dataKey={tag} 
+                                        name={tag.charAt(0).toUpperCase() + tag.slice(1)}
+                                        stroke={generateColorFromString(tag)} 
+                                        strokeWidth={2}
+                                        dot={{ r: 2 }}
+                                        activeDot={{ r: 6 }}
+                                        hide={!visibleTags.includes(tag)}
+                                        connectNulls
+                                    />
+                                ))}
+                            </LineChart>
+                        </ResponsiveContainer>
+                    </div>
+                ) : (
+                    <div className="h-64 flex items-center justify-center text-white/60 bg-black/10 rounded-lg">
+                        <p>No task data for these categories in this period.</p>
+                    </div>
+                )}
+            </div>
         </div>
     );
 });
@@ -657,10 +780,10 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
     const [selectedDay, setSelectedDay] = useState<string>(getTodayDateString());
     const [detailViewType, setDetailViewType] = useState<'day' | 'week' | 'month' | 'all'>('day');
     
-    const [visibleLines, setVisibleLines] = useState({
-        completedTasks: true,
-        incompleteTasks: false,
-        totalTasks: false,
+    const [visiblePomLines, setVisiblePomLines] = useState({
+        completedPoms: true,
+        incompletePoms: false,
+        plannedPoms: true,
     });
     
     const [visiblePriorities, setVisiblePriorities] = useState({
@@ -696,6 +819,12 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
     
     const [showCompletions, setShowCompletions] = useState(false);
 
+    const [summaryModalState, setSummaryModalState] = useState<{ isOpen: boolean; title: string; fetcher: (() => Promise<string>) | null }>({
+        isOpen: false,
+        title: '',
+        fetcher: null,
+    });
+
     const completionDates = useMemo(() => 
         new Set(allProjects.filter(p => p.completed_at).map(p => p.completed_at!.split('T')[0])),
     [allProjects]);
@@ -709,10 +838,10 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
     };
 
 
-    const handleLegendClick = (o: any) => {
+    const handlePomLegendClick = (o: any) => {
         const { dataKey } = o;
-        if (Object.keys(visibleLines).includes(dataKey)) {
-            setVisibleLines(prev => ({ ...prev, [dataKey as keyof typeof prev]: !prev[dataKey as keyof typeof prev] }));
+        if (Object.keys(visiblePomLines).includes(dataKey)) {
+            setVisiblePomLines(prev => ({ ...prev, [dataKey as keyof typeof prev]: !prev[dataKey as keyof typeof prev] }));
         }
     };
     
@@ -777,7 +906,7 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                 projectBreakdownData: [{ name: 'Completed', value: 0 }, { name: 'Pending', value: 0 }],
                 tagAnalysisData: [],
                 focusLineChartData: [],
-                dailyTaskVolumeChartData: [],
+                dailyPomVolumeChartData: [],
                 averageDailyFocus: 0,
                 dayDiff: 1,
             };
@@ -905,7 +1034,7 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
             hasCompletion: completionDates.has(dateString),
         }));
 
-        const dailyTaskStats = new Map<string, { total: number, completed: number }>();
+        const dailyPomStats = new Map<string, { plannedPoms: number; completedPoms: number }>();
         if (historyRange.start && historyRange.end) {
             let currentDate = new Date(historyRange.start + 'T00:00:00');
             let endDateForChart = new Date(historyRange.end + 'T00:00:00');
@@ -919,29 +1048,29 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
             }
             while(currentDate <= endDateForChart) {
                 const dateString = getTodayDateString(currentDate);
-                dailyTaskStats.set(dateString, { total: 0, completed: 0 });
+                dailyPomStats.set(dateString, { plannedPoms: 0, completedPoms: 0 });
                 currentDate.setDate(currentDate.getDate() + 1);
             }
         }
 
         tasks.forEach(task => {
-            if (dailyTaskStats.has(task.due_date)) {
-                const dayStat = dailyTaskStats.get(task.due_date)!;
-                dayStat.total++;
-                if (task.completed_at) {
-                    dayStat.completed++;
-                }
+            // Only include non-stopwatch tasks in pom volume
+            if (task.total_poms > 0 && dailyPomStats.has(task.due_date)) {
+                const dayStat = dailyPomStats.get(task.due_date)!;
+                dayStat.plannedPoms += task.total_poms;
+                dayStat.completedPoms += task.completed_poms;
             }
         });
 
-        const dailyTaskVolumeChartData = Array.from(dailyTaskStats.entries()).map(([dateString, stats]) => ({
+        const dailyPomVolumeChartData = Array.from(dailyPomStats.entries()).map(([dateString, stats]) => ({
             date: new Date(dateString + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
             dateISO: dateString,
-            completedTasks: stats.completed,
-            incompleteTasks: stats.total - stats.completed,
-            totalTasks: stats.total,
+            completedPoms: stats.completedPoms,
+            plannedPoms: stats.plannedPoms,
+            incompletePoms: stats.plannedPoms - stats.completedPoms,
             hasCompletion: completionDates.has(dateString),
         }));
+
 
         const totalCompletedTasks = allTasks.filter(t => t.completed_at).length;
         const totalPendingTasks = allTasks.length - totalCompletedTasks;
@@ -998,7 +1127,7 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
         return {
             totalFocus, completedCount, totalTasks, pomsDone, pomsEst, projectsCompleted, targetsCompleted,
             totalProjectsInRange, totalTargetsInRange,
-            lineChartData, taskBreakdownData, projectBreakdownData, tagAnalysisData, focusLineChartData, dailyTaskVolumeChartData,
+            lineChartData, taskBreakdownData, projectBreakdownData, tagAnalysisData, focusLineChartData, dailyPomVolumeChartData,
             averageDailyFocus,
             dayDiff
         };
@@ -1284,6 +1413,55 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
         [pieChartData]
     );
 
+    const handleOpenSummaryModal = useCallback(() => {
+        const dataForTab: { [key: string]: any } = {};
+        let title = '';
+
+        switch (activeTab) {
+            case 'dashboard':
+                title = `AI Summary for Dashboard (${historyRange.start} to ${historyRange.end})`;
+                dataForTab.kpis = {
+                    totalFocusMinutes: aggregatedData.totalFocus,
+                    averageDailyFocusMinutes: aggregatedData.averageDailyFocus,
+                    tasksCompleted: `${aggregatedData.completedCount} / ${aggregatedData.totalTasks}`,
+                    projectsCompleted: `${aggregatedData.projectsCompleted} / ${aggregatedData.totalProjectsInRange}`,
+                    targetsMet: `${aggregatedData.targetsCompleted} / ${aggregatedData.totalTargetsInRange}`,
+                };
+                dataForTab.dailyFocusConsistency = consistencyLogs.map(l => ({ date: l.date, minutes: l.total_focus_minutes }));
+                dataForTab.dailyFocusTrend = aggregatedData.focusLineChartData;
+                dataForTab.projectStatusBreakdown = aggregatedData.projectBreakdownData;
+                dataForTab.taskStatusBreakdown = aggregatedData.taskBreakdownData;
+                break;
+            case 'tasks':
+                title = `AI Summary for Task Analysis (${historyRange.start} to ${historyRange.end})`;
+                dataForTab.dailyPomodoroVolume = aggregatedData.dailyPomVolumeChartData;
+                dataForTab.dailyCompletionRate = aggregatedData.lineChartData;
+                break;
+            case 'categories':
+                 title = `AI Summary for Category Analysis (${historyRange.start} to ${historyRange.end})`;
+                 dataForTab.categoryPriorityDistribution = categoryPriorityDistributionData;
+                 dataForTab.categoryCompletionStatus = categoryCompletionStatusData;
+                 dataForTab.totalFocusTimeByCategory = aggregatedData.tagAnalysisData;
+                 dataForTab.focusDistribution = aggregatedData.tagAnalysisData;
+                break;
+            case 'priorities':
+                title = `AI Summary for Priority Analysis (${historyRange.start} to ${historyRange.end})`;
+                dataForTab.priorityFocusDistribution = priorityFocusData;
+                dataForTab.taskCompletionRateByPriority = taskCompletionByPriorityData;
+                break;
+            default:
+                return;
+        }
+
+        const fetcher = () => getTabSummary(activeTab, dataForTab);
+        setSummaryModalState({ isOpen: true, title, fetcher });
+
+    }, [activeTab, historyRange, aggregatedData, consistencyLogs, categoryPriorityDistributionData, categoryCompletionStatusData, pieChartData, priorityFocusData, taskCompletionByPriorityData]);
+
+    const handleCloseSummaryModal = () => {
+        setSummaryModalState({ isOpen: false, title: '', fetcher: null });
+    };
+
     const RADIAN = Math.PI / 180;
     const renderCustomizedLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }: any) => {
         if (percent * 100 < 5) return null;
@@ -1391,17 +1569,17 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
         </ResponsiveContainer>
     );
     
-    const taskVolumeChartElement = (
+    const pomVolumeChartElement = (
         <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={aggregatedData.dailyTaskVolumeChartData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+            <LineChart data={aggregatedData.dailyPomVolumeChartData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.2)" />
                 <XAxis dataKey="date" stroke="rgba(255,255,255,0.7)" tick={{ fontSize: 10 }} />
-                <YAxis stroke="rgba(255,255,255,0.7)" allowDecimals={false} />
+                <YAxis stroke="rgba(255,255,255,0.7)" name="Poms" />
                 <Tooltip content={<CustomLineChartTooltip />} />
-                <Legend wrapperStyle={{fontSize: "12px", cursor: 'pointer'}} onClick={handleLegendClick} />
-                <Line type="monotone" dataKey="completedTasks" name="Completed" stroke="#34D399" dot={<CompletionDot />} activeDot={{ r: 8 }} hide={!visibleLines.completedTasks} />
-                <Line type="monotone" dataKey="incompleteTasks" name="Incomplete" stroke="#F87171" dot={<CompletionDot />} activeDot={{ r: 8 }} hide={!visibleLines.incompleteTasks} />
-                <Line type="monotone" dataKey="totalTasks" name="Total" stroke="#F59E0B" dot={<CompletionDot />} activeDot={{ r: 8 }} hide={!visibleLines.totalTasks} />
+                <Legend wrapperStyle={{fontSize: "12px", cursor: 'pointer'}} onClick={handlePomLegendClick} />
+                <Line type="monotone" dataKey="completedPoms" name="Completed" stroke="#34D399" dot={<CompletionDot />} activeDot={{ r: 8 }} hide={!visiblePomLines.completedPoms} />
+                <Line type="monotone" dataKey="incompletePoms" name="Incomplete" stroke="#F87171" dot={<CompletionDot />} activeDot={{ r: 8 }} hide={!visiblePomLines.incompletePoms} />
+                <Line type="monotone" dataKey="plannedPoms" name="Planned" stroke="#F59E0B" dot={<CompletionDot />} activeDot={{ r: 8 }} hide={!visiblePomLines.plannedPoms} />
             </LineChart>
         </ResponsiveContainer>
     );
@@ -1568,6 +1746,16 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                 </div>
             </div>
 
+            <div className="text-center mb-6 -mt-2">
+                <button 
+                    onClick={handleOpenSummaryModal}
+                    className="flex items-center justify-center mx-auto gap-2 text-sm text-purple-300 hover:text-purple-200 font-semibold px-4 py-2 rounded-full hover:bg-white/10 transition"
+                >
+                    <SparklesIcon />
+                    Get AI Summary for this Tab
+                </button>
+            </div>
+
             {activeTab === 'dashboard' && (
                 <div key="dashboard" className="animate-fadeIn space-y-8">
                     {/* KPIs */}
@@ -1624,18 +1812,27 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                         </div>
                         <div className="h-64">{projectBreakdownPieChartElement}</div>
                     </div>
+
+                    {/* Overall Task Breakdown */}
+                    <div>
+                        <div className="flex justify-center items-center gap-2 mb-2">
+                            <h3 className="text-lg font-semibold text-white text-center">Overall Task Breakdown</h3>
+                            <button onClick={() => openInsightModal('Overall Task Breakdown', aggregatedData.taskBreakdownData, <div className="h-64">{taskBreakdownPieChartElement}</div>)} className="p-1 text-purple-400 hover:text-purple-300 transition" title="Get AI Insights"><SparklesIcon /></button>
+                        </div>
+                        <div className="h-64">{taskBreakdownPieChartElement}</div>
+                    </div>
                 </div>
             )}
             
             {activeTab === 'tasks' && (
                 <div key="tasks" className="animate-fadeIn space-y-8">
-                    {/* Daily Task Volume */}
+                    {/* Daily Pomodoro Volume */}
                     <div>
                         <div className="flex justify-center items-center gap-2 mb-2">
-                            <h3 className="text-lg font-semibold text-white text-center">Daily Task Volume</h3>
-                            <button onClick={() => openInsightModal('Daily Task Volume', aggregatedData.dailyTaskVolumeChartData, <div className="h-72">{taskVolumeChartElement}</div>)} className="p-1 text-purple-400 hover:text-purple-300 transition" title="Get AI Insights"><SparklesIcon /></button>
+                            <h3 className="text-lg font-semibold text-white text-center">Daily Pomodoro Volume</h3>
+                            <button onClick={() => openInsightModal('Daily Pomodoro Volume', aggregatedData.dailyPomVolumeChartData, <div className="h-72">{pomVolumeChartElement}</div>)} className="p-1 text-purple-400 hover:text-purple-300 transition" title="Get AI Insights"><SparklesIcon /></button>
                         </div>
-                        <div className="h-72">{taskVolumeChartElement}</div>
+                        <div className="h-72">{pomVolumeChartElement}</div>
                     </div>
                     {/* Daily Task Completion % */}
                     <div>
@@ -1644,14 +1841,6 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                             <button onClick={() => openInsightModal('Daily Task Completion %', aggregatedData.lineChartData, <div className="h-72">{dailyCompletionChartElement}</div>)} className="p-1 text-purple-400 hover:text-purple-300 transition" title="Get AI Insights"><SparklesIcon /></button>
                         </div>
                         <div className="h-72">{dailyCompletionChartElement}</div>
-                    </div>
-                    {/* Overall Task Breakdown */}
-                    <div>
-                        <div className="flex justify-center items-center gap-2 mb-2">
-                            <h3 className="text-lg font-semibold text-white text-center">Overall Task Breakdown</h3>
-                            <button onClick={() => openInsightModal('Overall Task Breakdown', aggregatedData.taskBreakdownData, <div className="h-64">{taskBreakdownPieChartElement}</div>)} className="p-1 text-purple-400 hover:text-purple-300 transition" title="Get AI Insights"><SparklesIcon /></button>
-                        </div>
-                        <div className="h-64">{taskBreakdownPieChartElement}</div>
                     </div>
                     {/* Detailed Drilldown */}
                     <div className="mt-8">
@@ -1825,6 +2014,14 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                     chartTitle={modalState.chartTitle}
                     chartData={modalState.chartData}
                     chartElement={modalState.chartElement}
+                />
+            )}
+            {summaryModalState.isOpen && summaryModalState.fetcher && (
+                <AISummaryModal
+                    isOpen={summaryModalState.isOpen}
+                    onClose={handleCloseSummaryModal}
+                    title={summaryModalState.title}
+                    fetcher={summaryModalState.fetcher}
                 />
             )}
         </Panel>

@@ -4,6 +4,9 @@ import Spinner from '../components/common/Spinner';
 import * as dbService from '../services/dbService';
 import { DbDailyLog, Task, Project, Target, Settings, PomodoroHistory } from '../types';
 import { getTodayDateString, getMonthStartDateString, getSevenDaysAgoDateString } from '../utils/date';
+import AISummaryModal from '../components/common/AISummaryModal';
+import { getTabSummary } from '../services/geminiService';
+import { SparklesIcon } from '../components/common/Icons';
 
 const StatsPage: React.FC = () => {
     const [historyRange, setHistoryRange] = useState(() => ({
@@ -25,6 +28,12 @@ const StatsPage: React.FC = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<'dashboard' | 'tasks' | 'categories' | 'priorities'>('dashboard');
+
+    const [summaryModalState, setSummaryModalState] = useState<{ isOpen: boolean; title: string; fetcher: (() => Promise<string>) | null }>({
+        isOpen: false,
+        title: '',
+        fetcher: null,
+    });
 
     const fetchData = useCallback(async (start: string, end: string) => {
         setIsLoading(true);
@@ -83,6 +92,30 @@ const StatsPage: React.FC = () => {
         fetchData(historyRange.start, historyRange.end);
     }, [historyRange, fetchData]);
 
+    const handleOpenOverallSummary = useCallback(() => {
+        if (isLoading) return;
+
+        const title = `Overall AI Summary (${historyRange.start} to ${historyRange.end})`;
+        
+        const dataForSummary = {
+            dateRange: historyRange,
+            dailyLogs: logs,
+            tasksInRange: tasks,
+            projectsCompletedInRange: projects,
+            targetsMetInRange: targets,
+            consistencyLogs: consistencyLogs,
+            pomodoroHistoryForTimeline: timelinePomodoroHistory,
+        };
+
+        const fetcher = () => getTabSummary("Overall History", dataForSummary);
+        setSummaryModalState({ isOpen: true, title, fetcher });
+
+    }, [isLoading, historyRange, logs, tasks, projects, targets, consistencyLogs, timelinePomodoroHistory]);
+
+    const handleCloseSummaryModal = () => {
+        setSummaryModalState({ isOpen: false, title: '', fetcher: null });
+    };
+
     const tabs = [
         { key: 'dashboard', label: 'Dashboard' },
         { key: 'tasks', label: 'Tasks' },
@@ -100,8 +133,9 @@ const StatsPage: React.FC = () => {
 
     return (
         <div>
-            <div className="mb-4">
-                <div className="flex justify-center gap-1 sm:gap-2 bg-slate-800/50 p-1 rounded-full max-w-xl mx-auto">
+            <div className="flex justify-between items-center mb-4 gap-4">
+                <div className="flex-1"></div> {/* Left spacer */}
+                <div className="flex justify-center gap-1 sm:gap-2 bg-slate-800/50 p-1 rounded-full max-w-xl mx-auto flex-grow">
                     {tabs.map(tab => (
                         <button
                             key={tab.key}
@@ -115,6 +149,16 @@ const StatsPage: React.FC = () => {
                             {tab.label}
                         </button>
                     ))}
+                </div>
+                 <div className="flex-1 flex justify-end">
+                    <button 
+                        onClick={handleOpenOverallSummary}
+                        className="flex items-center gap-2 text-sm text-purple-300 hover:text-purple-200 font-semibold px-3 py-2 rounded-full hover:bg-white/10 transition whitespace-nowrap"
+                        title="Get an AI-powered summary of your entire activity in the selected date range"
+                    >
+                        <SparklesIcon />
+                        <span className="hidden lg:inline">Overall Summary</span>
+                    </button>
                 </div>
             </div>
             <HistoryPanel
@@ -134,6 +178,14 @@ const StatsPage: React.FC = () => {
                 consistencyPomodoroHistory={consistencyPomodoroHistory}
                 activeTab={activeTab}
             />
+             {summaryModalState.isOpen && summaryModalState.fetcher && (
+                <AISummaryModal
+                    isOpen={summaryModalState.isOpen}
+                    onClose={handleCloseSummaryModal}
+                    title={summaryModalState.title}
+                    fetcher={summaryModalState.fetcher}
+                />
+            )}
         </div>
     );
 };
