@@ -38,9 +38,20 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onSave, canInstal
                         </button>
                     </>
                 ) : (
-                    <p className="text-white/60 text-center text-sm">
-                        This app is installable! Check for an "Install" button in your browser's address bar or settings menu (usually a ⋮ icon) to add it to your desktop.
-                    </p>
+                    <div className="text-white/80 text-sm space-y-4 text-left">
+                        <p className="text-center font-semibold text-white">This app is installable on your browser!</p>
+                        <p className="text-center text-white/70">
+                            Since the address bar icon isn't showing, please follow these steps to install manually:
+                        </p>
+                        <ol className="list-decimal list-inside bg-black/20 p-4 rounded-lg space-y-2">
+                            <li>Click the <span className="font-bold text-white">"More" icon (⋮)</span> in the top-right corner of Chrome.</li>
+                            <li>In the menu that appears, look for an option that says <span className="font-bold text-white">'Install FocusFlow...'</span>.</li>
+                            <li>Click it and follow the on-screen instructions to finish installation.</li>
+                        </ol>
+                        <p className="text-xs text-white/60 text-center pt-2">
+                            If you can't find the install option, it might mean the app is already installed or there's an issue with your browser settings.
+                        </p>
+                    </div>
                 )}
             </Panel>
         </div>
