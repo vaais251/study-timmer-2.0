@@ -13,6 +13,7 @@ const StatsPage: React.FC = () => {
         start: getSevenDaysAgoDateString(),
         end: getTodayDateString(),
     }));
+    const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
     const [logs, setLogs] = useState<DbDailyLog[]>([]);
     const [tasks, setTasks] = useState<Task[]>([]);
     const [projects, setProjects] = useState<Project[]>([]);
@@ -35,7 +36,7 @@ const StatsPage: React.FC = () => {
         fetcher: null,
     });
 
-    const fetchData = useCallback(async (start: string, end: string) => {
+    const fetchData = useCallback(async (start: string, end: string, year: number) => {
         setIsLoading(true);
         setError(null);
         try {
@@ -45,9 +46,8 @@ const StatsPage: React.FC = () => {
             const timelineStartDate = getTodayDateString(thirtyDaysAgo);
             const timelineEndDate = getTodayDateString(today);
 
-            const oneEightyDaysAgo = new Date();
-            oneEightyDaysAgo.setDate(today.getDate() - 179);
-            const consistencyStartDate = getTodayDateString(oneEightyDaysAgo);
+            const consistencyStartDate = `${year}-01-01`;
+            const consistencyEndDate = `${year}-12-31`;
 
             const [
                 fetchedLogs, fetchedTasks, fetchedProjects, fetchedTargets, 
@@ -64,10 +64,10 @@ const StatsPage: React.FC = () => {
                 dbService.getAllTasksForStats(),
                 dbService.getSettings(),
                 dbService.getPomodoroHistory(start, end),
-                dbService.getConsistencyLogs(180), // Fetch last 6 months
+                dbService.getConsistencyLogs(undefined, year),
                 dbService.getPomodoroHistory(timelineStartDate, timelineEndDate),
                 dbService.getTargets(),
-                dbService.getPomodoroHistory(consistencyStartDate, timelineEndDate)
+                dbService.getPomodoroHistory(consistencyStartDate, consistencyEndDate)
             ]);
             setLogs(fetchedLogs || []);
             setTasks(fetchedTasks || []);
@@ -89,8 +89,8 @@ const StatsPage: React.FC = () => {
     }, []);
 
     useEffect(() => {
-        fetchData(historyRange.start, historyRange.end);
-    }, [historyRange, fetchData]);
+        fetchData(historyRange.start, historyRange.end, selectedYear);
+    }, [historyRange, selectedYear, fetchData]);
 
     const handleOpenOverallSummary = useCallback(() => {
         if (isLoading) return;
@@ -177,6 +177,8 @@ const StatsPage: React.FC = () => {
                 timelinePomodoroHistory={timelinePomodoroHistory}
                 consistencyPomodoroHistory={consistencyPomodoroHistory}
                 activeTab={activeTab}
+                selectedYear={selectedYear}
+                onYearChange={setSelectedYear}
             />
              {summaryModalState.isOpen && summaryModalState.fetcher && (
                 <AISummaryModal

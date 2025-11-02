@@ -26,6 +26,8 @@ interface HistoryPanelProps {
     timelinePomodoroHistory: PomodoroHistory[];
     consistencyPomodoroHistory: PomodoroHistory[];
     activeTab: ActiveTab;
+    selectedYear: number;
+    onYearChange: (year: number) => void;
 }
 
 const formatMinutesToHours = (minutes: number) => {
@@ -187,14 +189,22 @@ interface ConsistencyTrackerProps {
     showCompletions: boolean;
     onToggleCompletions: () => void;
     isForModal?: boolean;
+    selectedYear: number;
+    onYearChange: (year: number) => void;
 }
 
-const ConsistencyTracker: React.FC<ConsistencyTrackerProps> = ({ logs, allTasks, allProjects, pomodoroHistory, openInsightModal, showCompletions, onToggleCompletions, isForModal = false }) => {
+const ConsistencyTracker: React.FC<ConsistencyTrackerProps> = ({ logs, allTasks, allProjects, pomodoroHistory, openInsightModal, showCompletions, onToggleCompletions, isForModal = false, selectedYear, onYearChange }) => {
     const [selectedDay, setSelectedDay] = useState<string | null>(null);
     const [tooltipPosition, setTooltipPosition] = useState<{ top: number; left: number } | null>(null);
     const containerRef = useRef<HTMLDivElement>(null);
+    const scrollContainerRef = useRef<HTMLDivElement>(null);
     const [selectedCategory, setSelectedCategory] = useState<string>('Overall');
     
+    const availableYears = useMemo(() => {
+        const currentYear = new Date().getFullYear();
+        return Array.from({ length: 5 }, (_, i) => currentYear - i);
+    }, []);
+
     const allCategories = useMemo(() => {
         const tags = new Set<string>();
         allTasks.forEach(task => {
@@ -232,6 +242,12 @@ const ConsistencyTracker: React.FC<ConsistencyTrackerProps> = ({ logs, allTasks,
             value: Math.round(minutes)
         }));
     }, [selectedCategory, logs, pomodoroHistory, allTasks]);
+
+    useEffect(() => {
+        if (scrollContainerRef.current) {
+            scrollContainerRef.current.scrollLeft = scrollContainerRef.current.scrollWidth;
+        }
+    }, [selectedYear]);
     
     const handleDayClick = (day: { date: string }, event: React.MouseEvent) => {
         if (isForModal) return;
@@ -260,15 +276,18 @@ const ConsistencyTracker: React.FC<ConsistencyTrackerProps> = ({ logs, allTasks,
             allProjects.filter(p => p.completed_at).map(p => p.completed_at!.split('T')[0])
         );
 
-        const today = new Date();
-        const daysToShow = 180; // Approx 6 months
-        const days = Array.from({ length: daysToShow }, (_, i) => {
-            const date = new Date();
-            date.setDate(today.getDate() - (daysToShow - 1 - i));
-            return date;
-        });
-
-        const firstDayOfWeek = days[0].getDay(); // 0=Sun, 1=Mon, ...
+        const year = isForModal && activityData.length > 0 ? new Date(activityData[0].date).getFullYear() : selectedYear;
+        const startDate = new Date(year, 0, 1);
+        const endDate = new Date(year, 11, 31);
+        
+        const days = [];
+        let currentDate = new Date(startDate);
+        while (currentDate <= endDate) {
+            days.push(new Date(currentDate));
+            currentDate.setDate(currentDate.getDate() + 1);
+        }
+    
+        const firstDayOfWeek = startDate.getDay(); // 0=Sun, 1=Mon, ...
 
         const allCells = [
             ...Array(firstDayOfWeek).fill(null),
@@ -311,7 +330,7 @@ const ConsistencyTracker: React.FC<ConsistencyTrackerProps> = ({ logs, allTasks,
                 lastMonth = firstDayOfNewMonthInWeek.month;
                 if (colIndex > 0 || monthLabels.length === 0) {
                      monthLabels.push({
-                        name: new Date(today.getFullYear(), lastMonth).toLocaleString('default', { month: 'short' }),
+                        name: new Date(year, lastMonth).toLocaleString('default', { month: 'short' }),
                         startColumn: colIndex,
                     });
                 }
@@ -319,7 +338,7 @@ const ConsistencyTracker: React.FC<ConsistencyTrackerProps> = ({ logs, allTasks,
         });
 
         return { weeks, monthLabels, maxValue };
-    }, [activityData, allProjects]);
+    }, [activityData, allProjects, selectedYear, isForModal]);
 
     const chartMarkup = (
         <div className="inline-block">
@@ -374,7 +393,7 @@ const ConsistencyTracker: React.FC<ConsistencyTrackerProps> = ({ logs, allTasks,
     const dataForAI = activityData.map(d => ({ date: d.date, minutes: d.value }));
 
     const handleOpenModal = () => {
-        const modalChartElement = <ConsistencyTracker logs={logs} allTasks={allTasks} allProjects={allProjects} pomodoroHistory={pomodoroHistory} openInsightModal={openInsightModal} showCompletions={showCompletions} onToggleCompletions={onToggleCompletions} isForModal={true} />;
+        const modalChartElement = <ConsistencyTracker logs={logs} allTasks={allTasks} allProjects={allProjects} pomodoroHistory={pomodoroHistory} openInsightModal={openInsightModal} showCompletions={showCompletions} onToggleCompletions={onToggleCompletions} isForModal={true} selectedYear={selectedYear} onYearChange={onYearChange} />;
         openInsightModal(`Daily Focus Consistency: ${selectedCategory}`, dataForAI, modalChartElement);
     };
 
@@ -390,6 +409,13 @@ const ConsistencyTracker: React.FC<ConsistencyTrackerProps> = ({ logs, allTasks,
                             className="bg-slate-700/50 border border-slate-600 rounded-lg py-1 px-3 text-white focus:outline-none focus:ring-2 focus:ring-teal-400"
                         >
                             {allCategories.map(cat => <option key={cat} value={cat} className="bg-slate-800">{cat}</option>)}
+                        </select>
+                        <select
+                            value={selectedYear}
+                            onChange={e => onYearChange(parseInt(e.target.value))}
+                            className="bg-slate-700/50 border border-slate-600 rounded-lg py-1 px-3 text-white focus:outline-none focus:ring-2 focus:ring-teal-400"
+                        >
+                            {availableYears.map(y => <option key={y} value={y} className="bg-slate-800">{y}</option>)}
                         </select>
                     </div>
                      <div className="flex items-center gap-4">
@@ -413,7 +439,7 @@ const ConsistencyTracker: React.FC<ConsistencyTrackerProps> = ({ logs, allTasks,
             )}
             {isForModal && <h3 className="text-lg font-semibold text-white text-center mb-4">Daily Focus: {selectedCategory}</h3>}
 
-            <div className="overflow-x-auto">
+            <div ref={scrollContainerRef} className="overflow-x-auto">
                 {chartMarkup}
             </div>
 
@@ -776,7 +802,7 @@ const CategoryTimelineChart = React.memo(({ tasks, history, historyRange, openIn
 });
 
 
-const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, projects, allProjects, targets, allTargets, historyRange, setHistoryRange, settings, pomodoroHistory, consistencyLogs, timelinePomodoroHistory, consistencyPomodoroHistory, activeTab }) => {
+const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, projects, allProjects, targets, allTargets, historyRange, setHistoryRange, settings, pomodoroHistory, consistencyLogs, timelinePomodoroHistory, consistencyPomodoroHistory, activeTab, selectedYear, onYearChange }) => {
     const [selectedDay, setSelectedDay] = useState<string>(getTodayDateString());
     const [detailViewType, setDetailViewType] = useState<'day' | 'week' | 'month' | 'all'>('day');
     
@@ -1793,6 +1819,8 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                         openInsightModal={openInsightModal}
                         showCompletions={showCompletions}
                         onToggleCompletions={() => setShowCompletions(v => !v)}
+                        selectedYear={selectedYear}
+                        onYearChange={onYearChange}
                     />
                     
                     {/* Daily Focus Chart */}

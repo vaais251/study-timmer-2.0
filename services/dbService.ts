@@ -1119,21 +1119,30 @@ export const getAllPomodoroHistory = async (): Promise<PomodoroHistory[]> => {
     return data || [];
 };
 
-export const getConsistencyLogs = async (days = 180): Promise<DbDailyLog[]> => {
+export const getConsistencyLogs = async (days?: number, year?: number): Promise<DbDailyLog[]> => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return [];
 
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - days);
-    const startDateString = getTodayDateString(startDate);
-    const todayString = getTodayDateString();
+    let startDateString: string;
+    let endDateString: string;
+
+    if (year) {
+        startDateString = `${year}-01-01`;
+        endDateString = `${year}-12-31`;
+    } else {
+        const numDays = days || 365;
+        const startDate = new Date();
+        startDate.setDate(startDate.getDate() - numDays);
+        startDateString = getTodayDateString(startDate);
+        endDateString = getTodayDateString();
+    }
 
     const { data, error } = await supabase
         .from('daily_logs')
         .select('date, completed_sessions, total_focus_minutes')
         .eq('user_id', user.id)
         .gte('date', startDateString)
-        .lte('date', todayString);
+        .lte('date', endDateString);
 
     if (error) {
         console.error("Error fetching consistency logs:", JSON.stringify(error, null, 2));
