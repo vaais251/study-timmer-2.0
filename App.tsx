@@ -1,5 +1,6 @@
 
 
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
@@ -400,6 +401,7 @@ const App: React.FC = () => {
         };
     
         // 1. Deadline Reminders
+        const todayStr = getTodayDateString(today);
         const tomorrow = new Date(today);
         tomorrow.setDate(today.getDate() + 1);
         const threeDaysFromNow = new Date(today);
@@ -407,6 +409,13 @@ const App: React.FC = () => {
         const tomorrowStr = getTodayDateString(tomorrow);
         const threeDaysStr = getTodayDateString(threeDaysFromNow);
     
+        // Add notifications for tasks due today
+        tasks.forEach(task => {
+            if (task.due_date === todayStr && !task.completed_at) {
+                createNotificationPayload(`task-due-today-${task.id}`, `Task "${task.text}" is due today!`, 'deadline');
+            }
+        });
+
         [...projects, ...targets].forEach(item => {
             if ('deadline' in item && item.deadline && item.status !== 'completed' && item.status !== 'incomplete') {
                 const itemName = 'name' in item ? item.name : item.text;
@@ -466,7 +475,7 @@ const App: React.FC = () => {
             };
             addAndRefreshNotifications();
         }
-    }, [isLoading, session, projects, targets, historicalLogs, notifications, clearedNotificationIds]);
+    }, [isLoading, session, tasks, projects, targets, historicalLogs, notifications, clearedNotificationIds]);
 
     const handleMarkNotificationRead = async (id: string) => {
         const updated = await dbService.markNotificationRead(id);
