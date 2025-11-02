@@ -1,6 +1,9 @@
 
 
 
+
+
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
@@ -125,6 +128,10 @@ const App: React.FC = () => {
     const [isNotificationPanelOpen, setIsNotificationPanelOpen] = useState(false);
     const [clearedNotificationIds, setClearedNotificationIds] = useState<Set<string>>(new Set());
     const unreadNotificationCount = useMemo(() => notifications.filter(n => !n.read).length, [notifications]);
+    
+    // State for PWA installation prompt
+    const [isStandalone, setIsStandalone] = useState(false);
+    const [installPrompt, setInstallPrompt] = useState<any>(null);
 
 
     const timerInterval = useRef<number | null>(null);
@@ -385,6 +392,45 @@ const App: React.FC = () => {
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, []);
     
+    // --- PWA Installation Logic ---
+    useEffect(() => {
+        const mediaQuery = window.matchMedia('(display-mode: standalone)');
+        setIsStandalone(mediaQuery.matches);
+
+        const handleChange = (e: MediaQueryListEvent) => setIsStandalone(e.matches);
+        mediaQuery.addEventListener('change', handleChange);
+
+        return () => mediaQuery.removeEventListener('change', handleChange);
+    }, []);
+
+    useEffect(() => {
+        const handleBeforeInstallPrompt = (e: Event) => {
+            // Prevent the mini-infobar from appearing on mobile
+            e.preventDefault();
+            // Stash the event so it can be triggered later.
+            setInstallPrompt(e);
+        };
+
+        if (!isStandalone) {
+            window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+        }
+
+        return () => {
+            if (!isStandalone) {
+                window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+            }
+        };
+    }, [isStandalone]);
+
+    const handleInstallClick = async () => {
+        if (!installPrompt) {
+            return;
+        }
+        await installPrompt.prompt();
+        // The prompt can only be used once. Clear it.
+        setInstallPrompt(null);
+    };
+
     // --- Notification System ---
     useEffect(() => {
         if (isLoading || !session) return;
@@ -1321,7 +1367,13 @@ const App: React.FC = () => {
                     onMarkCommitmentBroken={handleMarkCommitmentBroken}
                 />;
             case 'settings':
-                return <SettingsPage settings={settings} onSave={handleSaveSettings} />;
+                return <SettingsPage 
+                    settings={settings} 
+                    onSave={handleSaveSettings}
+                    canInstall={!!installPrompt}
+                    onInstall={handleInstallClick}
+                    isStandalone={isStandalone}
+                />;
             default:
                 return <div>Page not found</div>;
         }
