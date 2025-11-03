@@ -1,7 +1,4 @@
 
-
-
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { PomodoroHistory, Task } from '../types';
 import * as dbService from '../services/dbService';
@@ -90,7 +87,9 @@ const DailyFocusTrendChart: React.FC<{
     history: PomodoroHistory[];
     tasks: Task[];
     dateRange: { start: string, end: string };
-}> = ({ selectedCategories, history, tasks, dateRange }) => {
+    movingAveragePeriod: number;
+    onPeriodChange: (period: number) => void;
+}> = ({ selectedCategories, history, tasks, dateRange, movingAveragePeriod, onPeriodChange }) => {
 
     const [visibility, setVisibility] = useState<{ [key: string]: boolean }>({});
 
@@ -106,6 +105,7 @@ const DailyFocusTrendChart: React.FC<{
         let endDate = new Date(); // Today
         
         if (isAllTime) {
+            if (history.length === 0) return { dailyData: [], categoryNames: [], categoryDisplayNames: [] };
             const earliestTimestamp = Math.min(...history.map(h => new Date(h.ended_at).getTime()));
             startDate = new Date(earliestTimestamp);
             startDate.setHours(0,0,0,0);
@@ -148,20 +148,57 @@ const DailyFocusTrendChart: React.FC<{
             }
         });
 
+        const sortedDates = Array.from(dataByDate.keys()).sort();
+
+        // Calculate moving average
+        for (let i = 0; i < sortedDates.length; i++) {
+            const currentDateStr = sortedDates[i];
+            const currentDayData = dataByDate.get(currentDateStr);
+            if (!currentDayData) continue;
+            
+            const windowStartDateIndex = Math.max(0, i - (movingAveragePeriod - 1));
+            
+            categoryNames.forEach(catName => {
+                let sum = 0;
+                let count = 0;
+                for (let j = windowStartDateIndex; j <= i; j++) {
+                    const dateStr = sortedDates[j];
+                    const dayData = dataByDate.get(dateStr);
+                    if (dayData) {
+                        sum += dayData[catName] || 0;
+                        count++;
+                    }
+                }
+                const avg = count > 0 ? sum / count : 0;
+                currentDayData[`${catName}_avg`] = avg;
+            });
+        }
+
         const finalData = Array.from(dataByDate.values()).map(day => {
-            categoryNames.forEach(name => { day[name] = Math.round(day[name]); });
+            categoryNames.forEach(name => {
+                day[name] = Math.round(day[name]);
+                if (day[`${name}_avg`]) {
+                    day[`${name}_avg`] = Math.round(day[`${name}_avg`]);
+                }
+            });
             return day;
         });
 
         return { dailyData: finalData, categoryNames, categoryDisplayNames };
 
-    }, [selectedCategories, history, tasks, dateRange]);
+    }, [selectedCategories, history, tasks, dateRange, movingAveragePeriod]);
 
     useEffect(() => {
         const [cat1, cat2] = selectedCategories;
         const newVisibility: { [key: string]: boolean } = {};
-        if (cat1) newVisibility[cat1] = true;
-        if (cat2) newVisibility[cat2] = true;
+        if (cat1) {
+            newVisibility[cat1] = true;
+            newVisibility[`${cat1}_avg`] = false;
+        }
+        if (cat2) {
+            newVisibility[cat2] = true;
+            newVisibility[`${cat2}_avg`] = false;
+        }
         setVisibility(newVisibility);
     }, [selectedCategories]);
 
@@ -184,11 +221,26 @@ const DailyFocusTrendChart: React.FC<{
 
     return (
         <div className="mt-6 bg-black/20 p-4 rounded-lg">
-            <h3 className="text-lg font-semibold text-white text-center mb-1">
-                Daily Focus Trend: <span className="text-cyan-300">{title}</span>
-            </h3>
+             <div className="flex flex-col sm:flex-row justify-between items-center mb-1">
+                <h3 className="text-lg font-semibold text-white text-center mb-2 sm:mb-0">
+                    Daily Focus Trend: <span className="text-cyan-300">{title}</span>
+                </h3>
+                <div className="flex items-center gap-2">
+                    <label htmlFor="moving-avg-period" className="text-sm text-white/70">Moving Avg:</label>
+                    <input
+                        id="moving-avg-period"
+                        type="number"
+                        value={movingAveragePeriod}
+                        onChange={e => onPeriodChange(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                        min="1"
+                        className="w-16 bg-slate-700/50 border border-slate-600 rounded-lg py-1 px-2 text-white focus:outline-none focus:ring-2 focus:ring-teal-400"
+                    />
+                    <span className="text-sm text-white/70">days</span>
+                </div>
+            </div>
+
             {totalMinutes > 0 ? (
-                <div className="h-64">
+                <div className="h-64 mt-4">
                     <ResponsiveContainer width="100%" height="100%">
                         <LineChart data={dailyData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
                             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
@@ -199,21 +251,33 @@ const DailyFocusTrendChart: React.FC<{
                                 contentStyle={{ background: 'rgba(30,41,59,0.9)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }}
                                 itemStyle={{ color: 'white' }}
                                 labelStyle={{ color: 'white', fontWeight: 'bold' }}
-                                formatter={(value: number) => [`${value} min`, 'Focus']}
+                                formatter={(value: number, name: string) => [`${value} min`, name]}
                             />
                             <Legend onClick={handleLegendClick} wrapperStyle={{ cursor: 'pointer' }}/>
                             {categoryNames.map((name, index) => (
-                                <Line 
-                                    key={name}
-                                    type="monotone"
-                                    dataKey={name}
-                                    name={name.charAt(0).toUpperCase() + name.slice(1)}
-                                    stroke={COLORS[index % COLORS.length]}
-                                    strokeWidth={2}
-                                    dot={false}
-                                    activeDot={{ r: 6 }}
-                                    hide={!visibility[name]}
-                                />
+                                <React.Fragment key={name}>
+                                    <Line
+                                        type="monotone"
+                                        dataKey={name}
+                                        name={name.charAt(0).toUpperCase() + name.slice(1)}
+                                        stroke={COLORS[index % COLORS.length]}
+                                        strokeWidth={2}
+                                        dot={false}
+                                        activeDot={{ r: 6 }}
+                                        hide={!visibility[name]}
+                                    />
+                                    <Line 
+                                        type="monotone"
+                                        dataKey={`${name}_avg`}
+                                        name={`${name.charAt(0).toUpperCase() + name.slice(1)} (Avg)`}
+                                        stroke={COLORS[index % COLORS.length]}
+                                        strokeWidth={2}
+                                        strokeDasharray="5 5"
+                                        dot={false}
+                                        activeDot={false}
+                                        hide={!visibility[`${name}_avg`]}
+                                    />
+                                </React.Fragment>
                             ))}
                         </LineChart>
                     </ResponsiveContainer>
@@ -239,6 +303,7 @@ const ExpertiseTracker: React.FC = () => {
     
     const [dateRange, setDateRange] = useState<{ start: string; end: string }>({ start: '', end: '' });
     const [selectedCategories, setSelectedCategories] = useState<[string | null, string | null]>([null, null]);
+    const [movingAveragePeriod, setMovingAveragePeriod] = useState(7);
     
     useEffect(() => {
         const today = new Date();
@@ -530,6 +595,8 @@ const ExpertiseTracker: React.FC = () => {
                         history={history}
                         tasks={tasks}
                         dateRange={chartDateRange}
+                        movingAveragePeriod={movingAveragePeriod}
+                        onPeriodChange={setMovingAveragePeriod}
                     />
                 </div>
             </div>

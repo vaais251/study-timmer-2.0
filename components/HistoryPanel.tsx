@@ -850,6 +850,16 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
         title: '',
         fetcher: null,
     });
+    
+    const [focusChartAvgPeriod, setFocusChartAvgPeriod] = useState(7);
+    const [focusChartVisibility, setFocusChartVisibility] = useState({ focusMinutes: true, focusMinutes_avg: false });
+
+    const handleFocusChartLegendClick = (o: any) => {
+        const { dataKey } = o;
+        if (dataKey in focusChartVisibility) {
+            setFocusChartVisibility(prev => ({ ...prev, [dataKey as keyof typeof focusChartVisibility]: !prev[dataKey as keyof typeof focusChartVisibility] }));
+        }
+    };
 
     const completionDates = useMemo(() => 
         new Set(allProjects.filter(p => p.completed_at).map(p => p.completed_at!.split('T')[0])),
@@ -1060,6 +1070,13 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
             hasCompletion: completionDates.has(dateString),
         }));
 
+        for (let i = 0; i < focusLineChartData.length; i++) {
+            const windowData = focusLineChartData.slice(Math.max(0, i - (focusChartAvgPeriod - 1)), i + 1);
+            const sum = windowData.reduce((acc, day) => acc + day.focusMinutes, 0);
+            const avg = windowData.length > 0 ? Math.round(sum / windowData.length) : 0;
+            (focusLineChartData[i] as any).focusMinutes_avg = avg;
+        }
+
         const dailyPomStats = new Map<string, { plannedPoms: number; completedPoms: number }>();
         if (historyRange.start && historyRange.end) {
             let currentDate = new Date(historyRange.start + 'T00:00:00');
@@ -1157,7 +1174,7 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
             averageDailyFocus,
             dayDiff
         };
-    }, [logs, tasks, allTasks, projects, allProjects, targets, allTargets, historyRange, settings, pomodoroHistory, completionDates]);
+    }, [logs, tasks, allTasks, projects, allProjects, targets, allTargets, historyRange, settings, pomodoroHistory, completionDates, focusChartAvgPeriod]);
     
     const categoryPriorityDistributionData = useMemo(() => {
         const categoryMap = new Map<string, { name: string, P1: number, P2: number, P3: number, P4: number }>();
@@ -1594,8 +1611,9 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                 <XAxis dataKey="date" stroke="rgba(255,255,255,0.7)" tick={{ fontSize: 10 }} />
                 <YAxis stroke="rgba(255,255,255,0.7)" unit="m" />
                 <Tooltip content={<CustomLineChartTooltip />} />
-                <Legend wrapperStyle={{fontSize: "12px"}}/>
-                <Line type="monotone" dataKey="focusMinutes" name="Focus Minutes" stroke="#34D399" dot={<CompletionDot />} activeDot={{ r: 8 }} />
+                <Legend wrapperStyle={{fontSize: "12px", cursor: 'pointer'}} onClick={handleFocusChartLegendClick} />
+                <Line type="monotone" dataKey="focusMinutes" name="Focus Minutes" stroke="#34D399" dot={<CompletionDot />} activeDot={{ r: 8 }} hide={!focusChartVisibility.focusMinutes} />
+                <Line type="monotone" dataKey="focusMinutes_avg" name="Moving Average" stroke="#a78bfa" strokeDasharray="5 5" dot={false} activeDot={{ r: 8 }} hide={!focusChartVisibility.focusMinutes_avg} />
             </LineChart>
         </ResponsiveContainer>
     );
@@ -1895,9 +1913,22 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                     
                     {/* Daily Focus Chart */}
                     <div>
-                        <div className="flex justify-center items-center gap-2 mb-2">
-                            <h3 className="text-lg font-semibold text-white text-center">Daily Focus Minutes</h3>
-                            <button onClick={() => openInsightModal('Daily Focus Minutes', aggregatedData.focusLineChartData, <div className="h-72">{dailyFocusChartElement}</div>)} className="p-1 text-purple-400 hover:text-purple-300 transition" title="Get AI Insights"><SparklesIcon /></button>
+                        <div className="flex flex-col sm:flex-row justify-between items-center gap-2 mb-2">
+                             <div className="flex items-center gap-2">
+                                <h3 className="text-lg font-semibold text-white">Daily Focus Minutes</h3>
+                                <button onClick={() => openInsightModal('Daily Focus Minutes', aggregatedData.focusLineChartData, <div className="h-72">{dailyFocusChartElement}</div>)} className="p-1 text-purple-400 hover:text-purple-300 transition" title="Get AI Insights"><SparklesIcon /></button>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <label htmlFor="focus-chart-avg" className="text-sm text-white/70">Moving Avg:</label>
+                                <input
+                                    id="focus-chart-avg"
+                                    type="number"
+                                    value={focusChartAvgPeriod}
+                                    onChange={e => setFocusChartAvgPeriod(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                                    min="1"
+                                    className="w-16 bg-slate-700/50 border border-slate-600 rounded-lg py-1 px-2 text-white focus:outline-none focus:ring-2 focus:ring-teal-400"
+                                />
+                            </div>
                         </div>
                         <div className="h-72">{dailyFocusChartElement}</div>
                     </div>
