@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, GenerateContentResponse, FunctionDeclaration, Part, Type } from "@google/genai";
 import { Goal, Target, Project, Commitment, Task, AiMemory, PomodoroHistory, PersonalBest } from '../types';
 
@@ -222,12 +223,12 @@ You have access to the user's data, structured in the following tables. Use this
     *   \`custom_focus_duration\` (number | null): Override for default focus time (in minutes).
     *   \`priority\` (integer | null): Optional priority from 1 (highest) to 4 (lowest).
 
-5.  **pomodoro_history** - The authoritative log of all completed focus sessions. Use the 'difficulty' to understand work intensity. A 'hard' session is more significant than an 'easy' one.
+5.  **pomodoro_history** - The authoritative log of all completed focus sessions. Use the 'difficulty' column to understand the user's perceived focus level during the session. 'complete_focus' means the user was fully engaged, while 'none_focus' indicates they were distracted. This is valuable qualitative data.
     *   \`id\` (string, PK): Unique identifier.
     *   \`task_id\` (string | null, FK -> tasks.id): The task worked on during this session.
     *   \`ended_at\` (timestamp): Exact timestamp when the focus session ended.
     *   \`duration_minutes\` (number): The duration of the focus session.
-    *   \`difficulty\` (string | null): The user-rated difficulty of the session ('easy', 'medium', 'hard').
+    *   \`difficulty\` (string | null): The user-rated focus level of the session ('complete_focus', 'half_focus', 'none_focus').
 
 6.  **commitments** - Promises or accountability items.
     *   \`id\` (string, PK): Unique identifier.

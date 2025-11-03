@@ -6,10 +6,10 @@ interface CompletionModalProps {
     message: string;
     nextMode: Mode;
     showCommentBox: boolean;
-    onContinue: (comment: string, difficulty: 'easy' | 'medium' | 'hard' | null) => void;
+    onContinue: (comment: string, difficulty: 'complete_focus' | 'half_focus' | 'none_focus' | null) => void;
 }
 
-type Difficulty = 'easy' | 'medium' | 'hard';
+type Difficulty = 'complete_focus' | 'half_focus' | 'none_focus';
 
 const CompletionModal: React.FC<CompletionModalProps> = ({ title, message, nextMode, showCommentBox, onContinue }) => {
     const [comment, setComment] = useState('');
@@ -20,9 +20,9 @@ const CompletionModal: React.FC<CompletionModalProps> = ({ title, message, nextM
     const buttonBg = isFocusNext ? 'bg-teal-500 hover:bg-teal-600' : 'bg-purple-500 hover:bg-purple-600';
 
     const difficultyOptions: { label: string; value: Difficulty }[] = [
-        { label: 'Easy', value: 'easy' },
-        { label: 'Medium', value: 'medium' },
-        { label: 'Hard', value: 'hard' },
+        { label: 'Complete Focus', value: 'complete_focus' },
+        { label: 'Half Focus', value: 'half_focus' },
+        { label: 'None Focus', value: 'none_focus' },
     ];
 
     return (
@@ -41,7 +41,7 @@ const CompletionModal: React.FC<CompletionModalProps> = ({ title, message, nextM
                             className="w-full bg-slate-700/50 border border-slate-600 rounded-lg p-3 text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-400 focus:border-teal-400 min-h-[80px]"
                         />
                          <div>
-                            <label className="text-sm text-slate-300 mb-2 block">How challenging was that? (Optional)</label>
+                            <label className="text-sm text-slate-300 mb-2 block">How was your focus? (Optional)</label>
                             <div className="flex justify-center gap-2">
                                 {difficultyOptions.map(opt => (
                                     <button

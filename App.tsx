@@ -934,7 +934,7 @@ const App: React.FC = () => {
 
     // Modal Continue Handler
     // Fix: Refactor `handleModalContinue` to correctly log pomodoro history with difficulty after the modal is closed.
-    const handleModalContinue = async (comment: string, difficulty: 'easy' | 'medium' | 'hard' | null) => {
+    const handleModalContinue = async (comment: string, difficulty: 'complete_focus' | 'half_focus' | 'none_focus' | null) => {
         if (notificationInterval.current) clearInterval(notificationInterval.current);
         
         let finalTasksState = [...tasks];

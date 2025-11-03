@@ -1048,7 +1048,7 @@ export const getTodaysPomodoroHistory = async (): Promise<PomodoroHistory[]> => 
 };
 
 
-export const addPomodoroHistory = async (taskId: string | null, duration: number, difficulty: 'easy' | 'medium' | 'hard' | null): Promise<void> => {
+export const addPomodoroHistory = async (taskId: string | null, duration: number, difficulty: 'complete_focus' | 'half_focus' | 'none_focus' | null): Promise<void> => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 

@@ -112,7 +112,7 @@ export interface PomodoroHistory {
     task_id: string | null;
     ended_at: string;
     duration_minutes: number;
-    difficulty?: 'easy' | 'medium' | 'hard' | null;
+    difficulty?: 'complete_focus' | 'half_focus' | 'none_focus' | null;
 }
 
 // Corresponds to the new `personal_bests` table
