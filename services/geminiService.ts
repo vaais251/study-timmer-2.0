@@ -7,7 +7,7 @@ import { Goal, Target, Project, Commitment, Task, AiMemory, PomodoroHistory, Per
 // variable. This is a security best practice. Do NOT hardcode API keys directly
 // in the source code, as it exposes them to anyone with access to the code.
 // The development environment automatically provides the key via this variable.
-const API_KEY = "AIzaSyBT9IN5PiyqaWBdM9NekDg5d-5fWDuhZnE";
+const API_KEY = process.env.API_KEY;
 
 export async function getChartInsight(chartTitle: string, chartData: any): Promise<string> {
     const prompt = `
