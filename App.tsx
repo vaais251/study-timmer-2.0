@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
@@ -133,6 +134,8 @@ const App: React.FC = () => {
     const timerInterval = useRef<number | null>(null);
     const notificationInterval = useRef<number | null>(null);
     const wakeLock = useRef<any | null>(null);
+    // Fix: Add a ref to store the state of the timer when a phase is completed. This allows `handleModalContinue` to access the correct state for logging.
+    const completedPhaseState = useRef<AppState | null>(null);
     const isInitialLoad = useRef(true);
 
     // Derived state for tasks
@@ -681,59 +684,15 @@ const App: React.FC = () => {
 
 
     // Phase Completion Logic
+    // Fix: Refactor `completePhase` to only handle UI changes before the modal, moving data logging to `handleModalContinue`.
     const completePhase = useCallback(async () => {
+        completedPhaseState.current = appState;
         stopTimer();
         notificationInterval.current = window.setInterval(playAlertLoop, 3000);
         playAlertLoop();
 
         if (appState.mode === 'focus') {
             playFocusEndSound();
-            const currentTask = tasksToday.find(t => !t.completed_at);
-            
-            // For both stopwatch and regular, the duration of the completed chunk is the sessionTotalTime.
-            const focusDuration = Math.round(appState.sessionTotalTime / 60);
-
-            // Optimistic UI update for daily log
-            const newLog = {
-                ...dailyLog,
-                completed_sessions: dailyLog.completed_sessions + 1,
-                total_focus_minutes: dailyLog.total_focus_minutes + focusDuration
-            };
-            setDailyLog(newLog);
-            
-            // Log the individual pomodoro session for authoritative tracking
-            await dbService.addPomodoroHistory(currentTask?.id || null, focusDuration);
-
-            // Check for project completion by duration
-            if (currentTask?.id) {
-                await checkProjectDurationCompletion(currentTask.id, focusDuration);
-            }
-            
-            // Optimistically update history for immediate UI feedback
-            if (session) {
-                const newHistoryRecord: PomodoroHistory = {
-                    id: `temp-${Date.now()}`,
-                    user_id: session.user.id,
-                    task_id: currentTask?.id || null,
-                    ended_at: new Date().toISOString(),
-                    duration_minutes: focusDuration,
-                };
-                setTodaysHistory(prev => [...prev, newHistoryRecord]);
-                
-                const newLogs = [...historicalLogs];
-                const todayLogIndex = newLogs.findIndex(l => l.date === todayString);
-                if (todayLogIndex > -1) {
-                    newLogs[todayLogIndex] = newLog;
-                } else {
-                    newLogs.push(newLog);
-                }
-                setHistoricalLogs(newLogs);
-                await checkAndUpdateStreakRecord(newLogs);
-            }
-            
-            // Also update the daily log in the DB (mainly for session count)
-            await dbService.upsertDailyLog(newLog);
-
             if (appState.currentSession >= settings.sessionsPerCycle) {
                 setModalContent({ title: '🎉 Full Cycle Complete!', message: 'Congratulations! You completed a full study cycle.<br/>Take a well-deserved break!', nextMode: 'break', showCommentBox: true });
             } else {
@@ -748,7 +707,7 @@ const App: React.FC = () => {
             setModalContent({ title: '⏰ Break Over!', message: nextTaskMessage, nextMode: 'focus', showCommentBox: false });
         }
         setIsModalVisible(true);
-    }, [appState, settings, stopTimer, tasksToday, dailyLog, session, todayString, historicalLogs, checkAndUpdateStreakRecord]);
+    }, [appState, settings, stopTimer, tasksToday]);
     
     useEffect(() => {
         const currentTask = tasksToday[0];
@@ -908,7 +867,8 @@ const App: React.FC = () => {
             };
             setDailyLog(newLog);
             
-            await dbService.addPomodoroHistory(currentTask.id, sessionDurationMinutes);
+            // Fix: Add the third argument (`difficulty`) as null for stopwatch tasks, as it's not collected.
+            await dbService.addPomodoroHistory(currentTask.id, sessionDurationMinutes, null);
             await checkProjectDurationCompletion(currentTask.id, sessionDurationMinutes);
             
             if (session) {
@@ -973,11 +933,58 @@ const App: React.FC = () => {
     };
 
     // Modal Continue Handler
-    const handleModalContinue = async (comment: string) => {
+    // Fix: Refactor `handleModalContinue` to correctly log pomodoro history with difficulty after the modal is closed.
+    const handleModalContinue = async (comment: string, difficulty: 'easy' | 'medium' | 'hard' | null) => {
         if (notificationInterval.current) clearInterval(notificationInterval.current);
         
         let finalTasksState = [...tasks];
         const wasFocusSession = modalContent.showCommentBox;
+
+        if (wasFocusSession && completedPhaseState.current) {
+            const previousState = completedPhaseState.current;
+            const currentTask = tasksToday.find(t => !t.completed_at);
+            const focusDuration = Math.round(previousState.sessionTotalTime / 60);
+
+            // --- Logic moved from completePhase ---
+            const newLog = {
+                ...dailyLog,
+                completed_sessions: dailyLog.completed_sessions + 1,
+                total_focus_minutes: dailyLog.total_focus_minutes + focusDuration
+            };
+            setDailyLog(newLog);
+            
+            await dbService.addPomodoroHistory(currentTask?.id || null, focusDuration, difficulty);
+
+            if (currentTask?.id) {
+                await checkProjectDurationCompletion(currentTask.id, focusDuration);
+            }
+            
+            if (session) {
+                const newHistoryRecord: PomodoroHistory = {
+                    id: `temp-${Date.now()}`,
+                    user_id: session.user.id,
+                    task_id: currentTask?.id || null,
+                    ended_at: new Date().toISOString(),
+                    duration_minutes: focusDuration,
+                    difficulty: difficulty,
+                };
+                setTodaysHistory(prev => [...prev, newHistoryRecord]);
+                
+                const newLogs = [...historicalLogs];
+                const todayLogIndex = newLogs.findIndex(l => l.date === todayString);
+                if (todayLogIndex > -1) {
+                    newLogs[todayLogIndex] = newLog;
+                } else {
+                    newLogs.push(newLog);
+                }
+                setHistoricalLogs(newLogs);
+                await checkAndUpdateStreakRecord(newLogs);
+            }
+            
+            await dbService.upsertDailyLog(newLog);
+        }
+        completedPhaseState.current = null;
+
 
         const taskJustWorkedOn = tasks.find(t => t.due_date === getTodayDateString() && !t.completed_at);
 

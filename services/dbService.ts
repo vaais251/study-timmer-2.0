@@ -1048,17 +1048,15 @@ export const getTodaysPomodoroHistory = async (): Promise<PomodoroHistory[]> => 
 };
 
 
-export const addPomodoroHistory = async (taskId: string | null, duration: number): Promise<void> => {
+export const addPomodoroHistory = async (taskId: string | null, duration: number, difficulty: 'easy' | 'medium' | 'hard' | null): Promise<void> => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    // The `insert` method expects an array of objects.
-    // We are also removing `ended_at` to let the database's `DEFAULT now()` function handle it.
-    // This is more robust and avoids potential client-side timezone or formatting issues.
     const { error } = await supabase.from('pomodoro_history').insert([{
         user_id: user.id,
         task_id: taskId,
         duration_minutes: duration,
+        difficulty: difficulty,
     }]);
 
     if (error) {

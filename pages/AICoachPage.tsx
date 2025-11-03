@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Goal, Target, Project, PomodoroHistory, Commitment, Task, ChatMessage, AiMemory, AiMemoryType, PersonalBest } from '../types';
 import { getTodayDateString } from '../utils/date';
@@ -459,7 +458,7 @@ const AICoachPage: React.FC<AICoachPageProps> = (props) => {
                 tags: t.tags,
             })),
             dailyLogs,
-            pomodoroHistory: contextHistory.map(p => ({ task_id: p.task_id, ended_at: p.ended_at, duration_minutes: p.duration_minutes })),
+            pomodoroHistory: contextHistory.map(p => ({ task_id: p.task_id, ended_at: p.ended_at, duration_minutes: p.duration_minutes, difficulty: p.difficulty })),
             aiMemories: aiMemories.map(m => ({ id: m.id, type: m.type, content: m.content, tags: m.tags, created_at: m.created_at })),
             personalBests: personalBests.map(b => ({ metric: b.metric, value: b.value, achieved_at: b.achieved_at })),
             dateRangeDescription,

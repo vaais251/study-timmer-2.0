@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, GenerateContentResponse, FunctionDeclaration, Part, Type } from "@google/genai";
 import { Goal, Target, Project, Commitment, Task, AiMemory, PomodoroHistory, PersonalBest } from '../types';
 
@@ -139,7 +138,7 @@ export interface AgentContext {
     commitments: Pick<Commitment, 'id' | 'text' | 'due_date'>[];
     tasks: Pick<Task, 'id' | 'text' | 'due_date' | 'completed_at' | 'project_id' | 'completed_poms' | 'total_poms' | 'comments' | 'priority' | 'tags'>[];
     dailyLogs: { date: string; total_focus_minutes: number; completed_sessions: number }[];
-    pomodoroHistory: Pick<PomodoroHistory, 'task_id' | 'ended_at' | 'duration_minutes'>[];
+    pomodoroHistory: Pick<PomodoroHistory, 'task_id' | 'ended_at' | 'duration_minutes' | 'difficulty'>[];
     aiMemories: Pick<AiMemory, 'id' | 'type' | 'content' | 'tags' | 'created_at'>[];
     personalBests: Pick<PersonalBest, 'metric' | 'value' | 'achieved_at'>[];
     dateRangeDescription: string;
@@ -223,11 +222,12 @@ You have access to the user's data, structured in the following tables. Use this
     *   \`custom_focus_duration\` (number | null): Override for default focus time (in minutes).
     *   \`priority\` (integer | null): Optional priority from 1 (highest) to 4 (lowest).
 
-5.  **pomodoro_history** - The authoritative log of all completed focus sessions.
+5.  **pomodoro_history** - The authoritative log of all completed focus sessions. Use the 'difficulty' to understand work intensity. A 'hard' session is more significant than an 'easy' one.
     *   \`id\` (string, PK): Unique identifier.
     *   \`task_id\` (string | null, FK -> tasks.id): The task worked on during this session.
     *   \`ended_at\` (timestamp): Exact timestamp when the focus session ended.
     *   \`duration_minutes\` (number): The duration of the focus session.
+    *   \`difficulty\` (string | null): The user-rated difficulty of the session ('easy', 'medium', 'hard').
 
 6.  **commitments** - Promises or accountability items.
     *   \`id\` (string, PK): Unique identifier.
@@ -300,7 +300,7 @@ ${context.dailyLogs.map(log => `- Date: ${log.date}, Focus Time: ${log.total_foc
 
 == POMODORO HISTORY IN RANGE ==
 This is the raw log of individual focus sessions. Use the \`ended_at\` timestamp for detailed time-of-day analysis.
-${context.pomodoroHistory.map(p => `- Ended: ${p.ended_at}, Duration: ${p.duration_minutes} min, TaskID: ${p.task_id || 'None'}`).join('\n') || 'No individual focus sessions recorded in this range.'}
+${context.pomodoroHistory.map(p => `- Ended: ${p.ended_at}, Duration: ${p.duration_minutes} min, Difficulty: ${p.difficulty || 'N/A'}, TaskID: ${p.task_id || 'None'}`).join('\n') || 'No individual focus sessions recorded in this range.'}
 --- END OF CONTEXT ---
 
 Based on this detailed data and schema, answer the user's questions and execute commands with precision.`;
