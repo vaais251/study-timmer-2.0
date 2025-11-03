@@ -2,8 +2,10 @@
   "name": "FocusFlow - AI Pomodoro Timer",
   "short_name": "FocusFlow",
   "description": "An advanced Pomodoro timer with task management, historical progress tracking, and AI-powered study insights and mentorship to boost your productivity.",
-  "start_url": "/",
+  "start_url": ".",
+  "scope": "/",
   "display": "standalone",
+  "orientation": "portrait-primary",
   "background_color": "#111827",
   "theme_color": "#1e293b",
   "icons": [
@@ -20,16 +22,33 @@
       "purpose": "any"
     },
     {
-      "src": "/icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "maskable"
-    },
-    {
       "src": "/icon-maskable-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Start Focus Session",
+      "short_name": "Focus",
+      "description": "Start a new Pomodoro focus session",
+      "url": "/?action=start-focus",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "View Plan",
+      "short_name": "Plan",
+      "description": "View and manage your tasks",
+      "url": "/?page=plan",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "AI Coach",
+      "short_name": "AI Coach",
+      "description": "Chat with your AI productivity coach",
+      "url": "/?page=ai",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
     }
   ]
 }

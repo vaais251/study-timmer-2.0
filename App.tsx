@@ -189,6 +189,25 @@ const App: React.FC = () => {
         return () => subscription.unsubscribe();
     }, []);
 
+    // Handle URL params from PWA shortcuts
+    useEffect(() => {
+        const urlParams = new URLSearchParams(window.location.search);
+        const pageParam = urlParams.get('page');
+        if (pageParam && ['timer', 'plan', 'stats', 'ai', 'settings', 'goals'].includes(pageParam)) {
+            setPage(pageParam as Page);
+            // Clean up URL to prevent re-triggering on hot reload
+            window.history.replaceState({}, document.title, window.location.pathname);
+        }
+
+        const actionParam = urlParams.get('action');
+        if (actionParam === 'start-focus') {
+            setPage('timer');
+            // Simply navigating to the timer page is the safest action.
+            // Automatically starting the timer could be complex due to data loading states.
+            window.history.replaceState({}, document.title, window.location.pathname);
+        }
+    }, []); // Run only once on component mount
+
     const fetchData = useCallback(async () => {
         if (!session) return;
         setIsLoading(true);
