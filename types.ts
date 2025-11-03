@@ -114,6 +114,16 @@ export interface PomodoroHistory {
     duration_minutes: number;
 }
 
+// Corresponds to the new `personal_bests` table
+export interface PersonalBest {
+    id: string;
+    created_at: string;
+    user_id: string;
+    metric: string;
+    value: number;
+    achieved_at: string;
+}
+
 
 // Legacy types for compatibility during refactor
 export interface AppState {

@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient';
-import { Settings, Task, DbDailyLog, Project, Goal, Target, PomodoroHistory, Commitment, ProjectUpdate, AiMemory, AppNotification } from '../types';
+import { Settings, Task, DbDailyLog, Project, Goal, Target, PomodoroHistory, Commitment, ProjectUpdate, AiMemory, AppNotification, PersonalBest } from '../types';
 import { getTodayDateString } from '../utils/date';
 
 // --- Settings ---
@@ -1151,6 +1151,45 @@ export const getConsistencyLogs = async (days?: number, year?: number): Promise<
     
     return data || [];
 };
+
+// --- Personal Bests ---
+
+export const getPersonalBests = async (): Promise<PersonalBest[] | null> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    const { data, error } = await supabase
+        .from('personal_bests')
+        .select('*')
+        .eq('user_id', user.id);
+    
+    if (error) {
+        console.error("Error fetching personal bests:", error);
+        return null;
+    }
+    return data;
+};
+
+export const upsertPersonalBest = async (metric: string, value: number): Promise<PersonalBest | null> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    const { data, error } = await supabase
+        .from('personal_bests')
+        .upsert(
+            { user_id: user.id, metric, value, achieved_at: new Date().toISOString() },
+            { onConflict: 'user_id, metric' }
+        )
+        .select()
+        .single();
+    
+    if (error) {
+        console.error("Error upserting personal best:", error);
+        return null;
+    }
+    return data;
+};
+
 
 // --- AI Memories ---
 

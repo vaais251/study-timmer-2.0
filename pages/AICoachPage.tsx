@@ -1,5 +1,6 @@
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Goal, Target, Project, PomodoroHistory, Commitment, Task, ChatMessage, AiMemory, AiMemoryType } from '../types';
+import { Goal, Target, Project, PomodoroHistory, Commitment, Task, ChatMessage, AiMemory, AiMemoryType, PersonalBest } from '../types';
 import { getTodayDateString } from '../utils/date';
 import { runAgent, AgentContext, generateContent } from '../services/geminiService';
 import * as dbService from '../services/dbService';
@@ -33,6 +34,7 @@ interface AICoachPageProps {
     setChatMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
     aiMemories: AiMemory[];
     onMemoryChange: () => Promise<void>;
+    personalBests: PersonalBest[];
 }
 
 // --- AI Function Declarations ---
@@ -212,7 +214,7 @@ const AiMemoryManager: React.FC<{ memories: AiMemory[], onDelete: (id: string) =
 type FilterMode = 'all' | 'week' | 'month' | 'range';
 
 const AICoachPage: React.FC<AICoachPageProps> = (props) => {
-    const { goals, targets, projects, allCommitments, onAddTask, onAddProject, onAddTarget, onAddCommitment, onRescheduleItem, chatMessages, setChatMessages, aiMemories, onMemoryChange } = props;
+    const { goals, targets, projects, allCommitments, onAddTask, onAddProject, onAddTarget, onAddCommitment, onRescheduleItem, chatMessages, setChatMessages, aiMemories, onMemoryChange, personalBests } = props;
     
     // Agent State
     const [userInput, setUserInput] = useState('');
@@ -459,6 +461,7 @@ const AICoachPage: React.FC<AICoachPageProps> = (props) => {
             dailyLogs,
             pomodoroHistory: contextHistory.map(p => ({ task_id: p.task_id, ended_at: p.ended_at, duration_minutes: p.duration_minutes })),
             aiMemories: aiMemories.map(m => ({ id: m.id, type: m.type, content: m.content, tags: m.tags, created_at: m.created_at })),
+            personalBests: personalBests.map(b => ({ metric: b.metric, value: b.value, achieved_at: b.achieved_at })),
             dateRangeDescription,
         };
 

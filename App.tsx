@@ -1,15 +1,10 @@
 
-
-
-
-
-
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
 import * as dbService from './services/dbService';
 import { NewNotification } from './services/dbService';
-import { Task, Settings, Mode, Page, DbDailyLog, Project, Goal, Target, AppState, PomodoroHistory, Commitment, ChatMessage, AiMemory, AppNotification } from './types';
+import { Task, Settings, Mode, Page, DbDailyLog, Project, Goal, Target, AppState, PomodoroHistory, Commitment, ChatMessage, AiMemory, AppNotification, PersonalBest } from './types';
 import { getTodayDateString } from './utils/date';
 import { playFocusStartSound, playFocusEndSound, playBreakStartSound, playBreakEndSound, playAlertLoop, resumeAudioContext } from './utils/audio';
 
@@ -104,6 +99,7 @@ const App: React.FC = () => {
     const [todaysHistory, setTodaysHistory] = useState<PomodoroHistory[]>([]);
     const [historicalLogs, setHistoricalLogs] = useState<DbDailyLog[]>([]);
     const [aiMemories, setAiMemories] = useState<AiMemory[]>([]);
+    const [personalBests, setPersonalBests] = useState<PersonalBest[]>([]);
     const [toastNotification, setToastNotification] = useState<string | null>(null);
     
     // State for AI Coach Chat - lifted up for persistence
@@ -218,7 +214,7 @@ const App: React.FC = () => {
             const startDate = getTodayDateString(fourteenDaysAgo);
 
             // Fetch raw data sources first
-            const [userSettings, userTasks, userProjects, userGoals, userTargets, userCommitments, allPomodoroHistoryForRange, userAiMemories, userNotifications] = await Promise.all([
+            const [userSettings, userTasks, userProjects, userGoals, userTargets, userCommitments, allPomodoroHistoryForRange, userAiMemories, userNotifications, userPersonalBests] = await Promise.all([
                 dbService.getSettings(),
                 dbService.getTasks(),
                 dbService.getProjects(),
@@ -227,7 +223,8 @@ const App: React.FC = () => {
                 dbService.getCommitments(),
                 dbService.getPomodoroHistory(startDate, today), // Fetch raw history as the source of truth
                 dbService.getAiMemories(),
-                dbService.getNotifications()
+                dbService.getNotifications(),
+                dbService.getPersonalBests()
             ]);
 
             // --- Process Pomodoro History to generate authoritative logs ---
@@ -304,6 +301,7 @@ const App: React.FC = () => {
 
             if (userAiMemories) setAiMemories(userAiMemories);
             if (userNotifications) setNotifications(userNotifications);
+            if (userPersonalBests) setPersonalBests(userPersonalBests);
             
             if (!didRestoreFromStorage) {
                 const firstTask = userTasks?.filter(t => t.due_date === getTodayDateString() && !t.completed_at)[0];
@@ -350,6 +348,7 @@ const App: React.FC = () => {
             setHistoricalLogs([]);
             setAiMemories([]);
             setNotifications([]);
+            setPersonalBests([]);
             setAiChatMessages([{ role: 'model', text: 'Hello! I am your AI Coach. I have access to your goals, projects, and performance data. Ask me for insights, a weekly plan, or to add tasks for you!' }]);
             setDailyLog({ date: getTodayDateString(), completed_sessions: 0, total_focus_minutes: 0 });
             localStorage.removeItem('pomodoroAppState');
@@ -635,6 +634,52 @@ const App: React.FC = () => {
         if (updatedProjects) setProjects(updatedProjects);
     };
 
+    const checkAndUpdateStreakRecord = useCallback(async (currentLogs: DbDailyLog[]) => {
+        if (!currentLogs || currentLogs.length === 0) return;
+    
+        const logsByDate = new Map(currentLogs.map(log => [log.date, log]));
+        let streak = 0;
+        const checkDate = new Date();
+        
+        while (true) {
+            const dateString = getTodayDateString(checkDate);
+            const log = logsByDate.get(dateString);
+    
+            if (log && log.total_focus_minutes > 0) {
+                streak++;
+                checkDate.setDate(checkDate.getDate() - 1);
+            } else {
+                break;
+            }
+        }
+        
+        if (streak === 0) return;
+    
+        const longestStreakRecord = personalBests.find(b => b.metric === 'longest_streak');
+        const longestStreakValue = longestStreakRecord?.value || 0;
+        
+        if (streak > longestStreakValue) {
+            const newBest = await dbService.upsertPersonalBest('longest_streak', streak);
+            if (newBest) {
+                setPersonalBests(prev => {
+                    const existing = prev.filter(b => b.metric !== 'longest_streak');
+                    return [...existing, newBest];
+                });
+                setToastNotification(`🎉 New Record! You've set a new ${streak}-day focus streak!`);
+
+                // Add in-app notification for the new record
+                const unique_id = `new-record-streak-${streak}`;
+                const message = `🎉 New Personal Best! You've set a new ${streak}-day focus streak!`;
+                await dbService.addNotifications([{ unique_id, message, type: 'milestone' }]);
+                const freshNotifications = await dbService.getNotifications();
+                if (freshNotifications) {
+                    setNotifications(freshNotifications);
+                }
+            }
+        }
+    }, [personalBests]);
+
+
     // Phase Completion Logic
     const completePhase = useCallback(async () => {
         stopTimer();
@@ -674,17 +719,16 @@ const App: React.FC = () => {
                     duration_minutes: focusDuration,
                 };
                 setTodaysHistory(prev => [...prev, newHistoryRecord]);
-                // Also update the historical logs state for live updates to charts
-                setHistoricalLogs(prevLogs => {
-                    const newLogs = [...prevLogs];
-                    const todayLogIndex = newLogs.findIndex(l => l.date === todayString);
-                    if (todayLogIndex > -1) {
-                        newLogs[todayLogIndex] = newLog;
-                    } else {
-                        newLogs.push(newLog);
-                    }
-                    return newLogs;
-                });
+                
+                const newLogs = [...historicalLogs];
+                const todayLogIndex = newLogs.findIndex(l => l.date === todayString);
+                if (todayLogIndex > -1) {
+                    newLogs[todayLogIndex] = newLog;
+                } else {
+                    newLogs.push(newLog);
+                }
+                setHistoricalLogs(newLogs);
+                await checkAndUpdateStreakRecord(newLogs);
             }
             
             // Also update the daily log in the DB (mainly for session count)
@@ -704,7 +748,7 @@ const App: React.FC = () => {
             setModalContent({ title: '⏰ Break Over!', message: nextTaskMessage, nextMode: 'focus', showCommentBox: false });
         }
         setIsModalVisible(true);
-    }, [appState, settings, stopTimer, tasksToday, dailyLog, session, todayString]);
+    }, [appState, settings, stopTimer, tasksToday, dailyLog, session, todayString, historicalLogs, checkAndUpdateStreakRecord]);
     
     useEffect(() => {
         const currentTask = tasksToday[0];
@@ -876,13 +920,13 @@ const App: React.FC = () => {
                     duration_minutes: sessionDurationMinutes,
                 };
                 setTodaysHistory(prev => [...prev, newHistoryRecord]);
-                 setHistoricalLogs(prevLogs => {
-                    const newLogs = [...prevLogs];
-                    const todayLogIndex = newLogs.findIndex(l => l.date === todayString);
-                    if (todayLogIndex > -1) newLogs[todayLogIndex] = newLog;
-                    else newLogs.push(newLog);
-                    return newLogs;
-                });
+
+                 const newLogs = [...historicalLogs];
+                 const todayLogIndex = newLogs.findIndex(l => l.date === todayString);
+                 if (todayLogIndex > -1) newLogs[todayLogIndex] = newLog;
+                 else newLogs.push(newLog);
+                 setHistoricalLogs(newLogs);
+                 await checkAndUpdateStreakRecord(newLogs);
             }
             await dbService.upsertDailyLog(newLog);
         }
@@ -1362,6 +1406,7 @@ const App: React.FC = () => {
                     setChatMessages={setAiChatMessages}
                     aiMemories={aiMemories}
                     onMemoryChange={refreshAiMemories}
+                    personalBests={personalBests}
                 />;
             case 'goals':
                 return <GoalsPage 
