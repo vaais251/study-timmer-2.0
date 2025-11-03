@@ -1002,7 +1002,7 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
         });
         const totalTargetsInRange = relevantTargets.length;
 
-        const lineChartDataPoints = new Map<string, { total: number, completed: number }>();
+        const lineChartDataPoints = new Map<string, { total_poms: number, completed_poms: number }>();
         if (historyRange.start && historyRange.end) {
             let currentDate = new Date(historyRange.start + 'T00:00:00');
             let endDateForChart = new Date(historyRange.end + 'T00:00:00');
@@ -1016,24 +1016,25 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
             }
             while(currentDate <= endDateForChart) {
                 const dateString = getTodayDateString(currentDate);
-                lineChartDataPoints.set(dateString, { total: 0, completed: 0 });
+                lineChartDataPoints.set(dateString, { total_poms: 0, completed_poms: 0 });
                 currentDate.setDate(currentDate.getDate() + 1);
             }
         }
 
         tasks.forEach(task => {
             if (lineChartDataPoints.has(task.due_date)) {
-                const dayData = lineChartDataPoints.get(task.due_date)!;
-                dayData.total++;
-                if (task.completed_at) {
-                    dayData.completed++;
+                // Only count pomodoro-based tasks
+                if (task.total_poms > 0) {
+                    const dayData = lineChartDataPoints.get(task.due_date)!;
+                    dayData.total_poms += task.total_poms;
+                    dayData.completed_poms += task.completed_poms;
                 }
             }
         });
 
         const lineChartData = Array.from(lineChartDataPoints.entries()).map(([dateString, data]) => ({
             date: new Date(dateString + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-            completion: data.total > 0 ? Math.round((data.completed / data.total) * 100) : 0,
+            completion: data.total_poms > 0 ? Math.round((data.completed_poms / data.total_poms) * 100) : 0,
         }));
         
         const focusMinutesPerDay = new Map<string, number>();
@@ -1253,7 +1254,7 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
 
         return Array.from(categoryMap.values()).sort((a, b) => {
             const totalA = a.completed + a.incomplete;
-            const totalB = b.completed + b.incomplete;
+            const totalB = b.completed + a.incomplete;
             return totalB - totalA;
         });
     }, [tasks]);
@@ -1678,7 +1679,7 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                 <YAxis stroke="rgba(255,255,255,0.7)" unit="%" domain={[0, 100]} />
                 <Tooltip contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }} itemStyle={{ color: 'white' }} labelStyle={{ color: 'white', fontWeight: 'bold' }} />
                 <Legend wrapperStyle={{fontSize: "12px"}}/>
-                <Line type="monotone" dataKey="completion" name="Task Completion %" stroke="#f59e0b" activeDot={{ r: 8 }} />
+                <Line type="monotone" dataKey="completion" name="Pomodoro Completion %" stroke="#f59e0b" activeDot={{ r: 8 }} />
             </LineChart>
         </ResponsiveContainer>
     );
@@ -1963,11 +1964,11 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                         </div>
                         <div className="h-72">{pomVolumeChartElement}</div>
                     </div>
-                    {/* Daily Task Completion % */}
+                    {/* Daily Pomodoro Completion % */}
                     <div>
                         <div className="flex justify-center items-center gap-2 mb-2">
-                            <h3 className="text-lg font-semibold text-white text-center">Daily Task Completion %</h3>
-                            <button onClick={() => openInsightModal('Daily Task Completion %', aggregatedData.lineChartData, <div className="h-72">{dailyCompletionChartElement}</div>)} className="p-1 text-purple-400 hover:text-purple-300 transition" title="Get AI Insights"><SparklesIcon /></button>
+                            <h3 className="text-lg font-semibold text-white text-center">Daily Pomodoro Completion %</h3>
+                            <button onClick={() => openInsightModal('Daily Pomodoro Completion %', aggregatedData.lineChartData, <div className="h-72">{dailyCompletionChartElement}</div>)} className="p-1 text-purple-400 hover:text-purple-300 transition" title="Get AI Insights"><SparklesIcon /></button>
                         </div>
                         <div className="h-72">{dailyCompletionChartElement}</div>
                     </div>
