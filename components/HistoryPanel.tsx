@@ -636,9 +636,10 @@ const CategoryTimelineChart = React.memo(({ tasks, history, historyRange, openIn
                         if (!dayData[normalizedTag]) {
                             dayData[normalizedTag] = { total: 0, completed: 0 };
                         }
-                        dayData[normalizedTag].total++;
+                        const tagStats = dayData[normalizedTag] as { total: number; completed: number; };
+                        tagStats.total++;
                         if (task.completed_at) {
-                            dayData[normalizedTag].completed++;
+                            tagStats.completed++;
                         }
                     }
                 });
@@ -648,7 +649,7 @@ const CategoryTimelineChart = React.memo(({ tasks, history, historyRange, openIn
         const finalData = Array.from(dataByDate.values()).map(dayData => {
             const rates: { [key: string]: number | string } = { date: dayData.date };
             tags.forEach(tag => {
-                const tagData = dayData[tag];
+                const tagData = dayData[tag] as { total: number, completed: number } | undefined;
                 if (tagData && tagData.total > 0) {
                     rates[tag] = Math.round((tagData.completed / tagData.total) * 100);
                 } else {
@@ -853,6 +854,12 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
     
     const [focusChartAvgPeriod, setFocusChartAvgPeriod] = useState(7);
     const [focusChartVisibility, setFocusChartVisibility] = useState({ focusMinutes: true, focusMinutes_avg: false });
+
+    // State for new charts
+    const [lineChartVisibility, setLineChartVisibility] = useState({ complete_focus: true, half_focus: true, none_focus: true });
+    const [showAllCategories, setShowAllCategories] = useState(false);
+    const [visibleCategoriesInChart, setVisibleCategoriesInChart] = useState<string[]>([]);
+
 
     const handleFocusChartLegendClick = (o: any) => {
         const { dataKey } = o;
@@ -1180,7 +1187,8 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
     const categoryPriorityDistributionData = useMemo(() => {
         const categoryMap = new Map<string, { name: string, P1: number, P2: number, P3: number, P4: number }>();
 
-        tasks.forEach(task => {
+        // Fix: Explicitly type 'task' to resolve type inference issue.
+        tasks.forEach((task: Task) => {
             const priority = task.priority ?? 3; // Default to P3
             const priorityKey = `P${priority}` as 'P1' | 'P2' | 'P3' | 'P4';
 
@@ -1232,7 +1240,8 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
     const categoryCompletionStatusData = useMemo(() => {
         const categoryMap = new Map<string, { name: string, completed: number, incomplete: number }>();
 
-        tasks.forEach(task => {
+        // Fix: Explicitly type 'task' to resolve type inference issue.
+        tasks.forEach((task: Task) => {
             if (task.tags && task.tags.length > 0) {
                 task.tags.forEach(tag => {
                     const normalizedTag = tag.trim().toLowerCase();
@@ -1442,10 +1451,137 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
         }));
     }, [tasks, historyRange]);
 
+    // --- Data for New Focus Level Charts ---
+
+    const focusLevelTrendData = useMemo(() => {
+        const dataByDate = new Map<string, { date: string; complete_focus: number; half_focus: number; none_focus: number }>();
+        if (historyRange.start && historyRange.end) {
+            let currentDate = new Date(historyRange.start + 'T00:00:00');
+            const endDateForChart = new Date(historyRange.end + 'T00:00:00');
+            while (currentDate <= endDateForChart) {
+                const dateString = getTodayDateString(currentDate);
+                dataByDate.set(dateString, {
+                    date: new Date(dateString + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+                    complete_focus: 0,
+                    half_focus: 0,
+                    none_focus: 0,
+                });
+                currentDate.setDate(currentDate.getDate() + 1);
+            }
+        }
+        pomodoroHistory.forEach(h => {
+            if (h.difficulty) {
+                const dateStr = getTodayDateString(new Date(h.ended_at));
+                const dayData = dataByDate.get(dateStr);
+                if (dayData) {
+                    dayData[h.difficulty]++;
+                }
+            }
+        });
+        return Array.from(dataByDate.values());
+    }, [pomodoroHistory, historyRange]);
+
+    const { data: pivotedCategoryFocusLevelData, categories: categoryKeysForChart } = useMemo(() => {
+        const taskMap = new Map(allTasks.map(t => [t.id, t]));
+    
+        const categoryTotals = new Map<string, number>();
+        pomodoroHistory.forEach(h => {
+            if (h.task_id) {
+                const task = taskMap.get(h.task_id);
+                if (task?.tags) {
+                    task.tags.forEach(tag => {
+                        const normalizedTag = tag.trim().charAt(0).toUpperCase() + tag.slice(1).toLowerCase();
+                        categoryTotals.set(normalizedTag, (categoryTotals.get(normalizedTag) || 0) + 1);
+                    });
+                }
+            }
+        });
+    
+        const sortedCategories = Array.from(categoryTotals.entries())
+            .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+            .map(([name]) => name);
+    
+        const categoriesToShow = showAllCategories ? sortedCategories : sortedCategories.slice(0, 4);
+    
+        const focusLevelData: { name: string; [key: string]: string | number }[] = [
+            { name: 'Complete Focus' },
+            { name: 'Half Focus' },
+            { name: 'None Focus' },
+        ];
+    
+        focusLevelData.forEach(level => {
+            categoriesToShow.forEach(cat => {
+                level[cat] = 0;
+            });
+        });
+    
+        const focusLevelMap = new Map<string, { name: string; [key: string]: string | number }>();
+        focusLevelMap.set('complete_focus', focusLevelData[0]);
+        focusLevelMap.set('half_focus', focusLevelData[1]);
+        focusLevelMap.set('none_focus', focusLevelData[2]);
+    
+        pomodoroHistory.forEach(h => {
+            if (h.task_id && h.difficulty) {
+                const task = taskMap.get(h.task_id);
+                if (task?.tags) {
+                    const levelData = focusLevelMap.get(h.difficulty);
+                    if (levelData) {
+                        task.tags.forEach(tag => {
+                            const normalizedTag = tag.trim().charAt(0).toUpperCase() + tag.slice(1).toLowerCase();
+                            if (categoriesToShow.includes(normalizedTag)) {
+                                (levelData[normalizedTag] as number)++;
+                            }
+                        });
+                    }
+                }
+            }
+        });
+    
+        return { data: focusLevelData, categories: categoriesToShow };
+    }, [pomodoroHistory, allTasks, showAllCategories]);
+
+    useEffect(() => {
+        setVisibleCategoriesInChart(categoryKeysForChart);
+    }, [categoryKeysForChart]);
+
+    const handleCategoryLegendClick = (o: any) => {
+        const { dataKey } = o;
+        if (categoryKeysForChart.includes(dataKey)) {
+            setVisibleCategoriesInChart(prev =>
+                prev.includes(dataKey)
+                    ? prev.filter(cat => cat !== dataKey)
+                    : [...prev, dataKey]
+            );
+        }
+    };
+
+    const totalFocusLevelData = useMemo(() => {
+        const totals = { complete_focus: 0, half_focus: 0, none_focus: 0 };
+        pomodoroHistory.forEach(h => {
+            if (h.difficulty) {
+                totals[h.difficulty]++;
+            }
+        });
+        return [
+            { name: 'Complete Focus', value: totals.complete_focus },
+            { name: 'Half Focus', value: totals.half_focus },
+            { name: 'None Focus', value: totals.none_focus },
+        ].filter(d => d.value > 0);
+    }, [pomodoroHistory]);
+
+    const handleFocusLevelLegendClick = (o: any) => {
+        const { dataKey } = o;
+        if (dataKey in lineChartVisibility) {
+            setLineChartVisibility(p => ({ ...p, [dataKey as keyof typeof p]: !p[dataKey as keyof typeof p] }));
+        }
+    };
+    
+    // --- End Data for New Focus Level Charts ---
+
     const COLORS_TASKS = ['#34D399', '#F87171'];
     const COLORS_PROJECTS = ['#34D399', '#60A5FA', '#F87171']; // Completed, Active, Due
     const COLORS_PIE = ['#F59E0B', '#10B981', '#84CC16', '#EC4899', '#38BDF8', '#F43F5E', '#6366F1'];
-
+    const COLORS_FOCUS_LEVEL = { complete_focus: '#10B981', half_focus: '#F59E0B', none_focus: '#EF4444' };
 
     const pieChartData = useMemo(() => 
         aggregatedData.tagAnalysisData.map(item => ({ name: item.name, value: item.minutes })),
@@ -1483,8 +1619,8 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
     const [visibleAvgCategories, setVisibleAvgCategories] = useState<string[]>([]);
 
     useEffect(() => {
-        const top4 = avgDailyFocusByCategory.slice(0, 4).map(d => d.name);
-        setVisibleAvgCategories(top4);
+        const topFour = avgDailyFocusByCategory.slice(0, 4).map(d => d.name);
+        setVisibleAvgCategories(topFour);
     }, [avgDailyFocusByCategory]);
 
     const handleAvgLegendClick = (o: any) => {
@@ -1516,6 +1652,8 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                 dataForTab.dailyFocusTrend = aggregatedData.focusLineChartData;
                 dataForTab.projectStatusBreakdown = aggregatedData.projectBreakdownData;
                 dataForTab.taskStatusBreakdown = aggregatedData.taskBreakdownData;
+                dataForTab.focusLevelTrend = focusLevelTrendData;
+                dataForTab.totalFocusLevelDistribution = totalFocusLevelData;
                 break;
             case 'tasks':
                 title = `AI Summary for Task Analysis (${historyRange.start} to ${historyRange.end})`;
@@ -1529,6 +1667,7 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                  dataForTab.totalFocusTimeByCategory = aggregatedData.tagAnalysisData;
                  dataForTab.focusDistribution = aggregatedData.tagAnalysisData;
                  dataForTab.averageDailyFocusByCategory = avgDailyFocusByCategory;
+                 dataForTab.categoryFocusLevelDistribution = pivotedCategoryFocusLevelData;
                 break;
             case 'priorities':
                 title = `AI Summary for Priority Analysis (${historyRange.start} to ${historyRange.end})`;
@@ -1542,7 +1681,7 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
         const fetcher = () => getTabSummary(activeTab, dataForTab);
         setSummaryModalState({ isOpen: true, title, fetcher });
 
-    }, [activeTab, historyRange, aggregatedData, consistencyLogs, categoryPriorityDistributionData, categoryCompletionStatusData, pieChartData, priorityFocusData, taskCompletionByPriorityData, avgDailyFocusByCategory]);
+    }, [activeTab, historyRange, aggregatedData, consistencyLogs, categoryPriorityDistributionData, categoryCompletionStatusData, pieChartData, priorityFocusData, taskCompletionByPriorityData, avgDailyFocusByCategory, focusLevelTrendData, totalFocusLevelData, pivotedCategoryFocusLevelData]);
 
     const handleCloseSummaryModal = () => {
         setSummaryModalState({ isOpen: false, title: '', fetcher: null });
@@ -1837,6 +1976,61 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
             </BarChart>
         </ResponsiveContainer>
     );
+
+    // --- New Chart Elements ---
+
+    const focusLevelTrendChartElement = (
+        <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={focusLevelTrendData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.2)" />
+                <XAxis dataKey="date" stroke="rgba(255,255,255,0.7)" tick={{ fontSize: 10 }} />
+                <YAxis stroke="rgba(255,255,255,0.7)" allowDecimals={false} />
+                <Tooltip contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }} itemStyle={{ color: 'white' }} labelStyle={{ color: 'white', fontWeight: 'bold' }} />
+                <Legend wrapperStyle={{ fontSize: "12px", cursor: 'pointer' }} onClick={handleFocusLevelLegendClick} />
+                <Line type="monotone" dataKey="complete_focus" name="Complete Focus" stroke={COLORS_FOCUS_LEVEL.complete_focus} activeDot={{ r: 8 }} hide={!lineChartVisibility.complete_focus} />
+                <Line type="monotone" dataKey="half_focus" name="Half Focus" stroke={COLORS_FOCUS_LEVEL.half_focus} activeDot={{ r: 8 }} hide={!lineChartVisibility.half_focus} />
+                <Line type="monotone" dataKey="none_focus" name="None Focus" stroke={COLORS_FOCUS_LEVEL.none_focus} activeDot={{ r: 8 }} hide={!lineChartVisibility.none_focus} />
+            </LineChart>
+        </ResponsiveContainer>
+    );
+
+    const categoryFocusLevelChartElement = (
+        <ResponsiveContainer width="100%" height="100%">
+            <BarChart
+                data={pivotedCategoryFocusLevelData}
+                margin={{ top: 5, right: 20, left: -10, bottom: 5 }}
+            >
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.2)" />
+                <XAxis dataKey="name" stroke="rgba(255,255,255,0.7)" tick={{ fontSize: 12 }} />
+                <YAxis stroke="rgba(255,255,255,0.7)" allowDecimals={false} label={{ value: 'Sessions', angle: -90, position: 'insideLeft', fill: 'rgba(255,255,255,0.7)' }}/>
+                <Tooltip contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }} itemStyle={{ color: 'white' }} labelStyle={{ color: 'white', fontWeight: 'bold' }} />
+                <Legend wrapperStyle={{ fontSize: "12px", cursor: 'pointer' }} onClick={handleCategoryLegendClick} />
+                {categoryKeysForChart.map((category, index) => (
+                    <Bar
+                        key={category}
+                        dataKey={category}
+                        stackId="a"
+                        name={category}
+                        fill={COLORS_PIE[index % COLORS_PIE.length]}
+                        hide={!visibleCategoriesInChart.includes(category)}
+                    />
+                ))}
+            </BarChart>
+        </ResponsiveContainer>
+    );
+
+    const totalFocusLevelPieChartElement = (
+        <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+                <Pie data={totalFocusLevelData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label>
+                    {totalFocusLevelData.map((entry) => <Cell key={entry.name} fill={COLORS_FOCUS_LEVEL[entry.name.toLowerCase().replace(' ', '_') as keyof typeof COLORS_FOCUS_LEVEL]} />)}
+                </Pie>
+                <Tooltip contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }} itemStyle={{ color: 'white' }} />
+                <Legend wrapperStyle={{ fontSize: "12px" }} />
+            </PieChart>
+        </ResponsiveContainer>
+    );
+
     
     const tabTitles: { [key in ActiveTab]: string } = {
         dashboard: '📜 Dashboard',
@@ -1934,22 +2128,46 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                         <div className="h-72">{dailyFocusChartElement}</div>
                     </div>
 
-                    {/* Overall Project Breakdown */}
+                     {/* New: Focus Level Trend */}
                     <div>
                         <div className="flex justify-center items-center gap-2 mb-2">
-                            <h3 className="text-lg font-semibold text-white text-center">Overall Project Breakdown</h3>
-                            <button onClick={() => openInsightModal('Overall Project Breakdown', aggregatedData.projectBreakdownData, <div className="h-64">{projectBreakdownPieChartElement}</div>)} className="p-1 text-purple-400 hover:text-purple-300 transition" title="Get AI Insights"><SparklesIcon /></button>
+                            <h3 className="text-lg font-semibold text-white">Focus Level Trend</h3>
+                            <button onClick={() => openInsightModal('Focus Level Trend', focusLevelTrendData, <div className="h-72">{focusLevelTrendChartElement}</div>)} className="p-1 text-purple-400 hover:text-purple-300 transition" title="Get AI Insights"><SparklesIcon /></button>
                         </div>
-                        <div className="h-64">{projectBreakdownPieChartElement}</div>
+                        <div className="h-72">{focusLevelTrendChartElement}</div>
                     </div>
 
-                    {/* Overall Task Breakdown */}
+                     {/* New: Focus Level by Category */}
                     <div>
-                        <div className="flex justify-center items-center gap-2 mb-2">
-                            <h3 className="text-lg font-semibold text-white text-center">Overall Task Breakdown</h3>
-                            <button onClick={() => openInsightModal('Overall Task Breakdown', aggregatedData.taskBreakdownData, <div className="h-64">{taskBreakdownPieChartElement}</div>)} className="p-1 text-purple-400 hover:text-purple-300 transition" title="Get AI Insights"><SparklesIcon /></button>
+                        <div className="flex flex-col sm:flex-row justify-between items-center gap-2 mb-2">
+                            <div className="flex items-center gap-2">
+                                <h3 className="text-lg font-semibold text-white">Focus Level by Category</h3>
+                                <button onClick={() => openInsightModal('Focus Level by Category', pivotedCategoryFocusLevelData, <div className="h-72">{categoryFocusLevelChartElement}</div>)} className="p-1 text-purple-400 hover:text-purple-300 transition" title="Get AI Insights"><SparklesIcon /></button>
+                            </div>
+                            <button onClick={() => setShowAllCategories(s => !s)} className="text-xs text-cyan-300 hover:text-cyan-200 font-semibold px-3 py-1 rounded-full hover:bg-white/10 transition">
+                                {showAllCategories ? 'Show Top 4' : 'Show All'}
+                            </button>
                         </div>
-                        <div className="h-64">{taskBreakdownPieChartElement}</div>
+                        <div className="h-72">{categoryFocusLevelChartElement}</div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        {/* New: Total Focus Level Distribution */}
+                        <div>
+                            <div className="flex justify-center items-center gap-2 mb-2">
+                                <h3 className="text-lg font-semibold text-white">Overall Focus Distribution</h3>
+                                <button onClick={() => openInsightModal('Overall Focus Distribution', totalFocusLevelData, <div className="h-64">{totalFocusLevelPieChartElement}</div>)} className="p-1 text-purple-400 hover:text-purple-300 transition" title="Get AI Insights"><SparklesIcon /></button>
+                            </div>
+                            <div className="h-64">{totalFocusLevelPieChartElement}</div>
+                        </div>
+                        {/* Overall Project Breakdown */}
+                        <div>
+                            <div className="flex justify-center items-center gap-2 mb-2">
+                                <h3 className="text-lg font-semibold text-white text-center">Overall Project Breakdown</h3>
+                                <button onClick={() => openInsightModal('Overall Project Breakdown', aggregatedData.projectBreakdownData, <div className="h-64">{projectBreakdownPieChartElement}</div>)} className="p-1 text-purple-400 hover:text-purple-300 transition" title="Get AI Insights"><SparklesIcon /></button>
+                            </div>
+                            <div className="h-64">{projectBreakdownPieChartElement}</div>
+                        </div>
                     </div>
                 </div>
             )}

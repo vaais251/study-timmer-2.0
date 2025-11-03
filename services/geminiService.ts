@@ -1,9 +1,13 @@
 
+
 import { GoogleGenAI, GenerateContentResponse, FunctionDeclaration, Part, Type } from "@google/genai";
 import { Goal, Target, Project, Commitment, Task, AiMemory, PomodoroHistory, PersonalBest } from '../types';
 
-// Hardcoded for testing as requested by the user.
-const API_KEY = "AIzaSyBT9IN5PiyqaWBdM9NekDg5d-5fWDuhZnE";
+// IMPORTANT: The API key is sourced from the `process.env.API_KEY` environment
+// variable. This is a security best practice. Do NOT hardcode API keys directly
+// in the source code, as it exposes them to anyone with access to the code.
+// The development environment automatically provides the key via this variable.
+const API_KEY = process.env.API_KEY;
 
 export async function getChartInsight(chartTitle: string, chartData: any): Promise<string> {
     const prompt = `
@@ -35,7 +39,7 @@ export async function getChartInsight(chartTitle: string, chartData: any): Promi
 
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-pro',
-            contents: [{ parts: [{ text: prompt }] }],
+            contents: prompt,
         });
         
         const text = response.text;
@@ -82,7 +86,7 @@ export async function getTabSummary(tabName: string, data: any): Promise<string>
 
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-pro',
-            contents: [{ parts: [{ text: prompt }] }],
+            contents: prompt,
         });
         
         const text = response.text;
@@ -108,7 +112,7 @@ export async function generateContent(prompt: string): Promise<string> {
 
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-pro',
-            contents: [{ parts: [{ text: prompt }] }],
+            contents: prompt,
             config: {
                 // No tools for this simple utility call to avoid complexity.
             },
@@ -310,7 +314,7 @@ Based on this detailed data and schema, answer the user's questions and execute 
         model: 'gemini-2.5-pro',
         contents: history,
         config: {
-            systemInstruction: { parts: [{ text: systemInstruction }] },
+            systemInstruction: systemInstruction,
             tools: [{ functionDeclarations: tools }],
         }
     });
