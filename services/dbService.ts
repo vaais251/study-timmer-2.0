@@ -1261,9 +1261,11 @@ export const addNotifications = async (notifications: NewNotification[]): Promis
         user_id: user.id,
     }));
 
+    // FIX: The `insert` method does not support `onConflict`. Switched to `upsert`
+    // with `ignoreDuplicates: true` to achieve the desired "insert or ignore" behavior.
     const { error } = await supabase
         .from('notifications')
-        .insert(notificationsToInsert, { onConflict: 'user_id, unique_id' }); // Use onConflict to ignore duplicates
+        .upsert(notificationsToInsert, { onConflict: 'user_id, unique_id', ignoreDuplicates: true }); // Use onConflict to ignore duplicates
 
     if (error) {
         console.error("Error adding notifications:", JSON.stringify(error, null, 2));
