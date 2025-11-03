@@ -1438,6 +1438,47 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
         pieChartData.reduce((sum, item) => sum + item.value, 0),
         [pieChartData]
     );
+    
+    const avgDailyFocusByCategory = useMemo(() => {
+        const dayDiff = aggregatedData.dayDiff > 0 ? aggregatedData.dayDiff : 1;
+        if (!aggregatedData.tagAnalysisData) return [];
+
+        const avgData = aggregatedData.tagAnalysisData.map(cat => ({
+            name: cat.name,
+            avgMinutes: cat.minutes / dayDiff,
+        })).sort((a, b) => b.avgMinutes - a.avgMinutes);
+        
+        return avgData;
+    }, [aggregatedData.tagAnalysisData, aggregatedData.dayDiff]);
+
+    const avgDailyFocusChartData = useMemo(() => {
+        if (avgDailyFocusByCategory.length === 0) return [];
+        
+        const chartDataObject = avgDailyFocusByCategory.reduce((acc, cat) => {
+            acc[cat.name] = cat.avgMinutes;
+            return acc;
+        }, {} as { [key: string]: number });
+
+        return [{ name: 'Categories', ...chartDataObject }];
+    }, [avgDailyFocusByCategory]);
+    
+    const [visibleAvgCategories, setVisibleAvgCategories] = useState<string[]>([]);
+
+    useEffect(() => {
+        const top4 = avgDailyFocusByCategory.slice(0, 4).map(d => d.name);
+        setVisibleAvgCategories(top4);
+    }, [avgDailyFocusByCategory]);
+
+    const handleAvgLegendClick = (o: any) => {
+        const { dataKey } = o;
+        if (avgDailyFocusByCategory.some(c => c.name === dataKey)) {
+            setVisibleAvgCategories(prev => 
+                prev.includes(dataKey)
+                    ? prev.filter(t => t !== dataKey)
+                    : [...prev, dataKey]
+            );
+        }
+    };
 
     const handleOpenSummaryModal = useCallback(() => {
         const dataForTab: { [key: string]: any } = {};
@@ -1469,6 +1510,7 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                  dataForTab.categoryCompletionStatus = categoryCompletionStatusData;
                  dataForTab.totalFocusTimeByCategory = aggregatedData.tagAnalysisData;
                  dataForTab.focusDistribution = aggregatedData.tagAnalysisData;
+                 dataForTab.averageDailyFocusByCategory = avgDailyFocusByCategory;
                 break;
             case 'priorities':
                 title = `AI Summary for Priority Analysis (${historyRange.start} to ${historyRange.end})`;
@@ -1482,7 +1524,7 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
         const fetcher = () => getTabSummary(activeTab, dataForTab);
         setSummaryModalState({ isOpen: true, title, fetcher });
 
-    }, [activeTab, historyRange, aggregatedData, consistencyLogs, categoryPriorityDistributionData, categoryCompletionStatusData, pieChartData, priorityFocusData, taskCompletionByPriorityData]);
+    }, [activeTab, historyRange, aggregatedData, consistencyLogs, categoryPriorityDistributionData, categoryCompletionStatusData, pieChartData, priorityFocusData, taskCompletionByPriorityData, avgDailyFocusByCategory]);
 
     const handleCloseSummaryModal = () => {
         setSummaryModalState({ isOpen: false, title: '', fetcher: null });
@@ -1748,6 +1790,34 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
             </PieChart>
         </ResponsiveContainer>
     );
+
+    const avgDailyFocusChartElement = (
+        <ResponsiveContainer width="100%" height="100%">
+            <BarChart
+                data={avgDailyFocusChartData}
+                margin={{ top: 5, right: 20, left: -10, bottom: 5 }}
+            >
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.2)" />
+                <XAxis dataKey="name" stroke="rgba(255,255,255,0.7)" />
+                <YAxis stroke="rgba(255,255,255,0.7)" unit="m" allowDecimals={false} label={{ value: 'Avg Minutes', angle: -90, position: 'insideLeft', fill: 'rgba(255,255,255,0.7)' }} />
+                <Tooltip
+                    contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }}
+                    itemStyle={{ color: 'white' }}
+                    labelStyle={{ color: 'white', fontWeight: 'bold' }}
+                    formatter={(value: number, name: string) => [value.toFixed(1), name]}
+                />
+                <Legend wrapperStyle={{fontSize: "12px", cursor: 'pointer'}} onClick={handleAvgLegendClick}/>
+                {avgDailyFocusByCategory.map((cat, index) => (
+                    <Bar
+                        key={cat.name}
+                        dataKey={cat.name}
+                        fill={COLORS_PIE[index % COLORS_PIE.length]}
+                        hide={!visibleAvgCategories.includes(cat.name)}
+                    />
+                ))}
+            </BarChart>
+        </ResponsiveContainer>
+    );
     
     const tabTitles: { [key in ActiveTab]: string } = {
         dashboard: '📜 Dashboard',
@@ -1990,6 +2060,23 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                             ) : (
                                 <div className="flex items-center justify-center h-full text-white/60 bg-black/10 rounded-lg">
                                     No tagged tasks with completed sessions in this date range.
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Average Daily Focus by Category (Bar) */}
+                    <div>
+                        <div className="flex justify-center items-center gap-2 mb-2">
+                            <h3 className="text-lg font-semibold text-white text-center">Average Daily Focus by Category</h3>
+                            <button onClick={() => openInsightModal('Average Daily Focus by Category', avgDailyFocusByCategory, <div className="h-96">{avgDailyFocusChartElement}</div>)} className="p-1 text-purple-400 hover:text-purple-300 transition" title="Get AI Insights"><SparklesIcon /></button>
+                        </div>
+                        <div className="h-96">
+                            {avgDailyFocusByCategory.length > 0 ? (
+                                avgDailyFocusChartElement
+                            ) : (
+                                <div className="flex items-center justify-center h-full text-white/60 bg-black/10 rounded-lg">
+                                    No tagged focus sessions in this date range.
                                 </div>
                             )}
                         </div>
