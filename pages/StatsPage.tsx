@@ -8,6 +8,23 @@ import AISummaryModal from '../components/common/AISummaryModal';
 import { getTabSummary } from '../services/geminiService';
 import { SparklesIcon, LayoutIcon, ListIcon, TagIcon, SignalIcon } from '../components/common/Icons';
 
+const augmentTargetsWithStatus = (targets: Target[]): Target[] => {
+    const today = getTodayDateString();
+    return targets.map(t => {
+        let status: Target['status'];
+        if (t.completed_at) {
+            status = 'completed';
+        } else if (t.completion_mode === 'focus_minutes' && t.target_minutes && t.progress_minutes >= t.target_minutes) {
+            status = 'completed';
+        } else if (t.deadline < today) {
+            status = 'incomplete';
+        } else {
+            status = 'active';
+        }
+        return { ...t, status };
+    });
+};
+
 const StatsPage: React.FC = () => {
     const [historyRange, setHistoryRange] = useState(() => ({
         start: getSevenDaysAgoDateString(),
@@ -74,7 +91,7 @@ const StatsPage: React.FC = () => {
             setProjects(fetchedProjects || []);
             setAllProjects(fetchedAllProjects || []);
             setTargets(fetchedTargets || []);
-            setAllTargets(fetchedAllTargets || []);
+            setAllTargets(augmentTargetsWithStatus(fetchedAllTargets || []));
             setAllTasks(fetchedAllTasks || []);
             setSettings(fetchedSettings || null);
             setPomodoroHistory(fetchedPomodoroHistory || []);
