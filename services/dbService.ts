@@ -282,6 +282,19 @@ export const updateTask = async (id: string, updates: Partial<Task>, options = {
         return null;
     }
 
+    // If a completed task is edited to require more poms, mark it as incomplete.
+    const wasCompleted = !!originalTask.completed_at;
+    const newTotalPoms = updates.total_poms;
+
+    // A task becomes incomplete if it was completed and its new total poms is greater than completed poms
+    const isNowIncomplete = wasCompleted && 
+                            newTotalPoms !== undefined && 
+                            newTotalPoms > originalTask.completed_poms;
+
+    if (isNowIncomplete) {
+        updates.completed_at = null;
+    }
+
     // 2. Perform the update
     const { data: updatedTask, error: updateError } = await supabase
         .from('tasks')
@@ -306,8 +319,10 @@ export const updateTask = async (id: string, updates: Partial<Task>, options = {
     const newTags = updatedTask.tags || [];
     
     const projectsToRecalc = new Set<string>();
+    // Recalculate if project changed OR if completion status changed
     if (originalProject) projectsToRecalc.add(originalProject);
     if (newProject && newProject !== originalProject) projectsToRecalc.add(newProject);
+    if (isNowIncomplete && originalProject) projectsToRecalc.add(originalProject);
     
     for (const projectId of projectsToRecalc) {
         await recalculateProjectProgress(projectId);
