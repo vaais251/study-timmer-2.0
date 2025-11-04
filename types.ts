@@ -63,6 +63,11 @@ export interface Target {
     completed_at: string | null;
     status: 'active' | 'completed' | 'incomplete';
     priority: number | null;
+    start_date: string | null;
+    completion_mode: 'manual' | 'focus_minutes';
+    tags: string[] | null;
+    target_minutes: number | null;
+    progress_minutes: number;
 }
 
 // Corresponds to the `tasks` table

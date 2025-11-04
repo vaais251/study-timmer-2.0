@@ -1,3 +1,5 @@
+
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
@@ -72,6 +74,23 @@ const ToastNotification: React.FC<{ message: string; onDismiss: () => void }> = 
     );
 };
 
+// Helper to derive target status client-side for consistent UI
+const augmentTargetsWithStatus = (targets: Target[]): Target[] => {
+    const today = getTodayDateString();
+    return targets.map(t => {
+        let status: Target['status'];
+        if (t.completed_at) {
+            status = 'completed';
+        } else if (t.completion_mode === 'focus_minutes' && t.target_minutes && t.progress_minutes >= t.target_minutes) {
+            status = 'completed';
+        } else if (t.deadline < today) {
+            status = 'incomplete';
+        } else {
+            status = 'active';
+        }
+        return { ...t, status };
+    });
+};
 
 const App: React.FC = () => {
     const [session, setSession] = useState<Session | null>(null);
@@ -282,17 +301,8 @@ const App: React.FC = () => {
 
             if (userGoals) setGoals(userGoals);
             
-            // FIX: The `status` column doesn't exist. Derive it on the client-side.
             if (userTargets) {
-                const augmentedTargets = userTargets.map(t => {
-                    const status: Target['status'] = t.completed_at
-                        ? 'completed'
-                        : t.deadline < today
-                        ? 'incomplete'
-                        : 'active';
-                    return { ...t, status };
-                });
-                setTargets(augmentedTargets);
+                setTargets(augmentTargetsWithStatus(userTargets));
             }
 
 
@@ -812,6 +822,12 @@ const App: React.FC = () => {
             setDailyLog(newLog);
             
             await dbService.addPomodoroHistory(currentTask.id, sessionDurationMinutes, null);
+            
+            const newTargets = await dbService.updateTargetProgressOnPomodoro(currentTask.id, sessionDurationMinutes);
+            if (newTargets) {
+                setTargets(augmentTargetsWithStatus(newTargets));
+            }
+            
             await checkProjectDurationCompletion(currentTask.id, sessionDurationMinutes);
             
             if (session) {
@@ -898,6 +914,14 @@ const App: React.FC = () => {
             
             // Log the individual pomodoro session with focus level
             await dbService.addPomodoroHistory(taskJustWorkedOn?.id || null, focusDuration, focusLevel);
+            
+            // Update progress for any matching time-based targets
+            if (taskJustWorkedOn?.id) {
+                const updatedTargets = await dbService.updateTargetProgressOnPomodoro(taskJustWorkedOn.id, focusDuration);
+                if (updatedTargets) {
+                    setTargets(augmentTargetsWithStatus(updatedTargets));
+                }
+            }
 
             // Check for project completion by duration
             if (taskJustWorkedOn?.id) {
@@ -1055,7 +1079,8 @@ const App: React.FC = () => {
     const handleDeleteTask = async (id: string) => {
         const result = await dbService.deleteTask(id);
         if (result.tasks) setTasks(result.tasks);
-        if (result.projects) setProjects(result.projects); // Also update projects if progress was rolled back
+        if (result.projects) setProjects(result.projects);
+        if (result.targets) setTargets(augmentTargetsWithStatus(result.targets));
     };
 
     const handleMoveTask = async (id: string, action: 'postpone' | 'duplicate') => {
@@ -1149,51 +1174,32 @@ const App: React.FC = () => {
     };
     
     // --- Target Handlers ---
-    const handleAddTarget = async (text: string, deadline: string, priority: number | null) => {
-        const newTargets = await dbService.addTarget(text, deadline, priority);
+    const handleAddTarget = async (
+        text: string, 
+        deadline: string, 
+        priority: number | null, 
+        startDate: string | null, 
+        completionMode: Target['completion_mode'], 
+        tags: string[] | null, 
+        targetMinutes: number | null
+    ) => {
+        const newTargets = await dbService.addTarget(text, deadline, priority, startDate, completionMode, tags, targetMinutes);
         if (newTargets) {
-            const today = getTodayDateString();
-            const augmentedTargets = newTargets.map(t => {
-                const status: Target['status'] = t.completed_at
-                    ? 'completed'
-                    : t.deadline < today
-                    ? 'incomplete'
-                    : 'active';
-                return { ...t, status };
-            });
-            setTargets(augmentedTargets);
+            setTargets(augmentTargetsWithStatus(newTargets));
         }
     };
     
     const handleUpdateTarget = async (id: string, updates: Partial<Target>) => {
         const newTargets = await dbService.updateTarget(id, updates);
         if (newTargets) {
-            const today = getTodayDateString();
-            const augmentedTargets = newTargets.map(t => {
-                const status: Target['status'] = t.completed_at
-                    ? 'completed'
-                    : t.deadline < today
-                    ? 'incomplete'
-                    : 'active';
-                return { ...t, status };
-            });
-            setTargets(augmentedTargets);
+            setTargets(augmentTargetsWithStatus(newTargets));
         }
     };
 
     const handleDeleteTarget = async (id: string) => {
         const newTargets = await dbService.deleteTarget(id);
         if (newTargets) {
-             const today = getTodayDateString();
-            const augmentedTargets = newTargets.map(t => {
-                const status: Target['status'] = t.completed_at
-                    ? 'completed'
-                    : t.deadline < today
-                    ? 'incomplete'
-                    : 'active';
-                return { ...t, status };
-            });
-            setTargets(augmentedTargets);
+            setTargets(augmentTargetsWithStatus(newTargets));
         }
     };
 
@@ -1235,12 +1241,7 @@ const App: React.FC = () => {
     const handleRescheduleTarget = async (id: string, newDeadline: string) => {
         const newTargets = await dbService.rescheduleTarget(id, newDeadline);
         if (newTargets) {
-            const today = getTodayDateString();
-            const augmentedTargets = newTargets.map(t => ({
-                ...t,
-                status: t.completed_at ? 'completed' as const : t.deadline < today ? 'incomplete' as const : 'active' as const,
-            }));
-            setTargets(augmentedTargets);
+            setTargets(augmentTargetsWithStatus(newTargets));
             setToastNotification('Target rescheduled successfully!');
         }
     };
@@ -1351,7 +1352,7 @@ const App: React.FC = () => {
                     allCommitments={activeCommitments}
                     onAddTask={handleAddTaskFromAI}
                     onAddProject={handleAddProject}
-                    onAddTarget={(text, deadline, priority) => handleAddTarget(text, deadline, priority)}
+                    onAddTarget={(text, deadline, priority) => handleAddTarget(text, deadline, priority, null, 'manual', null, null)}
                     onAddCommitment={handleAddCommitment}
                     onRescheduleItem={handleRescheduleItemFromAI}
                     chatMessages={aiChatMessages}

@@ -547,6 +547,10 @@ const TargetItem: React.FC<{
     const [editText, setEditText] = useState(target.text);
     const [editDeadline, setEditDeadline] = useState(target.deadline);
     const [editPriority, setEditPriority] = useState<number>(target.priority ?? 3);
+    const [editStartDate, setEditStartDate] = useState(target.start_date || '');
+    const [editCompletionMode, setEditCompletionMode] = useState(target.completion_mode);
+    const [editTags, setEditTags] = useState(target.tags?.join(', ') || '');
+    const [editTargetMinutes, setEditTargetMinutes] = useState(target.target_minutes?.toString() || '');
     
     const isCompleted = target.status === 'completed';
     const isIncomplete = target.status === 'incomplete';
@@ -557,7 +561,29 @@ const TargetItem: React.FC<{
             alert("Target text and deadline cannot be empty.");
             return;
         }
-        onUpdateTarget(target.id, { text: editText.trim(), deadline: editDeadline, priority: editPriority });
+
+        const updates: Partial<Target> = {
+            text: editText.trim(),
+            deadline: editDeadline,
+            priority: editPriority,
+            start_date: editStartDate || null,
+            completion_mode: editCompletionMode,
+        };
+        
+        if (editCompletionMode === 'focus_minutes') {
+            const minutes = editTargetMinutes ? parseInt(editTargetMinutes, 10) : null;
+            if (!minutes || minutes <= 0) {
+                alert("Target duration must be a positive number of minutes.");
+                return;
+            }
+            updates.tags = editTags.split(',').map(t => t.trim()).filter(Boolean);
+            updates.target_minutes = minutes;
+        } else {
+            updates.tags = null;
+            updates.target_minutes = null;
+        }
+
+        onUpdateTarget(target.id, updates);
         setIsEditing(false);
     };
 
@@ -565,14 +591,40 @@ const TargetItem: React.FC<{
         setEditText(target.text);
         setEditDeadline(target.deadline);
         setEditPriority(target.priority ?? 3);
+        setEditStartDate(target.start_date || '');
+        setEditCompletionMode(target.completion_mode);
+        setEditTags(target.tags?.join(', ') || '');
+        setEditTargetMinutes(target.target_minutes?.toString() || '');
         setIsEditing(false);
     };
 
     if (isEditing) {
         return (
-            <li className="bg-white/20 p-3 rounded-lg ring-2 ring-cyan-400 space-y-2">
+            <li className="bg-white/20 p-3 rounded-lg ring-2 ring-cyan-400 space-y-3">
                 <input type="text" value={editText} onChange={e => setEditText(e.target.value)} placeholder="Target description" className="w-full bg-white/20 border border-white/30 rounded-lg p-2 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50" />
-                <input type="date" value={editDeadline} onChange={e => setEditDeadline(e.target.value)} className="bg-white/20 border border-white/30 rounded-lg p-2 text-white/80 w-full text-center" style={{colorScheme: 'dark'}} />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div>
+                        <label className="text-xs text-white/70 mb-1">Start Date</label>
+                        <input type="date" value={editStartDate} onChange={e => setEditStartDate(e.target.value)} className="bg-white/20 border border-white/30 rounded-lg p-2 text-white/80 w-full text-center" style={{colorScheme: 'dark'}} />
+                    </div>
+                    <div>
+                        <label className="text-xs text-white/70 mb-1">Deadline</label>
+                        <input type="date" value={editDeadline} onChange={e => setEditDeadline(e.target.value)} className="bg-white/20 border border-white/30 rounded-lg p-2 text-white/80 w-full text-center" style={{colorScheme: 'dark'}} />
+                    </div>
+                </div>
+                <div>
+                    <label className="text-xs text-white/70 mb-1">Completion Mode</label>
+                    <select value={editCompletionMode} onChange={e => setEditCompletionMode(e.target.value as Target['completion_mode'])} className="w-full bg-white/20 border border-white/30 rounded-lg p-2 text-white focus:outline-none focus:bg-white/30 focus:border-white/50">
+                        <option value="manual" className="bg-gray-800">Manual</option>
+                        <option value="focus_minutes" className="bg-gray-800">Focus Minutes</option>
+                    </select>
+                </div>
+                {editCompletionMode === 'focus_minutes' && (
+                    <div className="space-y-2 animate-fadeIn">
+                        <input type="text" value={editTags} onChange={e => setEditTags(e.target.value)} placeholder="Tags (comma-separated)" className="w-full bg-white/20 border border-white/30 rounded-lg p-2 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50" />
+                        <input type="number" value={editTargetMinutes} onChange={e => setEditTargetMinutes(e.target.value)} placeholder="Target Minutes" className="w-full bg-white/20 border border-white/30 rounded-lg p-2 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50" />
+                    </div>
+                )}
                 <div className="flex justify-between items-center mt-2">
                     <PrioritySelector priority={editPriority} setPriority={setEditPriority} />
                     <div className="flex justify-end gap-2 text-sm">
@@ -594,26 +646,50 @@ const TargetItem: React.FC<{
     }
     const priorityClass = priorityBorderColors[target.priority as number] ?? '';
 
+    const isTimeBased = target.completion_mode === 'focus_minutes';
+    const progress = isTimeBased ? Math.min(100, ((target.progress_minutes || 0) / (target.target_minutes || 1)) * 100) : 0;
+    const progressText = isTimeBased ? `${target.progress_minutes || 0} / ${target.target_minutes || 0} min` : '';
+
     return (
-        <li className={`flex items-center justify-between p-3 rounded-lg transition-all ${bgColor} ${priorityClass}`}>
-            <div className="flex items-center gap-3 flex-grow min-w-0">
-                <input 
-                    type="checkbox" 
-                    checked={isCompleted} 
-                    onChange={(e) => onUpdateTarget(target.id, { completed_at: e.target.checked ? new Date().toISOString() : null })} 
-                    disabled={isCompleted || isOld}
-                    className="h-5 w-5 rounded bg-white/20 border-white/30 text-green-400 focus:ring-green-400 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0" 
-                />
-                <span className={`${isCompleted ? 'line-through' : ''} ${textColor}`}>
-                    {target.text}
-                </span>
+        <li className={`p-3 rounded-lg transition-all ${bgColor} ${priorityClass}`}>
+            <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start gap-3 flex-grow min-w-0">
+                    {!isTimeBased && (
+                        <input 
+                            type="checkbox" 
+                            checked={isCompleted} 
+                            onChange={(e) => onUpdateTarget(target.id, { completed_at: e.target.checked ? new Date().toISOString() : null })} 
+                            disabled={isCompleted || isOld}
+                            className="h-5 w-5 rounded bg-white/20 border-white/30 text-green-400 focus:ring-green-400 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0 mt-0.5" 
+                        />
+                    )}
+                    <div className="flex-grow">
+                        <span className={`${isCompleted ? 'line-through' : ''} ${textColor}`}>{target.text}</span>
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-white/70 mt-1">
+                            {target.tags && target.tags.map(tag => <span key={tag} className="bg-purple-500/30 text-purple-300 px-2 py-0.5 rounded-full">{tag}</span>)}
+                        </div>
+                    </div>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                    {!isCompleted && !isOld && <button onClick={() => setIsEditing(true)} className="p-1 text-sky-300 hover:text-sky-200 transition" title="Edit Target"><EditIcon /></button>}
+                    <span className={`text-xs bg-black/20 px-2 py-1 rounded-full ${isIncomplete ? 'text-red-300' : ''}`}>{new Date(target.deadline + 'T00:00:00').toLocaleDateString()}</span>
+                    <button onClick={() => onDeleteTarget(target.id)} className="p-1 text-red-400 hover:text-red-300 transition" title="Delete Target"><TrashIcon /></button>
+                </div>
             </div>
-            <div className="flex items-center gap-2 flex-shrink-0">
-                {isIncomplete && <span className="text-xs bg-red-500/50 text-white px-2 py-1 rounded-full font-bold">INCOMPLETE</span>}
-                {!isCompleted && !isOld && <button onClick={() => setIsEditing(true)} className="p-1 text-sky-300 hover:text-sky-200 transition" title="Edit Target"><EditIcon /></button>}
-                <span className="text-xs bg-black/20 px-2 py-1 rounded-full">{new Date(target.deadline + 'T00:00:00').toLocaleDateString()}</span>
-                <button onClick={() => onDeleteTarget(target.id)} className="p-1 text-red-400 hover:text-red-300 transition" title="Delete Target"><TrashIcon /></button>
-            </div>
+            {isTimeBased && !isCompleted && (
+                 <div className="mt-2 pl-2">
+                    <div className="flex justify-between items-center mb-1 text-xs text-white/80">
+                        <span>Progress</span>
+                        <span>{progressText}</span>
+                    </div>
+                    <div className="w-full bg-black/30 rounded-full h-2.5 shadow-inner">
+                        <div
+                            className="bg-gradient-to-r from-cyan-400 to-blue-500 h-2.5 rounded-full transition-all duration-500"
+                            style={{ width: `${progress}%` }}
+                        ></div>
+                    </div>
+                </div>
+            )}
         </li>
     );
 };
@@ -1030,7 +1106,15 @@ interface GoalsPageProps {
     onUpdateGoal: (id: string, text: string) => void;
     onDeleteGoal: (id: string) => void;
     onSetGoalCompletion: (id: string, isComplete: boolean) => void;
-    onAddTarget: (text: string, deadline: string, priority: number | null) => void;
+    onAddTarget: (
+        text: string, 
+        deadline: string, 
+        priority: number | null, 
+        startDate: string | null, 
+        completionMode: Target['completion_mode'], 
+        tags: string[] | null, 
+        targetMinutes: number | null
+    ) => void;
     onUpdateTarget: (id: string, updates: Partial<Target>) => void;
     onDeleteTarget: (id: string) => void;
     onAddProject: (name: string, description: string | null, startDate: string | null, deadline: string | null, criteria: {type: Project['completion_criteria_type'], value: number | null}, priority: number | null, activeDays: number[] | null) => Promise<string | null>;
@@ -1054,7 +1138,13 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
     const [newTargetPriority, setNewTargetPriority] = useState<number>(3);
     const [showArchivedGoals, setShowArchivedGoals] = useState(false);
     
-    // Target states
+    // New Target Form State
+    const [newTargetStartDate, setNewTargetStartDate] = useState('');
+    const [newCompletionMode, setNewCompletionMode] = useState<Target['completion_mode']>('manual');
+    const [newTags, setNewTags] = useState('');
+    const [newTargetMinutes, setNewTargetMinutes] = useState('');
+
+    // Target list states
     const [targetView, setTargetView] = useState<'pending' | 'incomplete' | 'completed'>('pending');
     const [targetDateRange, setTargetDateRange] = useState<{ start: string; end: string }>({ start: '', end: '' });
     const [showTargetDateFilter, setShowTargetDateFilter] = useState(false);
@@ -1136,12 +1226,33 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
     };
 
     const handleAddTarget = () => {
-        if (newTarget.trim() && newDeadline) {
-            onAddTarget(newTarget.trim(), newDeadline, newTargetPriority);
-            setNewTarget('');
-            setNewDeadline('');
-            setNewTargetPriority(3);
+        if (!newTarget.trim() || !newDeadline) {
+            alert("Target text and deadline are required.");
+            return;
         }
+
+        let tags: string[] | null = null;
+        let targetMinutes: number | null = null;
+
+        if (newCompletionMode === 'focus_minutes') {
+            tags = newTags.split(',').map(t => t.trim()).filter(Boolean);
+            targetMinutes = newTargetMinutes ? parseInt(newTargetMinutes, 10) : null;
+            if (!targetMinutes || targetMinutes <= 0) {
+                alert("Target duration must be a positive number of minutes.");
+                return;
+            }
+        }
+        
+        onAddTarget(newTarget.trim(), newDeadline, newTargetPriority, newTargetStartDate || null, newCompletionMode, tags, targetMinutes);
+        
+        // Reset form
+        setNewTarget('');
+        setNewDeadline('');
+        setNewTargetPriority(3);
+        setNewTargetStartDate('');
+        setNewCompletionMode('manual');
+        setNewTags('');
+        setNewTargetMinutes('');
     };
     
     const handleNewProjectDayToggle = (dayIndex: number) => {
@@ -1251,6 +1362,7 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
     }, [activeProjects]);
     
     const {
+        upcomingTargets,
         pendingTargets,
         incompleteTargets,
         completedTargets,
@@ -1260,9 +1372,12 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
         const thirtyDaysAgo = new Date();
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-        const allActive = targets.filter(t => t.status === 'active');
-        const allIncomplete = targets.filter(t => t.status === 'incomplete');
-        const allCompleted = targets.filter(t => t.status === 'completed');
+        const allUpcoming = targets.filter(t => t.start_date && t.start_date > todayString && t.status !== 'completed');
+        const otherTargets = targets.filter(t => !allUpcoming.some(ut => ut.id === t.id));
+
+        const allActive = otherTargets.filter(t => t.status === 'active');
+        const allIncomplete = otherTargets.filter(t => t.status === 'incomplete');
+        const allCompleted = otherTargets.filter(t => t.status === 'completed');
 
         if (targetSortBy === 'priority') {
              const sortByPriority = (a: Target, b: Target) => {
@@ -1273,9 +1388,8 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
             };
             allActive.sort(sortByPriority);
             allIncomplete.sort(sortByPriority);
+            allUpcoming.sort(sortByPriority);
         }
-
-        const pending = allActive;
 
         let visibleIncomplete = allIncomplete;
         let visibleCompleted = allCompleted;
@@ -1288,22 +1402,19 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
                 return completedDate >= targetDateRange.start && completedDate <= targetDateRange.end;
             });
         } else {
-            // Default view: hide if older than 30 days for completed/incomplete
             visibleIncomplete = allIncomplete.filter(t => new Date(t.deadline) >= thirtyDaysAgo);
             visibleCompleted = allCompleted.filter(t => t.completed_at && new Date(t.completed_at) >= thirtyDaysAgo);
         }
 
-        const incomplete = visibleIncomplete;
-        const completed = visibleCompleted.sort((a, b) => new Date(b.completed_at || 0).getTime() - new Date(a.completed_at || 0).getTime());
-
         return {
-            pendingTargets: pending,
-            incompleteTargets: incomplete,
-            completedTargets: completed,
+            upcomingTargets: allUpcoming,
+            pendingTargets: allActive,
+            incompleteTargets: visibleIncomplete,
+            completedTargets: visibleCompleted.sort((a, b) => new Date(b.completed_at || 0).getTime() - new Date(a.completed_at || 0).getTime()),
             hiddenIncompleteCount: allIncomplete.length - visibleIncomplete.length,
             hiddenCompletedCount: allCompleted.length - visibleCompleted.length,
         };
-    }, [targets, targetDateRange, targetSortBy]);
+    }, [targets, targetDateRange, targetSortBy, todayString]);
 
     const upcomingDeadlines = useMemo(() => {
         const tomorrow = new Date();
@@ -1550,28 +1661,49 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
                                     content="A <strong>Target</strong> is a specific, measurable, and time-bound milestone (e.g., 'Finish Chapter 3 by Friday').<br/><br/>A <strong>Goal</strong> is a high-level, long-term ambition (e.g., 'Write a book').<br/><br/>Targets are the concrete steps to achieve your Goals."
                                 />
                             </div>
-                            <div className="flex flex-col gap-2 mb-4">
-                                <div className="flex flex-col sm:flex-row gap-2">
-                                    <input
-                                        type="text"
-                                        value={newTarget}
-                                        onChange={(e) => setNewTarget(e.target.value)}
-                                        placeholder="Define a clear target..."
-                                        className="flex-grow bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50"
-                                    />
-                                    <input
-                                        type="date"
-                                        value={newDeadline}
-                                        onChange={(e) => setNewDeadline(e.target.value)}
-                                        className="bg-white/20 border border-white/30 rounded-lg p-3 text-white/80 text-center"
-                                        style={{colorScheme: 'dark'}}
-                                    />
+                            <div className="bg-black/20 p-3 rounded-lg mb-4 space-y-3">
+                                <input type="text" value={newTarget} onChange={(e) => setNewTarget(e.target.value)} placeholder="Define a clear target..." className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50"/>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                    <div>
+                                        <label className="text-xs text-white/70 mb-1">Start Date (Optional)</label>
+                                        <input type="date" value={newTargetStartDate} onChange={(e) => setNewTargetStartDate(e.target.value)} className="bg-white/20 border border-white/30 rounded-lg p-3 text-white/80 w-full text-center" style={{colorScheme: 'dark'}} />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs text-white/70 mb-1">Deadline *</label>
+                                        <input type="date" value={newDeadline} onChange={(e) => setNewDeadline(e.target.value)} className="bg-white/20 border border-white/30 rounded-lg p-3 text-white/80 w-full text-center" style={{colorScheme: 'dark'}} />
+                                    </div>
                                 </div>
-                                <div className="flex flex-col sm:flex-row gap-2 justify-between items-center">
+                                 <div>
+                                    <label className="text-xs text-white/70 mb-1 flex items-center gap-1.5">
+                                        Completion Mode
+                                        <ExplanationTooltip title="Completion Mode" content="<strong>Manual:</strong> You check off the target yourself.<br/><strong>Focus Minutes:</strong> Automatically tracks progress based on time spent on tasks with matching tags." />
+                                    </label>
+                                    <select value={newCompletionMode} onChange={e => setNewCompletionMode(e.target.value as Target['completion_mode'])} className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white focus:outline-none focus:bg-white/30 focus:border-white/50">
+                                        <option value="manual" className="bg-gray-800">Manual</option>
+                                        <option value="focus_minutes" className="bg-gray-800">Focus Minutes (Auto)</option>
+                                    </select>
+                                </div>
+
+                                {newCompletionMode === 'focus_minutes' && (
+                                    <div className="space-y-2 p-2 bg-black/20 rounded-lg animate-fadeIn">
+                                        <input type="text" value={newTags} onChange={e => setNewTags(e.target.value)} placeholder="Tags to track (e.g., coding, research)" className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50"/>
+                                        <input type="number" value={newTargetMinutes} onChange={e => setNewTargetMinutes(e.target.value)} placeholder="Target duration in minutes" className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50"/>
+                                    </div>
+                                )}
+                                <div className="flex flex-col sm:flex-row gap-3 justify-between items-center pt-1">
                                     <PrioritySelector priority={newTargetPriority} setPriority={setNewTargetPriority} />
-                                    <button onClick={handleAddTarget} className="w-full sm:w-auto p-3 px-6 rounded-lg font-bold text-white transition hover:scale-105 bg-gradient-to-br from-blue-500 to-sky-600">Add Target</button>
+                                    <button onClick={handleAddTarget} className="w-full sm:w-auto p-3 rounded-lg font-bold text-white transition hover:scale-105 bg-gradient-to-br from-blue-500 to-sky-600">Add Target</button>
                                 </div>
                             </div>
+
+                            {upcomingTargets.length > 0 && (
+                                <div className="mb-6">
+                                    <h3 className="text-lg font-bold text-white mb-2 text-center">Upcoming Targets</h3>
+                                    <ul className="space-y-2 max-h-64 overflow-y-auto pr-2">
+                                        {upcomingTargets.map(target => <TargetItem key={target.id} target={target} onUpdateTarget={onUpdateTarget} onDeleteTarget={onDeleteTarget} />)}
+                                    </ul>
+                                </div>
+                            )}
                             
                             <div className="flex justify-center gap-2 mb-4 bg-black/20 p-1 rounded-full">
                                 <button onClick={() => setTargetView('pending')} className={`flex-1 p-2 text-sm rounded-full font-bold transition-colors ${targetView === 'pending' ? 'bg-white/20 text-white' : 'text-white/60 hover:bg-white/10'}`}>
