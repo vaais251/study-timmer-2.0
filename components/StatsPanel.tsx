@@ -70,7 +70,7 @@ const StatsPanel: React.FC<StatsPanelProps> = ({ completedToday, tasksToday, his
             const text = diff === 0 ? '-' : `${symbol} ${Math.round(Math.abs(diff))}m`;
             card2Value = <div className={`text-2xl font-semibold ${color}`}>{text}</div>;
             
-            const sevenDayAverageForStatCard = Math.round(totalFocusRecent7Days / 7);
+            const sevenDayAverageForStatCard = totalFocusRecent7Days > 0 ? Math.round(totalFocusRecent7Days / 7) : 0;
             card3 = { label: "7-Day Avg", value: `${sevenDayAverageForStatCard}m` };
 
         } else { // '7day' which is now 'vs Last Week'
@@ -102,18 +102,21 @@ const StatsPanel: React.FC<StatsPanelProps> = ({ completedToday, tasksToday, his
             </div>
         );
 
-        // Other calculations for the rest of the panel
-        const totalTasks = completedToday.length + tasksToday.length;
-        const completionPercentage = totalTasks === 0 ? 0 : Math.round((completedToday.length / totalTasks) * 100);
+        // --- NEW LOGIC: Pom-based calculations ---
         const allTasks = [...completedToday, ...tasksToday];
+        // Exclude stopwatch tasks from estimated poms calculation as they don't have a fixed target.
         const pomsDone = allTasks.reduce((acc, task) => acc + (task.completed_poms || 0), 0);
-        const pomsEst = allTasks.reduce((acc, task) => acc + (task.total_poms || 0), 0);
+        const pomsEst = allTasks.reduce((acc, task) => acc + (task.total_poms > 0 ? task.total_poms : 0), 0);
+        
+        const completionPercentage = pomsEst > 0 ? Math.round((pomsDone / pomsEst) * 100) : 0;
+        
         const stats = { completionPercentage, pomsDone, pomsEst };
 
+        const pomsRemaining = Math.max(0, pomsEst - pomsDone);
         const chartData = [
-            { name: 'Completed', value: completedToday.length },
-            { name: 'Incomplete', value: tasksToday.length },
-        ];
+            { name: 'Poms Done', value: pomsDone },
+            { name: 'Poms Remaining', value: pomsRemaining },
+        ].filter(d => d.value > 0); // Only show slices with a value
         
         return { card1, card2: { label: card2Label, value: card2Value }, card3, stats, chartData };
 

@@ -2,7 +2,6 @@ import React from 'react';
 import { AppNotification } from '../../types';
 import { BellIcon, CheckIcon, TrashIcon, FilledStarIcon, ExclamationTriangleIcon, RocketIcon } from './Icons';
 
-// FIX: Define `minutes`, `hours`, and `days` before they are used to calculate relative time.
 const timeAgo = (isoString: string): string => {
     if (!isoString) {
         return 'just now';

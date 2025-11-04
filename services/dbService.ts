@@ -555,6 +555,17 @@ export const addProject = async (
 }
 
 export const updateProject = async (id: string, updates: Partial<Project>): Promise<boolean> => {
+    const { data: originalProject, error: fetchError } = await supabase
+        .from('projects')
+        .select('completion_criteria_type, completion_criteria_value')
+        .eq('id', id)
+        .single();
+    
+    if (fetchError) {
+        console.error("Error fetching project before update:", JSON.stringify(fetchError, null, 2));
+        return false;
+    }
+
     const { error } = await supabase
         .from('projects')
         .update(updates)
@@ -564,6 +575,14 @@ export const updateProject = async (id: string, updates: Partial<Project>): Prom
       console.error("Error updating project:", JSON.stringify(error, null, 2));
       return false;
     }
+    
+    const criteriaChanged = (updates.completion_criteria_type && updates.completion_criteria_type !== originalProject.completion_criteria_type) ||
+                            (updates.completion_criteria_value !== undefined && updates.completion_criteria_value !== originalProject.completion_criteria_value);
+
+    if (criteriaChanged) {
+        await recalculateProjectProgress(id);
+    }
+    
     return true;
 }
 
@@ -1141,16 +1160,43 @@ export const addPomodoroHistory = async (taskId: string | null, duration: number
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
+    const ended_at = new Date().toISOString();
+    const date = ended_at.split('T')[0];
+
     const { error } = await supabase.from('pomodoro_history').insert([{
         user_id: user.id,
         task_id: taskId,
         duration_minutes: duration,
         difficulty: difficulty,
+        ended_at: ended_at,
     }]);
 
     if (error) {
         console.error("Error adding pomodoro history:", JSON.stringify(error, null, 2));
+        return;
     }
+    
+    // Authoritatively update daily_logs
+    const { data: todaysHistory, error: historyError } = await supabase
+        .from('pomodoro_history')
+        .select('duration_minutes')
+        .eq('user_id', user.id)
+        .gte('ended_at', `${date}T00:00:00.000Z`)
+        .lte('ended_at', `${date}T23:59:59.999Z`);
+
+    if (historyError) {
+        console.error("Error fetching today's history for log update:", historyError);
+        return;
+    }
+
+    const total_focus_minutes = todaysHistory.reduce((sum, h) => sum + (Number(h.duration_minutes) || 0), 0);
+    const completed_sessions = todaysHistory.length;
+
+    await upsertDailyLog({
+        date,
+        completed_sessions,
+        total_focus_minutes
+    });
 };
 
 export const getPomodoroHistory = async (startDate: string, endDate: string): Promise<PomodoroHistory[]> => {

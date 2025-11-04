@@ -485,7 +485,8 @@ const CategoryTimelineChart = React.memo(({ tasks, history, historyRange, openIn
     const [view, setView] = useState<'month' | 'week' | 'custom'>('week');
     const [visibleTags, setVisibleTags] = useState<string[]>([]);
 
-    const { data, tags, top4Tags } = useMemo(() => {
+    const { data, tags, top4Tags, overallCompletionRateData } = useMemo(() => {
+        // 1. Determine Date Range
         let startDate: Date;
         let endDate: Date;
 
@@ -519,147 +520,111 @@ const CategoryTimelineChart = React.memo(({ tasks, history, historyRange, openIn
         const startDateString = getTodayDateString(startDate);
         const endDateString = getTodayDateString(endDate);
 
-        const filteredHistory = history.filter(h => {
-            const hDate = getTodayDateString(new Date(h.ended_at));
-            return hDate >= startDateString && hDate <= endDateString;
-        });
-
-        const taskMap = new Map<string, Task>();
-        tasks.forEach(task => taskMap.set(task.id, task));
-
-        const dataByDate = new Map<string, { date: string, [key: string]: number | string }>();
+        // 2. Discover ALL relevant tags by combining tags from tasks due in range AND tasks with history in range
+        const taskMap = new Map(tasks.map(t => [t.id, t]));
         const allTags = new Set<string>();
 
-        // Initialize date map for all days in the range
+        // Tags from history in range
+        history.forEach(h => {
+            const hDate = getTodayDateString(new Date(h.ended_at));
+            if (hDate >= startDateString && hDate <= endDateString) {
+                const task = h.task_id ? taskMap.get(h.task_id) : null;
+                if (task?.tags) {
+                    task.tags.forEach(tag => allTags.add(tag.trim().toLowerCase()));
+                }
+            }
+        });
+
+        // Tags from tasks due in range
+        tasks.forEach(task => {
+            if (task.due_date >= startDateString && task.due_date <= endDateString && task.tags) {
+                task.tags.forEach(tag => allTags.add(tag.trim().toLowerCase()));
+            }
+        });
+
+        const sortedTags = Array.from(allTags).sort();
+
+
+        // 3. Prepare data structures for focus chart
+        const dataByDate = new Map<string, { date: string, [key: string]: number | string }>();
         const loopDate = new Date(startDate);
         const finalEndDate = new Date(endDate);
-        finalEndDate.setHours(23, 59, 59, 999); // Ensure end date is included
+        finalEndDate.setHours(23, 59, 59, 999);
         while (loopDate <= finalEndDate) {
             const dateStr = getTodayDateString(loopDate);
-            dataByDate.set(dateStr, { date: new Date(dateStr + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) });
+            const displayDate = new Date(dateStr + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            
+            const focusDayData: { date: string, [key: string]: number | string } = { date: displayDate };
+            sortedTags.forEach(tag => { focusDayData[tag] = 0; });
+            dataByDate.set(dateStr, focusDayData);
+            
             loopDate.setDate(loopDate.getDate() + 1);
         }
 
-        filteredHistory.forEach(h => {
-            const task = h.task_id ? taskMap.get(h.task_id) : null;
-            if (task && task.tags && task.tags.length > 0) {
-                const dateStr = getTodayDateString(new Date(h.ended_at));
-                const dayData = dataByDate.get(dateStr);
-                if (dayData) {
+        // 4. Populate focus time data
+        history.forEach(h => {
+            const hDate = getTodayDateString(new Date(h.ended_at));
+            if (dataByDate.has(hDate)) {
+                const task = h.task_id ? taskMap.get(h.task_id) : null;
+                if (task?.tags) {
+                    const dayData = dataByDate.get(hDate)!;
                     task.tags.forEach(tag => {
                         const normalizedTag = tag.trim().toLowerCase();
-                        if (normalizedTag) {
-                            allTags.add(normalizedTag);
-                            dayData[normalizedTag] = (dayData[normalizedTag] || 0) as number + (Number(h.duration_minutes) || 0);
+                        if (sortedTags.includes(normalizedTag)) {
+                            dayData[normalizedTag] = (dayData[normalizedTag] as number || 0) + (Number(h.duration_minutes) || 0);
+                        }
+                    });
+                }
+            }
+        });
+
+        const finalFocusData = Array.from(dataByDate.values());
+        
+        // 5. Calculate Overall Completion Rate Data
+        const overallCompletionStats = new Map<string, { total: number, completed: number }>();
+        sortedTags.forEach(tag => overallCompletionStats.set(tag, { total: 0, completed: 0 }));
+
+        tasks.forEach(task => {
+            if (task.due_date >= startDateString && task.due_date <= endDateString) {
+                if (task.tags) {
+                    task.tags.forEach(tag => {
+                        const normalizedTag = tag.trim().toLowerCase();
+                        if (overallCompletionStats.has(normalizedTag)) {
+                            const stats = overallCompletionStats.get(normalizedTag)!;
+                            stats.total++;
+                            if (task.completed_at) {
+                                stats.completed++;
+                            }
                         }
                     });
                 }
             }
         });
         
-        const finalData = Array.from(dataByDate.values());
-
+        const overallCompletionRateData = Array.from(overallCompletionStats.entries())
+            .map(([tag, stats]) => ({
+                name: tag.charAt(0).toUpperCase() + tag.slice(1),
+                completionRate: stats.total > 0 ? Math.round((stats.completed / stats.total) * 100) : 0,
+                details: `${stats.completed}/${stats.total} tasks`
+            }))
+            .filter(item => {
+                const stats = overallCompletionStats.get(item.name.toLowerCase());
+                return stats && stats.total > 0;
+            });
+        
+        // 6. Find top 4 tags based on total focus time
         const tagTotals = new Map<string, number>();
-        allTags.forEach(tag => {
-            const total = finalData.reduce((sum, day) => sum + ((day[tag] as number) || 0), 0);
+        sortedTags.forEach(tag => {
+            const total = finalFocusData.reduce((sum, day) => sum + ((day[tag] as number) || 0), 0);
             tagTotals.set(tag, total);
         });
-
-        const sortedTags = Array.from(tagTotals.entries())
-            .sort((a, b) => b[1] - a[1]) // Sort by total minutes, descending
+        const top4Tags = Array.from(tagTotals.entries())
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 4)
             .map(([tag]) => tag);
 
-        const top4Tags = sortedTags.slice(0, 4);
-
-        // Ensure all tags are present in all date objects for recharts
-        finalData.forEach(dayData => {
-            sortedTags.forEach(tag => {
-                if (!dayData[tag]) {
-                    dayData[tag] = 0;
-                }
-            });
-        });
-
-        return { data: finalData, tags: sortedTags, top4Tags };
-
+        return { data: finalFocusData, tags: sortedTags, top4Tags, overallCompletionRateData };
     }, [view, tasks, history, historyRange]);
-
-    const { completionRateData } = useMemo(() => {
-        let startDate: Date;
-        let endDate: Date;
-    
-        const todayForComparison = new Date();
-        todayForComparison.setHours(0, 0, 0, 0);
-    
-        if (view === 'custom') {
-            startDate = new Date(historyRange.start + 'T00:00:00');
-            endDate = new Date(historyRange.end + 'T00:00:00');
-            if (endDate >= todayForComparison) {
-                const yesterday = new Date();
-                yesterday.setDate(yesterday.getDate() - 1);
-                yesterday.setHours(0, 0, 0, 0);
-                endDate = yesterday;
-            }
-            if (startDate > endDate) {
-                startDate = new Date(endDate);
-            }
-        } else {
-            const yesterday = new Date();
-            yesterday.setDate(yesterday.getDate() - 1);
-            endDate = yesterday;
-            startDate = new Date(endDate);
-            startDate.setDate(startDate.getDate() - (view === 'month' ? 29 : 6));
-        }
-    
-        const startDateString = getTodayDateString(startDate);
-        const endDateString = getTodayDateString(endDate);
-    
-        const dataByDate = new Map<string, any>();
-        const loopDate = new Date(startDate);
-        const finalEndDate = new Date(endDate);
-        finalEndDate.setHours(23, 59, 59, 999);
-        while (loopDate <= finalEndDate) {
-            const dateStr = getTodayDateString(loopDate);
-            dataByDate.set(dateStr, { date: new Date(dateStr + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) });
-            loopDate.setDate(loopDate.getDate() + 1);
-        }
-    
-        const tasksInRange = tasks.filter(t => t.due_date >= startDateString && t.due_date <= endDateString);
-    
-        tasksInRange.forEach(task => {
-            const dateStr = task.due_date;
-            const dayData = dataByDate.get(dateStr);
-            if (dayData && task.tags) {
-                task.tags.forEach(tag => {
-                    const normalizedTag = tag.trim().toLowerCase();
-                    if (tags.includes(normalizedTag)) {
-                        if (!dayData[normalizedTag]) {
-                            dayData[normalizedTag] = { total: 0, completed: 0 };
-                        }
-                        dayData[normalizedTag].total++;
-                        if (task.completed_at) {
-                            dayData[normalizedTag].completed++;
-                        }
-                    }
-                });
-            }
-        });
-    
-        const finalData = Array.from(dataByDate.values()).map(dayData => {
-            const rates: { [key: string]: number | string } = { date: dayData.date };
-            tags.forEach(tag => {
-                const tagData = dayData[tag];
-                if (tagData && tagData.total > 0) {
-                    rates[tag] = Math.round((tagData.completed / tagData.total) * 100);
-                } else {
-                    rates[tag] = 0;
-                }
-            });
-            return rates;
-        });
-    
-        return { completionRateData: finalData };
-    }, [view, tasks, historyRange, tags]);
     
     useEffect(() => {
         setVisibleTags(top4Tags);
@@ -687,7 +652,7 @@ const CategoryTimelineChart = React.memo(({ tasks, history, historyRange, openIn
         return `hsl(${h}, ${s}%, ${l}%)`;
     };
 
-    const chartElement = (
+    const focusChartElement = (
         <ResponsiveContainer width="100%" height="100%">
             <LineChart data={data} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.2)" />
@@ -711,6 +676,23 @@ const CategoryTimelineChart = React.memo(({ tasks, history, historyRange, openIn
             </LineChart>
         </ResponsiveContainer>
     );
+
+    const completionBarChartElement = (
+        <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={overallCompletionRateData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.2)" />
+                <XAxis dataKey="name" stroke="rgba(255,255,255,0.7)" tick={{ fontSize: 10 }} />
+                <YAxis stroke="rgba(255,255,255,0.7)" unit="%" domain={[0, 100]} />
+                <Tooltip
+                    contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }}
+                    itemStyle={{ color: 'white' }}
+                    labelStyle={{ color: 'white', fontWeight: 'bold' }}
+                    formatter={(value: number, name: string, props: any) => [`${value}% (${props.payload.details})`, 'Completion Rate']}
+                />
+                <Bar dataKey="completionRate" name="Completion Rate" fill="#f59e0b" />
+            </BarChart>
+        </ResponsiveContainer>
+    );
     
     return (
         <div className="space-y-8">
@@ -718,7 +700,7 @@ const CategoryTimelineChart = React.memo(({ tasks, history, historyRange, openIn
                 <div className="flex justify-center items-center gap-2 mb-2">
                     <h3 className="text-lg font-semibold text-white text-center">Category Focus Over Time</h3>
                     <button
-                        onClick={() => openInsightModal('Category Focus Over Time', data, <div className="h-96">{chartElement}</div>)}
+                        onClick={() => openInsightModal('Category Focus Over Time', data, <div className="h-96">{focusChartElement}</div>)}
                         className="p-1 text-purple-400 hover:text-purple-300 transition"
                         title="Get AI Insights for this chart"
                     >
@@ -747,7 +729,7 @@ const CategoryTimelineChart = React.memo(({ tasks, history, historyRange, openIn
                 </div>
                 {data.length > 0 && tags.length > 0 ? (
                      <div className="h-96 mt-4">
-                        {chartElement}
+                        {focusChartElement}
                     </div>
                 ) : (
                     <div className="h-64 flex items-center justify-center text-white/60 bg-black/10 rounded-lg">
@@ -759,37 +741,17 @@ const CategoryTimelineChart = React.memo(({ tasks, history, historyRange, openIn
             <div>
                 <div className="flex justify-center items-center gap-2 mb-2">
                     <h3 className="text-lg font-semibold text-white text-center">Task Completion Rate by Category</h3>
+                     <button
+                        onClick={() => openInsightModal('Task Completion Rate by Category', overallCompletionRateData, <div className="h-96">{completionBarChartElement}</div>)}
+                        className="p-1 text-purple-400 hover:text-purple-300 transition"
+                        title="Get AI Insights for this chart"
+                    >
+                        <SparklesIcon />
+                    </button>
                 </div>
-                {completionRateData.length > 0 && tags.length > 0 ? (
+                {overallCompletionRateData.length > 0 ? (
                     <div className="h-96 mt-4">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <LineChart data={completionRateData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.2)" />
-                                <XAxis dataKey="date" stroke="rgba(255,255,255,0.7)" tick={{ fontSize: 10 }} />
-                                <YAxis stroke="rgba(255,255,255,0.7)" unit="%" domain={[0, 100]} />
-                                <Tooltip
-                                    contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }}
-                                    itemStyle={{ color: 'white' }}
-                                    labelStyle={{ color: 'white', fontWeight: 'bold' }}
-                                    formatter={(value: number) => [`${value.toFixed(0)}%`, 'Completion']}
-                                />
-                                <Legend wrapperStyle={{fontSize: "12px", cursor: 'pointer'}} onClick={handleLegendClick}/>
-                                {tags.map((tag) => (
-                                    <Line 
-                                        key={tag} 
-                                        type="monotone" 
-                                        dataKey={tag} 
-                                        name={tag.charAt(0).toUpperCase() + tag.slice(1)}
-                                        stroke={generateColorFromString(tag)} 
-                                        strokeWidth={2}
-                                        dot={{ r: 2 }}
-                                        activeDot={{ r: 6 }}
-                                        hide={!visibleTags.includes(tag)}
-                                        connectNulls
-                                    />
-                                ))}
-                            </LineChart>
-                        </ResponsiveContainer>
+                       {completionBarChartElement}
                     </div>
                 ) : (
                     <div className="h-64 flex items-center justify-center text-white/60 bg-black/10 rounded-lg">
@@ -1003,7 +965,7 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
         });
         const totalTargetsInRange = relevantTargets.length;
 
-        const lineChartDataPoints = new Map<string, { total: number, completed: number }>();
+        const lineChartDataPoints = new Map<string, { total_poms: number, completed_poms: number }>();
         if (historyRange.start && historyRange.end) {
             let currentDate = new Date(historyRange.start + 'T00:00:00');
             let endDateForChart = new Date(historyRange.end + 'T00:00:00');
@@ -1017,24 +979,23 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
             }
             while(currentDate <= endDateForChart) {
                 const dateString = getTodayDateString(currentDate);
-                lineChartDataPoints.set(dateString, { total: 0, completed: 0 });
+                lineChartDataPoints.set(dateString, { total_poms: 0, completed_poms: 0 });
                 currentDate.setDate(currentDate.getDate() + 1);
             }
         }
 
         tasks.forEach(task => {
-            if (lineChartDataPoints.has(task.due_date)) {
+            // Exclude stopwatch tasks
+            if (task.total_poms > 0 && lineChartDataPoints.has(task.due_date)) {
                 const dayData = lineChartDataPoints.get(task.due_date)!;
-                dayData.total++;
-                if (task.completed_at) {
-                    dayData.completed++;
-                }
+                dayData.total_poms += task.total_poms;
+                dayData.completed_poms += task.completed_poms;
             }
         });
 
         const lineChartData = Array.from(lineChartDataPoints.entries()).map(([dateString, data]) => ({
             date: new Date(dateString + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-            completion: data.total > 0 ? Math.round((data.completed / data.total) * 100) : 0,
+            completion: data.total_poms > 0 ? Math.round((data.completed_poms / data.total_poms) * 100) : 0,
         }));
         
         const focusMinutesPerDay = new Map<string, number>();
@@ -1266,7 +1227,7 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
 
         return Array.from(categoryMap.values()).sort((a, b) => {
             const totalA = a.completed + a.incomplete;
-            const totalB = b.completed + b.incomplete;
+            const totalB = b.completed + a.incomplete;
             return totalB - totalA;
         });
     }, [tasks]);
