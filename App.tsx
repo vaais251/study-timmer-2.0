@@ -1,6 +1,7 @@
 
 
 
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
@@ -916,30 +917,26 @@ const App: React.FC = () => {
     }
     
     // Task Handlers
-    const handleTaskCompletion = async (comment: string): Promise<Task | null> => {
-        const currentTask = tasksToday.find(t => t.completed_at === null);
-        if (!currentTask) return null;
-
-        const isStopwatch = currentTask.total_poms < 0;
-
+    const handleTaskCompletion = async (taskToComplete: Task, comment: string): Promise<Task | null> => {
+        if (!taskToComplete) return null;
+    
+        const isStopwatch = taskToComplete.total_poms < 0;
+    
         const updatedFields: Partial<Task> = {
-            // Only increment poms for non-stopwatch tasks
-            completed_poms: isStopwatch ? currentTask.completed_poms : currentTask.completed_poms + 1,
-            comments: comment ? [...(currentTask.comments || []), comment] : currentTask.comments,
+            completed_poms: isStopwatch ? taskToComplete.completed_poms : taskToComplete.completed_poms + 1,
+            comments: comment ? [...(taskToComplete.comments || []), comment] : taskToComplete.comments,
         };
         
         let taskIsNowComplete = false;
-        // For stopwatch tasks, this condition will never be met.
-        if (!isStopwatch && updatedFields.completed_poms >= currentTask.total_poms) {
+        if (!isStopwatch && updatedFields.completed_poms >= taskToComplete.total_poms) {
             updatedFields.completed_at = new Date().toISOString();
             taskIsNowComplete = true;
         }
         
-        const updatedTask = await dbService.updateTask(currentTask.id, updatedFields, {
+        const updatedTask = await dbService.updateTask(taskToComplete.id, updatedFields, {
             shouldRecalculate: false // Defer recalculation
         });
-
-        // After task update, if it's now complete, recalculate project progress.
+    
         if (taskIsNowComplete && updatedTask && updatedTask.project_id) {
             await dbService.addProjectUpdate(
                 updatedTask.project_id,
@@ -950,7 +947,6 @@ const App: React.FC = () => {
             await dbService.recalculateProjectProgress(updatedTask.project_id);
         }
         
-        // Return task, but the main state refresh will happen in handleModalContinue
         return updatedTask;
     };
 
@@ -1103,7 +1099,7 @@ const App: React.FC = () => {
                         setToastNotification('🧠 AI memory updated!');
                     }
                 }
-                await handleTaskCompletion(taskComment);
+                await handleTaskCompletion(taskJustWorkedOn, taskComment);
             }
             
             await Promise.all([

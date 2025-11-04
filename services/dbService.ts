@@ -1,5 +1,7 @@
 
 
+
+
 import { supabase } from './supabaseClient';
 import { Settings, Task, DbDailyLog, Project, Goal, Target, PomodoroHistory, Commitment, ProjectUpdate, AiMemory, AppNotification, FocusLevel } from '../types';
 import { getTodayDateString } from '../utils/date';
@@ -1005,8 +1007,8 @@ export const checkAndUpdatePastDueCommitments = async (): Promise<Commitment[] |
     const { error: updateError } = await supabase
         .from('commitments')
         .update({
-            status: 'completed',
-            completed_at: new Date().toISOString(),
+            status: 'broken',
+            broken_at: new Date().toISOString(),
         })
         .in('id', idsToUpdate);
     
