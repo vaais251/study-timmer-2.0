@@ -1,7 +1,4 @@
 
-
-
-
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
@@ -117,6 +114,7 @@ const App: React.FC = () => {
     const [targets, setTargets] = useState<Target[]>([]);
     const [allCommitments, setAllCommitments] = useState<Commitment[]>([]);
     const [todaysHistory, setTodaysHistory] = useState<PomodoroHistory[]>([]);
+    const [allPomodoroHistory, setAllPomodoroHistory] = useState<PomodoroHistory[]>([]);
     const [historicalLogs, setHistoricalLogs] = useState<DbDailyLog[]>([]);
     const [aiMemories, setAiMemories] = useState<AiMemory[]>([]);
     const [toastNotification, setToastNotification] = useState<string | null>(null);
@@ -278,6 +276,7 @@ const App: React.FC = () => {
             const freshTodayLog = logsByDate.get(today) || { date: today, completed_sessions: 0, total_focus_minutes: 0 };
             
             // --- Set React state with fresh, calculated data ---
+            setAllPomodoroHistory(allPomodoroHistoryForRange);
             setTodaysHistory(freshTodaysHistory);
             setHistoricalLogs(authoritativeHistoricalLogs);
             setDailyLog(freshTodayLog);
@@ -353,6 +352,7 @@ const App: React.FC = () => {
             setTargets([]);
             setAllCommitments([]);
             setTodaysHistory([]);
+            setAllPomodoroHistory([]);
             setHistoricalLogs([]);
             setAiMemories([]);
             setNotifications([]);
@@ -550,6 +550,90 @@ const App: React.FC = () => {
                 createNotificationPayload(unique_id, `Amazing work! You've logged over ${hours} hours of focus this week.`, 'milestone');
             }
         }
+
+        // 3. Inactivity Notifications
+        const fiveDaysAgo = new Date();
+        fiveDaysAgo.setDate(today.getDate() - 5);
+        const fiveDaysAgoStr = getTodayDateString(fiveDaysAgo);
+
+        const taskMap = new Map<string, Task>(tasks.map(t => [t.id, t]));
+        const projectLastActivity = new Map<string, string>();
+        const targetLastActivity = new Map<string, string>();
+
+        // Pre-calculate active time-based targets and their tags for efficiency
+        const activeTimeTargets = targets.filter(t => t.status === 'active' && t.completion_mode === 'focus_minutes');
+        const targetTagMap = new Map<string, string[]>();
+        activeTimeTargets.forEach(t => {
+            if (t.tags) {
+                targetTagMap.set(t.id, t.tags.map(tag => tag.toLowerCase()));
+            }
+        });
+
+        // Process all pomodoro history in the current range to find the last activity dates
+        allPomodoroHistory.forEach(h => {
+            if (h.task_id) {
+                const task = taskMap.get(h.task_id);
+                const activityDate = h.ended_at.split('T')[0];
+                
+                if (task) {
+                    // Check for project activity
+                    if (task.project_id) {
+                        const currentLast = projectLastActivity.get(task.project_id);
+                        if (!currentLast || activityDate > currentLast) {
+                            projectLastActivity.set(task.project_id, activityDate);
+                        }
+                    }
+                    
+                    // Check for target activity
+                    if (task.tags && task.tags.length > 0) {
+                        const taskTagsLower = task.tags.map(t => t.toLowerCase());
+                        for (const [targetId, targetTags] of targetTagMap.entries()) {
+                            // Check if there's an intersection of tags
+                            if (taskTagsLower.some(tTag => targetTags.includes(tTag))) {
+                                const currentLast = targetLastActivity.get(targetId);
+                                if (!currentLast || activityDate > currentLast) {
+                                    targetLastActivity.set(targetId, activityDate);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        // Check active projects for inactivity
+        projects.forEach(p => {
+            if (p.status === 'active') {
+                const lastActivity = projectLastActivity.get(p.id);
+                // Use last activity date, or fallback to start/creation date
+                const referenceDateStr = lastActivity || p.start_date || p.created_at.split('T')[0];
+                
+                // If the reference date is 5 or more days ago, create a notification
+                if (referenceDateStr <= fiveDaysAgoStr) {
+                    createNotificationPayload(
+                        `inactive-project-${p.id}`,
+                        `You haven't worked on project "${p.name}" in 5 days. Time to make some progress?`,
+                        'alert'
+                    );
+                }
+            }
+        });
+
+        // Check active time-based targets for inactivity
+        activeTimeTargets.forEach(t => {
+            const lastActivity = targetLastActivity.get(t.id);
+            // Use last activity date, or fallback to start/creation date
+            const referenceDateStr = lastActivity || t.start_date || t.created_at.split('T')[0];
+            
+            // If the reference date is 5 or more days ago, create a notification
+            if (referenceDateStr <= fiveDaysAgoStr) {
+                createNotificationPayload(
+                    `inactive-target-${t.id}`,
+                    `You haven't made progress on your target "${t.text}" in 5 days.`,
+                    'alert'
+                );
+            }
+        });
     
         if (newNotifications.length > 0) {
             const addAndRefreshNotifications = async () => {
@@ -562,7 +646,7 @@ const App: React.FC = () => {
             };
             addAndRefreshNotifications();
         }
-    }, [isLoading, session, tasks, projects, targets, historicalLogs, notifications, clearedNotificationIds]);
+    }, [isLoading, session, tasks, projects, targets, historicalLogs, notifications, clearedNotificationIds, allPomodoroHistory]);
 
     const handleMarkNotificationRead = async (id: string) => {
         const updated = await dbService.markNotificationRead(id);
