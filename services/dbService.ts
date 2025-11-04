@@ -2,6 +2,8 @@
 
 
 
+
+
 import { supabase } from './supabaseClient';
 import { Settings, Task, DbDailyLog, Project, Goal, Target, PomodoroHistory, Commitment, ProjectUpdate, AiMemory, AppNotification, FocusLevel } from '../types';
 import { getTodayDateString } from '../utils/date';
@@ -15,7 +17,7 @@ import { getTodayDateString } from '../utils/date';
 export const recalculateProjectProgress = async (projectId: string): Promise<void> => {
     const { data: project, error: projectError } = await supabase
         .from('projects')
-        .select('completion_criteria_type, completion_criteria_value')
+        .select('completion_criteria_type, completion_criteria_value, status, deadline') // Fetch status and deadline
         .eq('id', projectId)
         .single();
 
@@ -71,16 +73,37 @@ export const recalculateProjectProgress = async (projectId: string): Promise<voi
 
     updates.progress_value = newProgressValue;
 
-    // Check if completion status needs to change
+    // --- REFACTORED STATUS LOGIC ---
+    let newStatus = project.status; // Default to current status
+
+    // Check for completion first
     if (project.completion_criteria_value && newProgressValue >= project.completion_criteria_value) {
-        updates.status = 'completed';
-        updates.completed_at = new Date().toISOString();
+        if (project.status !== 'completed') {
+            newStatus = 'completed';
+            updates.completed_at = new Date().toISOString();
+        }
     } else {
-        updates.status = 'active';
+        // If progress is below target, it's not 'completed'.
         updates.completed_at = null;
+        const today = getTodayDateString();
+        
+        // Check if it should be 'due' or 'active'
+        if (project.deadline && project.deadline < today) {
+            newStatus = 'due';
+        } else {
+            newStatus = 'active';
+        }
     }
 
-    await supabase.from('projects').update(updates).eq('id', projectId);
+    // Only update the status if it has actually changed
+    if (newStatus !== project.status) {
+        updates.status = newStatus;
+    }
+
+    const { error: updateError } = await supabase.from('projects').update(updates).eq('id', projectId);
+    if (updateError) {
+        console.error("Error updating project after recalculation:", updateError);
+    }
 };
 
 
