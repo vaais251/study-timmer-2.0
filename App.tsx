@@ -1,6 +1,7 @@
 
 
 
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
@@ -480,6 +481,14 @@ const App: React.FC = () => {
         const threeDaysStr = getTodayDateString(threeDaysFromNow);
     
         [...projects, ...targets].forEach(item => {
+            // NEW: Start date notifications
+            if (item.start_date === todayStr) {
+                const itemType = 'name' in item ? 'project' : 'target';
+                const itemName = 'name' in item ? item.name : item.text;
+                const itemTypeName = itemType.charAt(0).toUpperCase() + itemType.slice(1);
+                createNotificationPayload(`${itemType}-start-today-${item.id}`, `🚀 ${itemTypeName} "${itemName}" starts today! Let's get to work.`, 'start');
+            }
+
             // Ensure the item has a deadline and is currently active or due/incomplete
             if ('deadline' in item && item.deadline && (item.status === 'active' || item.status === 'due' || item.status === 'incomplete')) {
                 const itemType = 'name' in item ? 'project' : 'target';
