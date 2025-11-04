@@ -4,6 +4,166 @@ import { supabase } from './supabaseClient';
 import { Settings, Task, DbDailyLog, Project, Goal, Target, PomodoroHistory, Commitment, ProjectUpdate, AiMemory, AppNotification, FocusLevel } from '../types';
 import { getTodayDateString } from '../utils/date';
 
+// --- Recalculation Logic ---
+
+/**
+ * Recalculates the progress for a given project from scratch based on its tasks.
+ * This is the authoritative method for updating project progress.
+ */
+export const recalculateProjectProgress = async (projectId: string): Promise<void> => {
+    const { data: project, error: projectError } = await supabase
+        .from('projects')
+        .select('completion_criteria_type, completion_criteria_value')
+        .eq('id', projectId)
+        .single();
+
+    if (projectError || !project) {
+        console.error("Error fetching project for recalculation:", projectError);
+        return;
+    }
+
+    let newProgressValue = 0;
+    const updates: Partial<Project> = {};
+
+    if (project.completion_criteria_type === 'task_count') {
+        const { count, error: countError } = await supabase
+            .from('tasks')
+            .select('*', { count: 'exact', head: true })
+            .eq('project_id', projectId)
+            .not('completed_at', 'is', null);
+        
+        if (countError) {
+            console.error("Error counting completed tasks for project:", countError);
+            return;
+        }
+        newProgressValue = count || 0;
+
+    } else if (project.completion_criteria_type === 'duration_minutes') {
+        const { data: projectTasks, error: tasksError } = await supabase
+            .from('tasks')
+            .select('id')
+            .eq('project_id', projectId);
+
+        if (tasksError) {
+            console.error("Error fetching tasks for project duration:", tasksError);
+            return;
+        }
+
+        const taskIds = projectTasks.map(t => t.id);
+        if (taskIds.length > 0) {
+            const { data: histories, error: historyError } = await supabase
+                .from('pomodoro_history')
+                .select('duration_minutes')
+                .in('task_id', taskIds);
+            
+            if (historyError) {
+                console.error("Error fetching history for project duration:", historyError);
+                return;
+            }
+            newProgressValue = histories.reduce((sum, h) => sum + (Number(h.duration_minutes) || 0), 0);
+        }
+    } else {
+        // 'manual' completion type, no progress to calculate.
+        return;
+    }
+
+    updates.progress_value = newProgressValue;
+
+    // Check if completion status needs to change
+    if (project.completion_criteria_value && newProgressValue >= project.completion_criteria_value) {
+        updates.status = 'completed';
+        updates.completed_at = new Date().toISOString();
+    } else {
+        updates.status = 'active';
+        updates.completed_at = null;
+    }
+
+    await supabase.from('projects').update(updates).eq('id', projectId);
+};
+
+
+/**
+ * Finds all time-based targets affected by a given set of tags and recalculates their progress.
+ */
+export const recalculateProgressForAffectedTargets = async (tags: string[], userId: string): Promise<void> => {
+    if (!tags || tags.length === 0 || !userId) return;
+    const lowerCaseTags = tags.map(t => t.toLowerCase());
+
+    // 1. Find all potentially affected targets
+    const { data: targets, error: targetsError } = await supabase
+        .from('targets')
+        .select('id, tags')
+        .eq('user_id', userId)
+        .eq('completion_mode', 'focus_minutes');
+    
+    if (targetsError || !targets) return;
+
+    const affectedTargetIds = targets
+        .filter(t => t.tags && t.tags.some(targetTag => lowerCaseTags.includes(targetTag.toLowerCase())))
+        .map(t => t.id);
+
+    if (affectedTargetIds.length === 0) return;
+
+    // 2. Recalculate each affected target
+    for (const targetId of affectedTargetIds) {
+        await recalculateTargetProgress(targetId);
+    }
+};
+
+/**
+ * Recalculates a single time-based target's progress from scratch.
+ */
+export const recalculateTargetProgress = async (targetId: string): Promise<void> => {
+    const { data: target, error: targetError } = await supabase
+        .from('targets')
+        .select('tags, user_id, target_minutes')
+        .eq('id', targetId)
+        .single();
+
+    if (targetError || !target || !target.tags || target.tags.length === 0) return;
+
+    const lowerCaseTargetTags = target.tags.map(t => t.toLowerCase());
+
+    // 1. Find all tasks that could contribute to this target
+    const { data: tasks, error: tasksError } = await supabase
+        .from('tasks')
+        .select('id, tags')
+        .eq('user_id', target.user_id)
+        .not('tags', 'is', null);
+
+    if (tasksError || !tasks) return;
+
+    const contributingTaskIds = tasks
+        .filter(t => t.tags && t.tags.some(taskTag => lowerCaseTargetTags.includes(taskTag.toLowerCase())))
+        .map(t => t.id);
+
+    if (contributingTaskIds.length === 0) {
+        await supabase.from('targets').update({ progress_minutes: 0 }).eq('id', targetId);
+        return;
+    }
+
+    // 2. Sum up history for those tasks
+    const { data: histories, error: historyError } = await supabase
+        .from('pomodoro_history')
+        .select('duration_minutes')
+        .in('task_id', contributingTaskIds);
+
+    if (historyError) return;
+
+    const newProgressMinutes = histories.reduce((sum, h) => sum + (Number(h.duration_minutes) || 0), 0);
+
+    // 3. Update the target
+    const updates: Partial<Target> = { progress_minutes: newProgressMinutes };
+    if (target.target_minutes && newProgressMinutes >= target.target_minutes) {
+        updates.completed_at = new Date().toISOString();
+    } else {
+        updates.completed_at = null;
+    }
+
+    await supabase.from('targets').update(updates).eq('id', targetId);
+};
+
+
 // --- Settings ---
 
 export const getSettings = async (): Promise<Settings | null> => {
@@ -51,16 +211,15 @@ export const getTasks = async (): Promise<Task[] | null> => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return null;
 
-    const today = getTodayDateString();
-
     const { data, error } = await supabase
         .from('tasks')
         .select('*, projects(name)')
         .eq('user_id', user.id)
-        .gte('due_date', today)
-        .order('due_date', { ascending: true }) // Sort by date first
-        .order('task_order', { ascending: true, nullsFirst: true }) // Then by custom order
-        .order('created_at', { ascending: true }); // Fallback sort
+        // Fetch all tasks, completed or not, and let the client filter them.
+        // This is crucial for the Plan page to show completed tasks for today.
+        .order('due_date', { ascending: true })
+        .order('task_order', { ascending: true, nullsFirst: true })
+        .order('created_at', { ascending: true });
 
     if (error) {
         console.error("Error fetching tasks:", JSON.stringify(error, null, 2));
@@ -70,73 +229,101 @@ export const getTasks = async (): Promise<Task[] | null> => {
     return data;
 };
 
-export const addTask = async (text: string, poms: number, dueDate: string, projectId: string | null, tags: string[], priority: number | null): Promise<Task[] | null> => {
+export const addTask = async (text: string, poms: number, dueDate: string, projectId: string | null, tags: string[], priority: number | null): Promise<boolean> => {
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-        return null;
-    }
+    if (!user) return false;
 
     const { data: maxOrderData, error: maxOrderError } = await supabase
         .from('tasks')
         .select('task_order')
         .eq('user_id', user.id)
         .eq('due_date', dueDate)
-        .not('task_order', 'is', null) // Ensure we only get tasks with an order
+        .not('task_order', 'is', null)
         .order('task_order', { ascending: false })
         .limit(1)
-        .maybeSingle(); // Use maybeSingle to prevent error on no rows
+        .maybeSingle();
         
     if (maxOrderError) {
-        console.error("Error fetching max task order:", JSON.stringify(maxOrderError, null, 2));
-        // Do not block, but log the error. The fallback logic is safe.
+        console.error("Error fetching max task order:", maxOrderError);
     }
         
     const newOrder = (maxOrderData?.task_order ?? -1) + 1;
 
-    const taskToInsert = {
-        user_id: user.id,
-        text,
-        total_poms: poms,
-        due_date: dueDate,
-        completed_poms: 0,
-        comments: [],
-        project_id: projectId,
-        tags: tags,
-        task_order: newOrder,
-        priority,
-    };
-    
-    // Pass an array to insert, and remove the unnecessary .select()
-    const { error } = await supabase
-        .from('tasks')
-        .insert([taskToInsert]);
+    const { error } = await supabase.from('tasks').insert({
+        user_id: user.id, text, total_poms: poms, due_date: dueDate, project_id: projectId, tags, priority, task_order: newOrder,
+    });
     
     if (error) {
-        console.error("Error adding task:", JSON.stringify(error, null, 2));
-        return null;
+        console.error("Error adding task:", error);
+        return false;
     }
     
-    return getTasks();
+    // After adding, if it's part of a project, recalculate that project's progress
+    if (projectId) {
+        await recalculateProjectProgress(projectId);
+    }
+    
+    return true;
 };
 
-export const updateTask = async (id: string, updates: Partial<Omit<Task, 'id' | 'user_id' | 'created_at' | 'projects'>>): Promise<Task | null> => {
-    const { data, error } = await supabase
+export const updateTask = async (id: string, updates: Partial<Task>, options = { shouldRecalculate: true }): Promise<Task | null> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    // 1. Get original task state for comparison
+    const { data: originalTask, error: fetchError } = await supabase
+        .from('tasks')
+        .select('*')
+        .eq('id', id)
+        .single();
+    
+    if (fetchError || !originalTask) {
+        console.error("Error fetching original task for update:", fetchError);
+        return null;
+    }
+
+    // 2. Perform the update
+    const { data: updatedTask, error: updateError } = await supabase
         .from('tasks')
         .update(updates)
         .eq('id', id)
         .select('*, projects(name)')
         .single();
 
-    if (error) {
-        console.error("Error updating task:", JSON.stringify(error, null, 2));
+    if (updateError) {
+        console.error("Error updating task:", updateError);
         return null;
     }
+    
+    if (!options.shouldRecalculate) {
+        return updatedTask;
+    }
 
-    return data;
+    // 3. Recalculate progress if critical fields changed
+    const originalProject = originalTask.project_id;
+    const newProject = updatedTask.project_id;
+    const originalTags = originalTask.tags || [];
+    const newTags = updatedTask.tags || [];
+    
+    const projectsToRecalc = new Set<string>();
+    if (originalProject) projectsToRecalc.add(originalProject);
+    if (newProject && newProject !== originalProject) projectsToRecalc.add(newProject);
+    
+    for (const projectId of projectsToRecalc) {
+        await recalculateProjectProgress(projectId);
+    }
+    
+    const tagsChanged = originalTags.length !== newTags.length || !originalTags.every(tag => newTags.includes(tag));
+    if (tagsChanged) {
+        const allAffectedTags = [...new Set([...originalTags, ...newTags])];
+        await recalculateProgressForAffectedTargets(allAffectedTags, user.id);
+    }
+
+    return updatedTask;
 };
 
+
 export const updateTaskOrder = async (tasksToUpdate: { id: string, task_order: number }[]): Promise<Task[] | null> => {
-    // Use Promise.all to run individual updates in parallel. This is safer than a single bulk upsert.
     const updatePromises = tasksToUpdate.map(task =>
         supabase
             .from('tasks')
@@ -144,141 +331,54 @@ export const updateTaskOrder = async (tasksToUpdate: { id: string, task_order: n
             .eq('id', task.id)
     );
 
-    try {
-        const results = await Promise.all(updatePromises);
-        // Check if any of the parallel updates resulted in an error
-        const firstError = results.find(res => res.error);
-        if (firstError) {
-            throw firstError.error;
-        }
-    } catch (error) {
-        console.error("Error during parallel task order update:", JSON.stringify(error, null, 2));
-        return null; // On failure, return null
+    const results = await Promise.all(updatePromises);
+    const firstError = results.find(res => res.error);
+    if (firstError) {
+        console.error("Error during task order update:", firstError.error);
+        return null;
     }
 
-    // On success, refetch all tasks to ensure UI is in sync with DB
     return getTasks();
 };
 
 
-export const deleteTask = async (id: string): Promise<{ tasks: Task[] | null; projects: Project[] | null; targets: Target[] | null }> => {
-    // 1. Fetch task details
+export const deleteTask = async (id: string): Promise<boolean> => {
     const { data: taskToDelete, error: fetchError } = await supabase
         .from('tasks')
-        .select('*')
+        .select('project_id, tags, user_id')
         .eq('id', id)
         .single();
-    
+
     if (fetchError || !taskToDelete) {
-        console.error("Error finding task to delete:", JSON.stringify(fetchError, null, 2));
-        return { tasks: null, projects: null, targets: null };
+        console.error("Error finding task to delete:", fetchError);
+        return false;
     }
 
-    // 2. Fetch its pomodoro history BEFORE deleting it.
-    const { data: historyForTask, error: historyFetchError } = await supabase
-        .from('pomodoro_history')
-        .select('duration_minutes')
-        .eq('task_id', id);
-
-    if (historyFetchError) {
-        console.error("Error fetching pomodoro history for rollback:", JSON.stringify(historyFetchError, null, 2));
-    }
-
-    // 3. Rollback target progress if applicable
-    if (historyForTask && historyForTask.length > 0 && taskToDelete.tags && taskToDelete.tags.length > 0) {
-        const totalDurationToRollback = historyForTask.reduce((sum, item) => sum + (Number(item.duration_minutes) || 0), 0);
-
-        if (totalDurationToRollback > 0) {
-            const taskTagsLower = taskToDelete.tags.map(t => t.toLowerCase());
-            
-            const { data: allTimeBasedTargets, error: targetsError } = await supabase
-                .from('targets')
-                .select('*')
-                .eq('user_id', taskToDelete.user_id)
-                .eq('completion_mode', 'focus_minutes');
-            
-            if (targetsError) {
-                console.error("Error fetching targets for rollback:", JSON.stringify(targetsError, null, 2));
-            } else if (allTimeBasedTargets) {
-                const matchingTargets = allTimeBasedTargets.filter(target => {
-                    if (!target.tags || target.tags.length === 0) return false;
-                    const targetTagsLower = target.tags.map(t => t.toLowerCase());
-                    return taskTagsLower.some(tTag => targetTagsLower.includes(tTag));
-                });
-
-                const targetUpdatePromises = matchingTargets.map(target => {
-                    const newProgress = Math.max(0, target.progress_minutes - totalDurationToRollback);
-                    const updates: Partial<Target> = { progress_minutes: newProgress };
-                    
-                    if (target.completed_at && target.target_minutes && newProgress < target.target_minutes) {
-                        updates.completed_at = null;
-                    }
-                    
-                    return supabase.from('targets').update(updates).eq('id', target.id);
-                });
-
-                const results = await Promise.all(targetUpdatePromises);
-                const anyError = results.some(res => res.error);
-                if (anyError) {
-                    console.error("An error occurred during target progress rollback:", results.map(r => r.error).filter(Boolean));
-                }
-            }
-        }
-    }
-
-    // 4. Rollback project progress if applicable
-    if (taskToDelete.project_id) {
-        const { data: project, error: projectError } = await supabase
-            .from('projects')
-            .select('*')
-            .eq('id', taskToDelete.project_id)
-            .single();
-
-        if (project && !projectError) {
-            let progressToDecrement = 0;
-            let shouldUpdateProject = false;
-            
-            if (project.completion_criteria_type === 'task_count' && taskToDelete.completed_at) {
-                progressToDecrement = 1;
-                shouldUpdateProject = true;
-            } else if (project.completion_criteria_type === 'duration_minutes' && historyForTask) {
-                progressToDecrement = historyForTask.reduce((sum, item) => sum + (Number(item.duration_minutes) || 0), 0);
-                if (progressToDecrement > 0) shouldUpdateProject = true;
-            }
-            
-            if (shouldUpdateProject) {
-                const newProgress = Math.max(0, project.progress_value - progressToDecrement);
-                const updates: Partial<Project> = { progress_value: newProgress };
-                
-                if (project.status === 'completed' && project.completion_criteria_value && newProgress < project.completion_criteria_value) {
-                    updates.status = 'active';
-                    updates.completed_at = null;
-                }
-                await supabase.from('projects').update(updates).eq('id', project.id);
-            }
-        }
-    }
-    
-    // 5. Delete associated pomodoro history.
+    // Delete associated history first
     await supabase.from('pomodoro_history').delete().eq('task_id', id);
 
-    // 6. Delete the task itself.
-    const { error: taskError } = await supabase.from('tasks').delete().eq('id', id);
-    if (taskError) {
-        console.error("Error deleting task:", JSON.stringify(taskError, null, 2));
-        const [currentProjects, currentTargets] = await Promise.all([getProjects(), getTargets()]);
-        return { tasks: null, projects: currentProjects, targets: currentTargets };
+    // Then delete the task
+    const { error: deleteError } = await supabase.from('tasks').delete().eq('id', id);
+    if (deleteError) {
+        console.error("Error deleting task:", deleteError);
+        return false;
     }
 
-    // 7. On success, return fresh lists.
-    const [newTasks, newProjects, newTargets] = await Promise.all([getTasks(), getProjects(), getTargets()]);
-    return { tasks: newTasks, projects: newProjects, targets: newTargets };
+    // Recalculate progress for affected project and targets
+    if (taskToDelete.project_id) {
+        await recalculateProjectProgress(taskToDelete.project_id);
+    }
+    if (taskToDelete.tags && taskToDelete.tags.length > 0) {
+        await recalculateProgressForAffectedTargets(taskToDelete.tags, taskToDelete.user_id);
+    }
+
+    return true;
 };
 
 
-export const moveTask = async (id: string, action: 'postpone' | 'duplicate'): Promise<Task[] | null> => {
+export const moveTask = async (id: string, action: 'postpone' | 'duplicate'): Promise<boolean> => {
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return null;
+    if (!user) return false;
 
     const tomorrow = getTodayDateString(new Date(Date.now() + 24 * 60 * 60 * 1000));
     
@@ -290,7 +390,7 @@ export const moveTask = async (id: string, action: 'postpone' | 'duplicate'): Pr
         .not('task_order', 'is', null)
         .order('task_order', { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
     
     const newOrderForTomorrow = (maxOrderData?.task_order ?? -1) + 1;
 
@@ -299,37 +399,39 @@ export const moveTask = async (id: string, action: 'postpone' | 'duplicate'): Pr
             .from('tasks')
             .update({ due_date: tomorrow, task_order: newOrderForTomorrow })
             .eq('id', id);
-        if (error) console.error("Error postponing task:", JSON.stringify(error, null, 2));
+        if (error) {
+            console.error("Error postponing task:", error);
+            return false;
+        }
     } else { // duplicate
         const { data: original, error: fetchError } = await supabase.from('tasks').select('*').eq('id', id).single();
         if (fetchError || !original) {
-            console.error("Error fetching original task to duplicate:", JSON.stringify(fetchError, null, 2));
-            return null;
+            console.error("Error fetching original task to duplicate:", fetchError);
+            return false;
         }
         
         const { error: insertError } = await supabase.from('tasks').insert({
-            user_id: original.user_id,
-            text: original.text,
-            total_poms: original.total_poms,
+            ...original,
+            id: undefined, // Let Supabase generate a new ID
+            created_at: undefined,
             due_date: tomorrow,
+            completed_at: null,
             completed_poms: 0,
             comments: [],
-            project_id: original.project_id,
-            tags: original.tags,
-            custom_focus_duration: original.custom_focus_duration,
-            custom_break_duration: original.custom_break_duration,
             task_order: newOrderForTomorrow,
-            priority: original.priority,
         });
-         if (insertError) console.error("Error duplicating task:", JSON.stringify(insertError, null, 2));
+        if (insertError) {
+            console.error("Error duplicating task:", insertError);
+            return false;
+        }
     }
     
-    return getTasks();
+    return true;
 };
 
-export const bringTaskForward = async (id: string): Promise<Task[] | null> => {
+export const bringTaskForward = async (id: string): Promise<boolean> => {
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return null;
+    if (!user) return false;
 
     const today = getTodayDateString();
 
@@ -341,7 +443,7 @@ export const bringTaskForward = async (id: string): Promise<Task[] | null> => {
         .not('task_order', 'is', null)
         .order('task_order', { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
     
     const newOrderForToday = (maxOrderData?.task_order ?? -1) + 1;
 
@@ -351,47 +453,40 @@ export const bringTaskForward = async (id: string): Promise<Task[] | null> => {
         .eq('id', id);
 
     if (error) {
-        console.error("Error bringing task forward:", JSON.stringify(error, null, 2));
-        return null;
+        console.error("Error bringing task forward:", error);
+        return false;
     }
 
-    return getTasks();
+    return true;
 };
 
 
-export const markTaskIncomplete = async (id: string): Promise<Task[] | null> => {
-    // First, find the task to get its due_date
-    const { data: taskData, error: findError } = await supabase.from('tasks').select('due_date, user_id').eq('id', id).single();
-    if (findError || !taskData) {
-        console.error("Error finding task to mark incomplete:", JSON.stringify(findError, null, 2));
-        return null;
+export const markTaskIncomplete = async (id: string): Promise<boolean> => {
+    const { data: task, error: findError } = await supabase.from('tasks').select('due_date, user_id, project_id, tags').eq('id', id).single();
+    if (findError || !task) {
+        console.error("Error finding task to mark incomplete:", findError);
+        return false;
     }
 
-    // Find the max order for that day to place the re-opened task at the end
-    const { data: maxOrderData } = await supabase
-        .from('tasks')
-        .select('task_order')
-        .eq('user_id', taskData.user_id)
-        .eq('due_date', taskData.due_date)
-        .not('task_order', 'is', null)
-        .order('task_order', { ascending: false })
-        .limit(1)
-        .single();
-    
-    const newOrder = (maxOrderData?.task_order ?? -1) + 1;
-    
-    // Update the task to be incomplete and set its new order
     const { error: updateError } = await supabase
         .from('tasks')
-        .update({ completed_at: null, task_order: newOrder })
+        .update({ completed_at: null })
         .eq('id', id);
 
     if (updateError) {
-        console.error("Error marking task as incomplete:", JSON.stringify(updateError, null, 2));
-        return null;
+        console.error("Error marking task as incomplete:", updateError);
+        return false;
+    }
+
+    // After un-completing, recalculate progress for associated project and targets
+    if (task.project_id) {
+        await recalculateProjectProgress(task.project_id);
+    }
+    if (task.tags && task.tags.length > 0) {
+        await recalculateProgressForAffectedTargets(task.tags, task.user_id);
     }
     
-    return getTasks();
+    return true;
 };
 
 
@@ -444,7 +539,7 @@ export const addProject = async (
     return error ? null : newProject;
 }
 
-export const updateProject = async (id: string, updates: Partial<Project>): Promise<Project[] | null> => {
+export const updateProject = async (id: string, updates: Partial<Project>): Promise<boolean> => {
     const { error } = await supabase
         .from('projects')
         .update(updates)
@@ -452,56 +547,35 @@ export const updateProject = async (id: string, updates: Partial<Project>): Prom
     
     if (error) {
       console.error("Error updating project:", JSON.stringify(error, null, 2));
+      return false;
     }
-    return error ? null : await getProjects();
+    return true;
 }
 
-export const deleteProject = async (id: string): Promise<{ success: boolean; data: { projects: Project[], tasks: Task[] } | null; error: string | null }> => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return { success: false, data: null, error: "User not authenticated." };
-
-    // STEP 1: Manually unlink all tasks associated with this project.
-    // This bypasses reliance on the ON DELETE SET NULL constraint and makes RLS issues more explicit.
+export const deleteProject = async (id: string): Promise<{ success: boolean; error: string | null }> => {
+    // Unlink tasks first
     const { error: unlinkError } = await supabase
         .from('tasks')
         .update({ project_id: null })
         .eq('project_id', id);
 
     if (unlinkError) {
-        console.error("Error unlinking tasks from project:", JSON.stringify(unlinkError, null, 2));
-        let userFriendlyError = `Failed at step 1: Unlinking tasks. Reason: ${unlinkError.message}.`;
-        if (unlinkError.message.includes('permission denied')) {
-            userFriendlyError += " This almost certainly means your Row Level Security (RLS) policy on the 'tasks' table is missing or incorrect. It needs to allow the UPDATE operation for authenticated users on their own tasks.";
-        }
-        return { success: false, data: null, error: userFriendlyError };
+        console.error("Error unlinking tasks from project:", unlinkError);
+        return { success: false, error: "Failed to unlink tasks from project." };
     }
 
-    // STEP 2: Delete the project now that it has no dependencies.
+    // Then delete the project
     const { error: deleteError } = await supabase
         .from('projects')
         .delete()
         .eq('id', id);
 
     if (deleteError) {
-        console.error("Error deleting project:", JSON.stringify(deleteError, null, 2));
-        let userFriendlyError = `Failed at step 2: Deleting project. Reason: ${deleteError.message}.`;
-        if (deleteError.message.includes('permission denied')) {
-             userFriendlyError += " This almost certainly means your Row Level Security (RLS) policy on the 'projects' table is missing or incorrect. It needs to allow the DELETE operation for authenticated users on their own projects.";
-        }
-        return { success: false, data: null, error: userFriendlyError };
+        console.error("Error deleting project:", deleteError);
+        return { success: false, error: "Failed to delete project." };
     }
 
-    // STEP 3: On success, refetch both projects and tasks to ensure the UI is in a consistent state.
-    const [newProjects, newTasks] = await Promise.all([
-        getProjects(),
-        getTasks()
-    ]);
-
-    if (newProjects === null || newTasks === null) {
-        return { success: false, data: null, error: "Project deleted, but failed to refetch updated data." };
-    }
-
-    return { success: true, data: { projects: newProjects, tasks: newTasks }, error: null };
+    return { success: true, error: null };
 }
 
 export const rescheduleProject = async (projectId: string, newDeadline: string | null): Promise<Project[] | null> => {
@@ -545,7 +619,6 @@ export const checkAndUpdateDueProjects = async (): Promise<Project[] | null> => 
     if (!user) return null;
     const today = getTodayDateString();
 
-    // Find projects that are active, have a deadline, and the deadline has passed.
     const { data: dueProjects, error } = await supabase
         .from('projects')
         .select('id')
@@ -556,13 +629,11 @@ export const checkAndUpdateDueProjects = async (): Promise<Project[] | null> => 
 
     if (error) {
         console.error("Error fetching due projects:", JSON.stringify(error, null, 2));
-        // Return null on error so the caller knows something went wrong
         return null;
     }
     
     if (!dueProjects || dueProjects.length === 0) {
-        // No projects to update, just return the current full list
-        return getProjects();
+        return null;
     }
     
     const dueProjectIds = dueProjects.map(p => p.id);
@@ -577,7 +648,6 @@ export const checkAndUpdateDueProjects = async (): Promise<Project[] | null> => 
         return null;
     }
 
-    // Return the fresh list of all projects after the update
     return getProjects();
 };
 
@@ -693,7 +763,7 @@ export const addTarget = async (
         completion_mode: completionMode,
         tags: tags,
         target_minutes: targetMinutes,
-        progress_minutes: 0, // Initialize progress
+        progress_minutes: 0,
     });
     if (error) {
         console.error("Error adding target:", JSON.stringify(error, null, 2));
@@ -701,98 +771,39 @@ export const addTarget = async (
     return error ? null : await getTargets();
 }
 
-export const updateTarget = async (id: string, updates: Partial<Target>): Promise<Target[] | null> => {
-    // The logic to set 'status' has been removed as the 'status' column does not exist in the DB.
-    // The status is now derived on the client-side.
+export const updateTarget = async (id: string, updates: Partial<Target>): Promise<boolean> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return false;
+
+    const { data: originalTarget, error: fetchError } = await supabase
+        .from('targets')
+        .select('tags')
+        .eq('id', id)
+        .single();
+    
+    if (fetchError) return false;
+    
     const { error } = await supabase.from('targets').update(updates).eq('id', id);
-    if (error) console.error("Error updating target:", JSON.stringify(error, null, 2));
-    return error ? null : await getTargets();
+    if (error) {
+        console.error("Error updating target:", error);
+        return false;
+    }
+
+    const originalTags = originalTarget?.tags || [];
+    const newTags = updates.tags || [];
+    const allAffectedTags = [...new Set([...originalTags, ...newTags])];
+    
+    if (allAffectedTags.length > 0) {
+        await recalculateProgressForAffectedTargets(allAffectedTags, user.id);
+    }
+
+    return true;
 }
 
 export const deleteTarget = async (id: string): Promise<Target[] | null> => {
     const { error } = await supabase.from('targets').delete().eq('id', id);
     return error ? null : await getTargets();
 }
-
-export const updateTargetProgressOnPomodoro = async (taskId: string, durationMinutes: number): Promise<Target[] | null> => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return null;
-
-    // 1. Get task details to find its tags.
-    const { data: task, error: taskError } = await supabase
-        .from('tasks')
-        .select('tags')
-        .eq('id', taskId)
-        .single();
-
-    if (taskError || !task || !task.tags || task.tags.length === 0) {
-        // If the task has no tags, no time-based targets can be matched.
-        return null;
-    }
-
-    const today = getTodayDateString();
-    const taskTagsLower = task.tags.map(t => t.toLowerCase());
-
-    // 2. Fetch all potentially matching targets (active, time-based).
-    // The filtering for tags will happen client-side for case-insensitivity.
-    const { data: allActiveTimeBasedTargets, error: targetsError } = await supabase
-        .from('targets')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('completion_mode', 'focus_minutes')
-        .is('completed_at', null) // Target is not already complete
-        .or(`start_date.is.null,start_date.lte.${today}`); // Target has started
-
-    if (targetsError) {
-        console.error("Error fetching targets to update progress:", JSON.stringify(targetsError, null, 2));
-        return null;
-    }
-    
-    if (!allActiveTimeBasedTargets || allActiveTimeBasedTargets.length === 0) {
-        return null; // No active time-based targets exist for this user.
-    }
-
-    // 3. Filter targets in JavaScript for case-insensitive tag matching.
-    const matchingTargets = allActiveTimeBasedTargets.filter(target => {
-        if (!target.tags || target.tags.length === 0) {
-            return false;
-        }
-        const targetTagsLower = target.tags.map(t => t.toLowerCase());
-        // Check if there's at least one common tag between the task and the target.
-        return taskTagsLower.some(tTag => targetTagsLower.includes(tTag));
-    });
-
-    if (matchingTargets.length === 0) {
-        return null; // No targets matched the task's tags.
-    }
-
-    // 4. Prepare and execute updates for all matched targets.
-    const updates = matchingTargets.map(target => {
-        const newProgress = target.progress_minutes + durationMinutes;
-        const targetUpdates: Partial<Target> = { progress_minutes: newProgress };
-        
-        // Check for completion
-        if (target.target_minutes && newProgress >= target.target_minutes) {
-            targetUpdates.completed_at = new Date().toISOString();
-        }
-        
-        return supabase
-            .from('targets')
-            .update(targetUpdates)
-            .eq('id', target.id);
-    });
-
-    // 5. Execute all update promises.
-    const results = await Promise.all(updates);
-    const anyError = results.some(res => res.error);
-    if (anyError) {
-        console.error("An error occurred during target progress update:", results.map(r => r.error).filter(Boolean));
-        // Still attempt to return the latest targets to keep the UI state as fresh as possible.
-    }
-
-    // 6. Return the full, updated list of targets.
-    return getTargets();
-};
 
 export const rescheduleTarget = async (targetId: string, newDeadline: string): Promise<Target[] | null> => {
     const { data: originalTarget, error: fetchError } = await supabase
@@ -825,15 +836,6 @@ export const rescheduleTarget = async (targetId: string, newDeadline: string): P
 
     return getTargets();
 };
-
-export const checkAndUpdatePastDueTargets = async (): Promise<Target[] | null> => {
-    // This function was causing an error because the 'targets.status' column does not exist.
-    // The logic to determine a target's status is now handled on the client-side
-    // by deriving it from 'completed_at' and 'deadline' fields.
-    // This function now returns null to prevent any database operations and errors.
-    return null;
-};
-
 
 // --- Commitments ---
 
@@ -947,7 +949,6 @@ export const checkAndUpdatePastDueCommitments = async (): Promise<Commitment[] |
     if (!user) return null;
     const today = getTodayDateString();
 
-    // Find active commitments with a due date that has passed.
     const { data: pastDueCommitments, error: findError } = await supabase
         .from('commitments')
         .select('id')
@@ -958,11 +959,11 @@ export const checkAndUpdatePastDueCommitments = async (): Promise<Commitment[] |
     
     if (findError) {
         console.error("Error finding past due commitments:", JSON.stringify(findError, null, 2));
-        return null; // Return null on error, don't proceed.
+        return null;
     }
 
     if (!pastDueCommitments || pastDueCommitments.length === 0) {
-        return null; // No commitments to update, return null to signal no state change needed.
+        return null;
     }
 
     const idsToUpdate = pastDueCommitments.map(c => c.id);
@@ -980,7 +981,6 @@ export const checkAndUpdatePastDueCommitments = async (): Promise<Commitment[] |
         return null;
     }
 
-    // On success, return the fresh list of all commitments.
     return getCommitments();
 };
 
@@ -988,36 +988,9 @@ export const checkAndUpdatePastDueCommitments = async (): Promise<Commitment[] |
 
 // --- Daily Logs ---
 
-export const getDailyLogForToday = async (): Promise<DbDailyLog | null> => {
-     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return null;
-
-    const today = getTodayDateString();
-    const { data, error } = await supabase
-        .from('daily_logs')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('date', today)
-        .single();
-    
-    if (error && error.code !== 'PGRST116') {
-        console.error("Error fetching daily log for today:", JSON.stringify(error, null, 2));
-    }
-
-    return data || { date: today, completed_sessions: 0, total_focus_minutes: 0, user_id: user.id };
-};
-
 export const upsertDailyLog = async (log: DbDailyLog): Promise<void> => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
-
-    // The 'upsert' with 'onConflict' requires a UNIQUE constraint on (user_id, date) in the database.
-    // The error "there is no unique or exclusion constraint matching the ON CONFLICT specification"
-    // indicates this constraint is missing.
-    // To fix this without altering the database schema, we perform a manual upsert:
-    // 1. Check if a log for the user and date exists.
-    // 2. If it exists, update it.
-    // 3. If it does not exist, insert it.
 
     const logData = {
         user_id: user.id,
@@ -1026,41 +999,34 @@ export const upsertDailyLog = async (log: DbDailyLog): Promise<void> => {
         total_focus_minutes: log.total_focus_minutes,
     };
 
-    // Step 1: Check for an existing log
     const { data: existingLog, error: selectError } = await supabase
         .from('daily_logs')
         .select('id')
         .eq('user_id', user.id)
         .eq('date', log.date)
-        .maybeSingle(); // Use maybeSingle to avoid an error if no row is found. It returns null instead.
+        .maybeSingle();
 
     if (selectError) {
-        console.error("Error checking for existing daily log:", JSON.stringify(selectError, null, 2));
+        console.error("Error checking for existing daily log:", selectError);
         return;
     }
     
     if (existingLog) {
-        // Step 2: Log exists, so we update it.
         const { error: updateError } = await supabase
             .from('daily_logs')
-            .update({ // Only update the fields that can change
+            .update({
                 completed_sessions: logData.completed_sessions,
                 total_focus_minutes: logData.total_focus_minutes,
             })
             .eq('id', existingLog.id);
         
-        if (updateError) {
-            console.error("Error updating daily log:", JSON.stringify(updateError, null, 2));
-        }
+        if (updateError) console.error("Error updating daily log:", updateError);
     } else {
-        // Step 3: Log does not exist, so we insert it.
         const { error: insertError } = await supabase
             .from('daily_logs')
             .insert(logData);
             
-        if (insertError) {
-            console.error("Error inserting daily log:", JSON.stringify(insertError, null, 2));
-        }
+        if (insertError) console.error("Error inserting daily log:", insertError);
     }
 };
 
@@ -1154,28 +1120,7 @@ export const getHistoricalTargets = async (startDate: string, endDate:string): P
     return data || [];
 };
 
-// --- Pomodoro History (for Heatmap) ---
-
-export const getTodaysPomodoroHistory = async (): Promise<PomodoroHistory[]> => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return [];
-
-    const today = getTodayDateString();
-
-    const { data, error } = await supabase
-        .from('pomodoro_history')
-        .select('*')
-        .eq('user_id', user.id)
-        .gte('ended_at', `${today}T00:00:00Z`)
-        .lte('ended_at', `${today}T23:59:59Z`);
-
-    if (error) {
-        console.error("Error fetching today's pomodoro history:", JSON.stringify(error, null, 2));
-        return [];
-    }
-    return data;
-};
-
+// --- Pomodoro History ---
 
 export const addPomodoroHistory = async (taskId: string | null, duration: number, difficulty: FocusLevel | null): Promise<void> => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -1386,12 +1331,9 @@ export const addNotifications = async (notifications: NewNotification[]): Promis
         ...n,
         user_id: user.id,
     }));
-    // FIX: The `.insert()` method was used with an incorrect `onConflict` option.
-    // Switched to `.upsert()` with the `ignoreDuplicates: true` option to correctly ignore
-    // notifications that already exist, based on the `user_id` and `unique_id` constraint.
     const { error } = await supabase
         .from('notifications')
-        .upsert(notificationsToInsert, { onConflict: 'user_id, unique_id', ignoreDuplicates: true }); // Use onConflict to ignore duplicates
+        .upsert(notificationsToInsert, { onConflict: 'user_id, unique_id', ignoreDuplicates: true });
 
     if (error) {
         console.error("Error adding notifications:", JSON.stringify(error, null, 2));

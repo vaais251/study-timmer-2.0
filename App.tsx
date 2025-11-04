@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
@@ -221,9 +222,52 @@ const App: React.FC = () => {
         }
     }, []); // Run only once on component mount
 
-    const fetchData = useCallback(async () => {
+    // Extracted logic to process pomodoro history into logs
+    const processAndSetHistoryData = useCallback((history: PomodoroHistory[]) => {
+        const today = getTodayDateString();
+        const fourteenDaysAgo = new Date();
+        fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 13);
+        
+        const logsByDate = new Map<string, DbDailyLog>();
+        
+        // Initialize map for all days in range to handle days with no activity
+        const loopDate = new Date(fourteenDaysAgo);
+        const todayDate = new Date();
+        todayDate.setHours(23, 59, 59, 999); // Ensure today is included
+        while (loopDate <= todayDate) {
+            const dateStr = getTodayDateString(loopDate);
+            logsByDate.set(dateStr, {
+                date: dateStr,
+                completed_sessions: 0,
+                total_focus_minutes: 0,
+            });
+            loopDate.setDate(loopDate.getDate() + 1);
+        }
+        
+        history.forEach(p => {
+            const localDate = new Date(p.ended_at);
+            const date = getTodayDateString(localDate);
+            
+            if (logsByDate.has(date)) {
+                const log = logsByDate.get(date)!;
+                log.completed_sessions += 1;
+                log.total_focus_minutes += Number(p.duration_minutes) || 0;
+            }
+        });
+
+        const authoritativeHistoricalLogs = Array.from(logsByDate.values()).sort((a, b) => a.date.localeCompare(b.date));
+        const freshTodaysHistory = history.filter(p => p.ended_at.startsWith(today));
+        const freshTodayLog = logsByDate.get(today) || { date: today, completed_sessions: 0, total_focus_minutes: 0 };
+        
+        setAllPomodoroHistory(history);
+        setTodaysHistory(freshTodaysHistory);
+        setHistoricalLogs(authoritativeHistoricalLogs);
+        setDailyLog(freshTodayLog);
+    }, []); // State setters are stable
+
+    const fetchData = useCallback(async (showLoading = true) => {
         if (!session) return;
-        setIsLoading(true);
+        if (showLoading) setIsLoading(true);
         try {
             const today = getTodayDateString();
             const fourteenDaysAgo = new Date();
@@ -244,42 +288,7 @@ const App: React.FC = () => {
             ]);
 
             // --- Process Pomodoro History to generate authoritative logs ---
-            const logsByDate = new Map<string, DbDailyLog>();
-            
-            // Initialize map for all days in range to handle days with no activity
-            const loopDate = new Date(fourteenDaysAgo);
-            const todayDate = new Date();
-            todayDate.setHours(23, 59, 59, 999); // Ensure today is included
-            while (loopDate <= todayDate) {
-                const dateStr = getTodayDateString(loopDate);
-                logsByDate.set(dateStr, {
-                    date: dateStr,
-                    completed_sessions: 0,
-                    total_focus_minutes: 0,
-                });
-                loopDate.setDate(loopDate.getDate() + 1);
-            }
-            
-            allPomodoroHistoryForRange.forEach(p => {
-                const localDate = new Date(p.ended_at);
-                const date = getTodayDateString(localDate);
-                
-                if (logsByDate.has(date)) {
-                    const log = logsByDate.get(date)!;
-                    log.completed_sessions += 1;
-                    log.total_focus_minutes += Number(p.duration_minutes) || 0;
-                }
-            });
-
-            const authoritativeHistoricalLogs = Array.from(logsByDate.values()).sort((a, b) => a.date.localeCompare(b.date));
-            const freshTodaysHistory = allPomodoroHistoryForRange.filter(p => p.ended_at.startsWith(today));
-            const freshTodayLog = logsByDate.get(today) || { date: today, completed_sessions: 0, total_focus_minutes: 0 };
-            
-            // --- Set React state with fresh, calculated data ---
-            setAllPomodoroHistory(allPomodoroHistoryForRange);
-            setTodaysHistory(freshTodaysHistory);
-            setHistoricalLogs(authoritativeHistoricalLogs);
-            setDailyLog(freshTodayLog);
+            processAndSetHistoryData(allPomodoroHistoryForRange);
 
             // Set other state from fetched data
             if (userSettings) setSettings(userSettings);
@@ -310,7 +319,9 @@ const App: React.FC = () => {
             if (userAiMemories) setAiMemories(userAiMemories);
             if (userNotifications) setNotifications(userNotifications);
             
-            if (!didRestoreFromStorage) {
+            // This logic block only runs on the very first data fetch after login,
+            // not on subsequent refetches, preserving the timer state.
+            if (showLoading && !didRestoreFromStorage) {
                 const firstTask = userTasks?.filter(t => t.due_date === getTodayDateString() && !t.completed_at)[0];
                 const isStopwatch = firstTask?.total_poms < 0;
                 const initialFocusTime = isStopwatch ? 0 : (firstTask?.custom_focus_duration || userSettings?.focusDuration || 25) * 60;
@@ -326,9 +337,9 @@ const App: React.FC = () => {
         } catch (error) {
             console.error("Error fetching data:", error);
         } finally {
-            setIsLoading(false);
+            if (showLoading) setIsLoading(false);
         }
-    }, [session, didRestoreFromStorage]);
+    }, [session, didRestoreFromStorage, processAndSetHistoryData]);
 
     useEffect(() => {
         if (session?.user?.id && session.user.id !== fetchedForUserId.current) {
@@ -729,16 +740,8 @@ const App: React.FC = () => {
         const project = projects.find(p => p.id === task.project_id);
         if (!project || project.status !== 'active' || project.completion_criteria_type !== 'duration_minutes') return;
         
-        const newProgress = project.progress_value + durationAdded;
-        let updates: Partial<Project> = { progress_value: newProgress };
-        
-        if (project.completion_criteria_value && newProgress >= project.completion_criteria_value) {
-            updates.status = 'completed';
-            updates.completed_at = new Date().toISOString();
-        }
-        
-        const updatedProjects = await dbService.updateProject(project.id, updates);
-        if (updatedProjects) setProjects(updatedProjects);
+        await dbService.recalculateProjectProgress(project.id);
+        await fetchData(false);
     };
 
     // Phase Completion Logic
@@ -876,31 +879,22 @@ const App: React.FC = () => {
             taskIsNowComplete = true;
         }
         
-        const updatedTask = await dbService.updateTask(currentTask.id, updatedFields);
+        const updatedTask = await dbService.updateTask(currentTask.id, updatedFields, {
+            shouldRecalculate: false // Defer recalculation
+        });
 
-        // Check for project completion by task count if task was just completed
+        // After task update, if it's now complete, recalculate project progress.
         if (taskIsNowComplete && updatedTask && updatedTask.project_id) {
-            // Automatically log an update for the project
             await dbService.addProjectUpdate(
                 updatedTask.project_id,
                 getTodayDateString(),
                 `Completed task: "${updatedTask.text}"`,
                 updatedTask.id
             );
-
-            const project = projects.find(p => p.id === updatedTask.project_id);
-            if (project && project.status === 'active' && project.completion_criteria_type === 'task_count') {
-                const newProgress = project.progress_value + 1;
-                let projectUpdates: Partial<Project> = { progress_value: newProgress };
-                if (project.completion_criteria_value && newProgress >= project.completion_criteria_value) {
-                    projectUpdates.status = 'completed';
-                    projectUpdates.completed_at = new Date().toISOString();
-                }
-                const updatedProjects = await dbService.updateProject(project.id, projectUpdates);
-                if (updatedProjects) setProjects(updatedProjects);
-            }
+            await dbService.recalculateProjectProgress(updatedTask.project_id);
         }
         
+        // Return task, but the main state refresh will happen in handleModalContinue
         return updatedTask;
     };
 
@@ -916,69 +910,24 @@ const App: React.FC = () => {
     
         // 1. If there's time on the clock, save it as a focus session.
         if (sessionDurationMinutes > 0) {
-            const newLog = {
-                ...dailyLog,
-                completed_sessions: dailyLog.completed_sessions + 1,
-                total_focus_minutes: dailyLog.total_focus_minutes + sessionDurationMinutes
-            };
-            setDailyLog(newLog);
-            
             await dbService.addPomodoroHistory(currentTask.id, sessionDurationMinutes, null);
-            
-            const newTargets = await dbService.updateTargetProgressOnPomodoro(currentTask.id, sessionDurationMinutes);
-            if (newTargets) {
-                setTargets(augmentTargetsWithStatus(newTargets));
-            }
-            
-            await checkProjectDurationCompletion(currentTask.id, sessionDurationMinutes);
-            
-            if (session) {
-                const newHistoryRecord: PomodoroHistory = {
-                    id: `temp-${Date.now()}`,
-                    user_id: session.user.id,
-                    task_id: currentTask.id,
-                    ended_at: new Date().toISOString(),
-                    duration_minutes: sessionDurationMinutes,
-                    difficulty: null,
-                };
-                setTodaysHistory(prev => [...prev, newHistoryRecord]);
-                 setHistoricalLogs(prevLogs => {
-                    const newLogs = [...prevLogs];
-                    const todayLogIndex = newLogs.findIndex(l => l.date === todayString);
-                    if (todayLogIndex > -1) newLogs[todayLogIndex] = newLog;
-                    else newLogs.push(newLog);
-                    return newLogs;
-                });
-            }
-            await dbService.upsertDailyLog(newLog);
         }
         
         // 2. Mark the task as complete
-        const updatedTask = await dbService.updateTask(currentTask.id, { completed_at: new Date().toISOString() });
+        await dbService.updateTask(currentTask.id, { completed_at: new Date().toISOString() }, {
+            shouldRecalculate: true // Let updateTask handle the recalculations
+        });
         
-        let finalTasksState = tasks;
-        if (updatedTask) {
-            finalTasksState = tasks.map(t => (t.id === updatedTask.id ? updatedTask : t));
-            setTasks(finalTasksState);
-    
-            if (updatedTask.project_id) {
-                await dbService.addProjectUpdate(updatedTask.project_id, todayString, `Completed task: "${updatedTask.text}"`, updatedTask.id);
-                const project = projects.find(p => p.id === updatedTask.project_id);
-                if (project && project.status === 'active' && project.completion_criteria_type === 'task_count') {
-                    const newProgress = project.progress_value + 1;
-                    let projectUpdates: Partial<Project> = { progress_value: newProgress };
-                    if (project.completion_criteria_value && newProgress >= project.completion_criteria_value) {
-                        projectUpdates.status = 'completed';
-                        projectUpdates.completed_at = new Date().toISOString();
-                    }
-                    const updatedProjects = await dbService.updateProject(project.id, projectUpdates);
-                    if (updatedProjects) setProjects(updatedProjects);
-                }
-            }
+        // Add a project update after the task is marked as complete
+        if (currentTask.project_id) {
+            await dbService.addProjectUpdate(currentTask.project_id, todayString, `Completed task: "${currentTask.text}"`, currentTask.id);
         }
         
-        // 3. Reset the timer for the next task
-        const nextTask = finalTasksState.filter(t => t.due_date === todayString && !t.completed_at)[0];
+        // 3. Trigger a full data refresh to sync UI
+        await fetchData(false);
+        
+        // 4. Reset the timer for the next task
+        const nextTask = tasks.filter(t => t.due_date === todayString && !t.completed_at)[0];
         const isNextStopwatch = nextTask?.total_poms < 0;
         const newTime = isNextStopwatch ? 0 : (nextTask?.custom_focus_duration || settings.focusDuration) * 60;
         const newTotalTime = isNextStopwatch ? (nextTask?.custom_focus_duration || settings.focusDuration) * 60 : newTime;
@@ -995,120 +944,38 @@ const App: React.FC = () => {
     };
 
     // Modal Continue Handler
-    const handleModalContinue = async (comment: string, focusLevel: FocusLevel | null) => {
+    const handleModalContinue = (comment: string, focusLevel: FocusLevel | null) => {
         if (notificationInterval.current) clearInterval(notificationInterval.current);
-        
-        let finalTasksState = [...tasks];
+
         const wasFocusSession = modalContent.showCommentBox;
         const taskJustWorkedOn = tasksToday.find(t => !t.completed_at);
+        const sessionTotalTime = appState.sessionTotalTime; // Capture for background task.
+        const currentSessionNumber = appState.currentSession;
+        const sessionsPerCycle = settings.sessionsPerCycle;
 
-        // --- Logic moved from completePhase ---
-        if (wasFocusSession) {
-            const focusDuration = Math.round(appState.sessionTotalTime / 60);
-
-            // Optimistic UI update for daily log
-            const newLog = {
-                ...dailyLog,
-                completed_sessions: dailyLog.completed_sessions + 1,
-                total_focus_minutes: dailyLog.total_focus_minutes + focusDuration
-            };
-            setDailyLog(newLog);
-            
-            // Log the individual pomodoro session with focus level
-            await dbService.addPomodoroHistory(taskJustWorkedOn?.id || null, focusDuration, focusLevel);
-            
-            // Update progress for any matching time-based targets
-            if (taskJustWorkedOn?.id) {
-                const updatedTargets = await dbService.updateTargetProgressOnPomodoro(taskJustWorkedOn.id, focusDuration);
-                if (updatedTargets) {
-                    setTargets(augmentTargetsWithStatus(updatedTargets));
-                }
-            }
-
-            // Check for project completion by duration
-            if (taskJustWorkedOn?.id) {
-                await checkProjectDurationCompletion(taskJustWorkedOn.id, focusDuration);
-            }
-            
-            // Optimistically update history for immediate UI feedback
-            if (session) {
-                const newHistoryRecord: PomodoroHistory = {
-                    id: `temp-${Date.now()}`,
-                    user_id: session.user.id,
-                    task_id: taskJustWorkedOn?.id || null,
-                    ended_at: new Date().toISOString(),
-                    duration_minutes: focusDuration,
-                    difficulty: focusLevel,
-                };
-                setTodaysHistory(prev => [...prev, newHistoryRecord]);
-                // Also update the historical logs state for live updates to charts
-                setHistoricalLogs(prevLogs => {
-                    const newLogs = [...prevLogs];
-                    const todayLogIndex = newLogs.findIndex(l => l.date === todayString);
-                    if (todayLogIndex > -1) {
-                        newLogs[todayLogIndex] = newLog;
-                    } else {
-                        newLogs.push(newLog);
-                    }
-                    return newLogs;
-                });
-            }
-            
-            // Also update the daily log in the DB (mainly for session count)
-            await dbService.upsertDailyLog(newLog);
-        }
-        // --- End of moved logic ---
-
-        // @learn logic
-        let taskComment = comment;
-        const learnRegex = /@learn\s(.+)/i;
-        const learnMatch = comment.match(learnRegex);
-
-        if (learnMatch && learnMatch[1] && taskJustWorkedOn) {
-            taskComment = comment.substring(0, learnMatch.index).trim();
-            const learningContentRaw = learnMatch[1].trim();
-
-            const hashtagRegex = /#(\w+)/g;
-            const tagsFromLearn: string[] = [];
-            let match;
-            while ((match = hashtagRegex.exec(learningContentRaw)) !== null) {
-                tagsFromLearn.push(match[1]);
-            }
-
-            const cleanLearningContent = learningContentRaw.replace(hashtagRegex, '').trim();
-            const combinedTags = [...new Set([...(taskJustWorkedOn.tags || []), ...tagsFromLearn])];
-
-            const newMemory = await dbService.addAiMemory('learning', cleanLearningContent, combinedTags, taskJustWorkedOn.id);
-            if (newMemory) {
-                setAiMemories(prev => [newMemory, ...prev]);
-                setToastNotification('🧠 AI memory updated!');
-            }
-        }
-
-        if (wasFocusSession && taskJustWorkedOn) {
-            const updatedTask = await handleTaskCompletion(taskComment);
-            if (updatedTask) {
-                finalTasksState = tasks.map(t => t.id === updatedTask.id ? updatedTask : t);
-                setTasks(finalTasksState);
-            }
-        }
-
+        // --- Start UI transition immediately ---
         const nextMode = modalContent.nextMode;
-        const newCurrentSession = nextMode === 'focus' 
-            ? (appState.currentSession >= settings.sessionsPerCycle ? 1 : appState.currentSession + 1)
-            : appState.currentSession;
         
-        let updatedTasksToday = finalTasksState.filter(t => t.due_date === getTodayDateString() && !t.completed_at);
-        if (todaySortBy === 'priority') {
-            // Re-apply sort to ensure the next task selected is correct
-            updatedTasksToday.sort((a, b) => {
-                const priorityA = a.priority ?? 5;
-                const priorityB = b.priority ?? 5;
-                if (priorityA !== priorityB) {
-                    return priorityA - priorityB;
-                }
-                return (a.task_order ?? Infinity) - (b.task_order ?? Infinity);
-            });
+        const newCurrentSession = nextMode === 'focus' 
+            ? (currentSessionNumber >= sessionsPerCycle ? 1 : currentSessionNumber + 1)
+            : currentSessionNumber;
+        
+        // Predict the next task for setting the timer correctly
+        const willBeComplete = wasFocusSession && taskJustWorkedOn && taskJustWorkedOn.total_poms > 0 && (taskJustWorkedOn.completed_poms + 1 >= taskJustWorkedOn.total_poms);
+
+        let nextTaskForTimer: Task | undefined;
+        if (nextMode === 'break') {
+            // Break timer is based on the task just worked on
+            nextTaskForTimer = taskJustWorkedOn;
+        } else { // nextMode is 'focus'
+            if (willBeComplete) {
+                // Find the next task in the sorted list
+                const completedTaskIndex = tasksToday.findIndex(t => t.id === taskJustWorkedOn!.id);
+                nextTaskForTimer = tasksToday[completedTaskIndex + 1];
+            } else {
+                // Next task is the current one (if not complete) or the first in the list
+                nextTaskForTimer = tasksToday.find(t => !t.completed_at);
+            }
         }
         
         let newTime;
@@ -1117,18 +984,17 @@ const App: React.FC = () => {
         if (nextMode === 'break') {
             newTime = (taskJustWorkedOn?.custom_break_duration || settings.breakDuration) * 60;
             newTotalTime = newTime;
-        } else {
-            const nextTask = updatedTasksToday[0];
-            const isNextStopwatch = nextTask?.total_poms < 0;
+        } else { // focus
+            const isNextStopwatch = nextTaskForTimer?.total_poms < 0;
             if (isNextStopwatch) {
-                newTime = 0; // Start new stopwatch chunk from 0
-                newTotalTime = (nextTask?.custom_focus_duration || settings.focusDuration) * 60;
+                newTime = 0;
+                newTotalTime = (nextTaskForTimer?.custom_focus_duration || settings.focusDuration) * 60;
             } else {
-                newTime = (nextTask?.custom_focus_duration || settings.focusDuration) * 60;
+                newTime = (nextTaskForTimer?.custom_focus_duration || settings.focusDuration) * 60;
                 newTotalTime = newTime;
             }
         }
-
+        
         const newEndTime = nextMode === 'break' ? Date.now() + newTime * 1000 : null;
 
         setAppState(prev => ({
@@ -1140,115 +1006,135 @@ const App: React.FC = () => {
             isRunning: true,
         }));
         setPhaseEndTime(newEndTime);
-
         setIsModalVisible(false);
         playStartSound();
+
+        // --- Perform DB updates in the background ---
+        const performBackgroundUpdates = async () => {
+            if (wasFocusSession) {
+                const focusDuration = Math.round(sessionTotalTime / 60);
+
+                await dbService.addPomodoroHistory(taskJustWorkedOn?.id || null, focusDuration, focusLevel);
+                
+                if (taskJustWorkedOn?.id) {
+                    if (taskJustWorkedOn.tags && taskJustWorkedOn.tags.length > 0) {
+                        await dbService.recalculateProgressForAffectedTargets(taskJustWorkedOn.tags, session?.user.id || '');
+                    }
+                    if (taskJustWorkedOn.project_id) {
+                        await checkProjectDurationCompletion(taskJustWorkedOn.id, focusDuration);
+                    }
+                }
+            }
+
+            let taskComment = comment;
+            if (wasFocusSession && taskJustWorkedOn) {
+                const learnRegex = /@learn\s(.+)/i;
+                const learnMatch = comment.match(learnRegex);
+
+                if (learnMatch && learnMatch[1]) {
+                    taskComment = comment.substring(0, learnMatch.index).trim();
+                    const learningContentRaw = learnMatch[1].trim();
+                    const hashtagRegex = /#(\w+)/g;
+                    const tagsFromLearn: string[] = [];
+                    let match;
+                    while ((match = hashtagRegex.exec(learningContentRaw)) !== null) {
+                        tagsFromLearn.push(match[1]);
+                    }
+                    const cleanLearningContent = learningContentRaw.replace(hashtagRegex, '').trim();
+                    const combinedTags = [...new Set([...(taskJustWorkedOn.tags || []), ...tagsFromLearn])];
+                    const newMemory = await dbService.addAiMemory('learning', cleanLearningContent, combinedTags, taskJustWorkedOn.id);
+                    if (newMemory) {
+                        setToastNotification('🧠 AI memory updated!');
+                    }
+                }
+                await handleTaskCompletion(taskComment);
+            }
+            
+            await fetchData(false);
+        };
+
+        performBackgroundUpdates().catch(err => {
+            console.error("Error during background data update:", err);
+            // Optionally show an error toast to the user here
+        });
     };
     
     const handleUpdateTaskTimers = async (id: string, newTimers: { focus: number | null, break: number | null }) => {
-        const updates = {
+        await dbService.updateTask(id, {
             custom_focus_duration: newTimers.focus,
             custom_break_duration: newTimers.break,
-        };
-        const updatedTask = await dbService.updateTask(id, updates);
-        
-        if (updatedTask) {
-             setTasks(prevTasks => prevTasks.map(t => (t.id === id ? updatedTask : t)));
-        }
+        });
+        await fetchData(false);
     };
 
     const handleUpdateTask = async (id: string, newText: string, newTags: string[], newPoms: number, projectId: string | null, priority: number | null) => {
-        const updates = {
+        await dbService.updateTask(id, {
             text: newText,
             tags: newTags,
             total_poms: newPoms,
             project_id: projectId,
             priority: priority,
-        };
-        const updatedTask = await dbService.updateTask(id, updates);
-        if (updatedTask) {
-             setTasks(prevTasks => prevTasks.map(t => (t.id === id ? updatedTask : t)));
-        }
+        });
+        await fetchData(false);
     };
 
     const handleAddTask = async (text: string, poms: number, dueDate: string, projectId: string | null, tags: string[], priority: number | null) => {
-        const newTasks = await dbService.addTask(text, poms, dueDate, projectId, tags, priority);
-        if (newTasks) {
-            setTasks(newTasks);
-        }
+        await dbService.addTask(text, poms, dueDate, projectId, tags, priority);
+        await fetchData(false);
     };
 
     const handleDeleteTask = async (id: string) => {
-        const result = await dbService.deleteTask(id);
-        if (result.tasks) setTasks(result.tasks);
-        if (result.projects) setProjects(result.projects);
-        if (result.targets) setTargets(augmentTargetsWithStatus(result.targets));
+        await dbService.deleteTask(id);
+        await fetchData(false);
     };
 
     const handleMoveTask = async (id: string, action: 'postpone' | 'duplicate') => {
-        const newTasks = await dbService.moveTask(id, action);
-        if (newTasks) setTasks(newTasks);
+        await dbService.moveTask(id, action);
+        await fetchData(false);
     };
     
     const handleBringTaskForward = async (id: string) => {
-        const newTasks = await dbService.bringTaskForward(id);
-        if (newTasks) setTasks(newTasks);
+        await dbService.bringTaskForward(id);
+        await fetchData(false);
     };
 
     const handleReorderTasks = async (reorderedTasks: Task[]) => {
-        // When the user manually reorders, switch back to the default sort order.
         setTodaySortBy('default');
         
-        // Optimistically update UI to feel snappy
         setTasks(currentTasks => {
             const reorderedIds = new Set(reorderedTasks.map(t => t.id));
             const otherTasks = currentTasks.filter(t => !reorderedIds.has(t.id));
-            const newTaskList = [...otherTasks, ...reorderedTasks].sort((a,b) => {
-                if (a.due_date < b.due_date) return -1;
-                if (a.due_date > b.due_date) return 1;
-                return (a.task_order ?? Infinity) - (b.task_order ?? Infinity);
-            });
-            return newTaskList;
+            return [...otherTasks, ...reorderedTasks].sort((a,b) => (a.task_order ?? Infinity) - (b.task_order ?? Infinity));
         });
 
-        // Prepare data for DB update
-        const tasksToUpdate = reorderedTasks.map((task, index) => ({
-            id: task.id,
-            task_order: index,
-        }));
-
-        // Update DB and fetch definitive state
-        const finalTasks = await dbService.updateTaskOrder(tasksToUpdate);
-        if (finalTasks) {
-            setTasks(finalTasks);
-        }
+        await dbService.updateTaskOrder(reorderedTasks.map((task, index) => ({ id: task.id, task_order: index })));
+        await fetchData(false);
     };
 
     const handleMarkTaskIncomplete = async (id: string) => {
-        const newTasks = await dbService.markTaskIncomplete(id);
-        if (newTasks) setTasks(newTasks);
+        await dbService.markTaskIncomplete(id);
+        await fetchData(false);
     };
 
     // --- Project Handlers ---
     const handleAddProject = async (name: string, description: string | null = null, startDate: string | null = null, deadline: string | null = null, criteria: {type: Project['completion_criteria_type'], value: number | null} = {type: 'manual', value: null}, priority: number | null = null, activeDays: number[] | null = null): Promise<string | null> => {
         const newProject = await dbService.addProject(name, description, startDate, deadline, criteria.type, criteria.value, priority, activeDays);
         if (newProject) {
-            setProjects(prev => [...prev, newProject].sort((a, b) => a.name.localeCompare(b.name)));
+            await fetchData(false);
             return newProject.id;
         }
         return null;
     };
     
     const handleUpdateProject = async (id: string, updates: Partial<Project>) => {
-        const updatedProjects = await dbService.updateProject(id, updates);
-        if (updatedProjects) setProjects(updatedProjects);
+        await dbService.updateProject(id, updates);
+        await fetchData(false);
     };
 
     const handleDeleteProject = async (id: string) => {
         const result = await dbService.deleteProject(id);
-        if (result.success && result.data) {
-            setProjects(result.data.projects);
-            setTasks(result.data.tasks); // Tasks might be unlinked, so we need to refresh them.
+        if (result.success) {
+            await fetchData(false);
         } else if (result.error) {
             alert(`Error: ${result.error}`);
         }
@@ -1256,23 +1142,23 @@ const App: React.FC = () => {
     
     // --- Goal Handlers ---
     const handleAddGoal = async (text: string) => {
-        const newGoals = await dbService.addGoal(text);
-        if (newGoals) setGoals(newGoals);
+        await dbService.addGoal(text);
+        await fetchData(false);
     };
     
     const handleUpdateGoal = async (id: string, text: string) => {
-        const newGoals = await dbService.updateGoal(id, { text });
-        if (newGoals) setGoals(newGoals);
+        await dbService.updateGoal(id, { text });
+        await fetchData(false);
     };
 
     const handleDeleteGoal = async (id: string) => {
-        const newGoals = await dbService.deleteGoal(id);
-        if (newGoals) setGoals(newGoals);
+        await dbService.deleteGoal(id);
+        await fetchData(false);
     };
 
     const handleSetGoalCompletion = async (id: string, isComplete: boolean) => {
-        const newGoals = await dbService.setGoalCompletion(id, isComplete ? new Date().toISOString() : null);
-        if (newGoals) setGoals(newGoals);
+        await dbService.setGoalCompletion(id, isComplete ? new Date().toISOString() : null);
+        await fetchData(false);
     };
     
     // --- Target Handlers ---
@@ -1285,75 +1171,63 @@ const App: React.FC = () => {
         tags: string[] | null, 
         targetMinutes: number | null
     ) => {
-        const newTargets = await dbService.addTarget(text, deadline, priority, startDate, completionMode, tags, targetMinutes);
-        if (newTargets) {
-            setTargets(augmentTargetsWithStatus(newTargets));
-        }
+        await dbService.addTarget(text, deadline, priority, startDate, completionMode, tags, targetMinutes);
+        await fetchData(false);
     };
     
     const handleUpdateTarget = async (id: string, updates: Partial<Target>) => {
-        const newTargets = await dbService.updateTarget(id, updates);
-        if (newTargets) {
-            setTargets(augmentTargetsWithStatus(newTargets));
-        }
+        await dbService.updateTarget(id, updates);
+        await fetchData(false);
     };
 
     const handleDeleteTarget = async (id: string) => {
-        const newTargets = await dbService.deleteTarget(id);
-        if (newTargets) {
-            setTargets(augmentTargetsWithStatus(newTargets));
-        }
+        await dbService.deleteTarget(id);
+        await fetchData(false);
     };
 
     // --- Commitment Handlers ---
     const handleAddCommitment = async (text: string, dueDate: string | null) => {
-        const newCommitments = await dbService.addCommitment(text, dueDate);
-        if (newCommitments) setAllCommitments(newCommitments);
+        await dbService.addCommitment(text, dueDate);
+        await fetchData(false);
     };
 
     const handleUpdateCommitment = async (id: string, updates: { text: string; dueDate: string | null }) => {
-        const newCommitments = await dbService.updateCommitment(id, updates);
-        if (newCommitments) setAllCommitments(newCommitments);
+        await dbService.updateCommitment(id, updates);
+        await fetchData(false);
     };
 
     const handleDeleteCommitment = async (id: string) => {
-        const newCommitments = await dbService.deleteCommitment(id);
-        if (newCommitments) setAllCommitments(newCommitments);
+        await dbService.deleteCommitment(id);
+        await fetchData(false);
     };
 
     const handleSetCommitmentCompletion = async (id: string, isComplete: boolean) => {
-        const newCommitments = await dbService.setCommitmentCompletion(id, isComplete);
-        if (newCommitments) setAllCommitments(newCommitments);
+        await dbService.setCommitmentCompletion(id, isComplete);
+        await fetchData(false);
     };
     
     const handleMarkCommitmentBroken = async (id: string) => {
-        const newCommitments = await dbService.markCommitmentBroken(id);
-        if (newCommitments) setAllCommitments(newCommitments);
+        await dbService.markCommitmentBroken(id);
+        await fetchData(false);
     };
 
     // --- Reschedule Handlers ---
     const handleRescheduleProject = async (id: string, newDeadline: string | null) => {
-        const newProjects = await dbService.rescheduleProject(id, newDeadline);
-        if (newProjects) {
-            setProjects(newProjects);
-            setToastNotification('Project rescheduled successfully!');
-        }
+        await dbService.rescheduleProject(id, newDeadline);
+        setToastNotification('Project rescheduled successfully!');
+        await fetchData(false);
     };
 
     const handleRescheduleTarget = async (id: string, newDeadline: string) => {
-        const newTargets = await dbService.rescheduleTarget(id, newDeadline);
-        if (newTargets) {
-            setTargets(augmentTargetsWithStatus(newTargets));
-            setToastNotification('Target rescheduled successfully!');
-        }
+        await dbService.rescheduleTarget(id, newDeadline);
+        setToastNotification('Target rescheduled successfully!');
+        await fetchData(false);
     };
 
     const handleRescheduleCommitment = async (id: string, newDueDate: string | null) => {
-        const newCommitments = await dbService.rescheduleCommitment(id, newDueDate);
-        if (newCommitments) {
-            setAllCommitments(newCommitments);
-            setToastNotification('Commitment rescheduled successfully!');
-        }
+        await dbService.rescheduleCommitment(id, newDueDate);
+        setToastNotification('Commitment rescheduled successfully!');
+        await fetchData(false);
     };
 
     const handleRescheduleItemFromAI = async (itemId: string, itemType: 'project' | 'target' | 'commitment', newDate: string | null): Promise<void> => {
@@ -1376,10 +1250,8 @@ const App: React.FC = () => {
 
     // --- AI Coach Specific Task Adder (for promise-based flow) ---
     const handleAddTaskFromAI = async (text: string, poms: number, dueDate: string, projectId: string | null, tags: string[], priority: number | null): Promise<void> => {
-        const newTasks = await dbService.addTask(text, poms, dueDate, projectId, tags, priority);
-        if (newTasks) {
-            setTasks(newTasks);
-        }
+        await dbService.addTask(text, poms, dueDate, projectId, tags, priority);
+        await fetchData(false);
     };
 
     const refreshAiMemories = async () => {
@@ -1395,6 +1267,7 @@ const App: React.FC = () => {
         await dbService.updateSettings(newSettings);
         setSettings(newSettings);
         setToastNotification('Settings saved!');
+        await fetchData(false);
     };
 
     if (!session) {
