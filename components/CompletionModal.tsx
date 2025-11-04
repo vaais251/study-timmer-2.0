@@ -43,14 +43,13 @@ const FocusLevelButton: React.FC<{ level: FocusLevel; label: string; icon: strin
 
 const CompletionModal: React.FC<CompletionModalProps> = ({ title, message, nextMode, showCommentBox, onContinue }) => {
     const [comment, setComment] = useState('');
-    const [focusLevel, setFocusLevel] = useState<FocusLevel | null>(null);
     
     const isFocusNext = nextMode === 'focus';
     const accentColor = isFocusNext ? 'text-teal-400' : 'text-purple-400';
     const buttonBg = isFocusNext ? 'bg-teal-500 hover:bg-teal-600' : 'bg-purple-500 hover:bg-purple-600';
 
-    const handleSelectFocus = (level: FocusLevel) => {
-        setFocusLevel(prev => prev === level ? null : level);
+    const handleSelectFocusAndContinue = (level: FocusLevel) => {
+        onContinue(comment, level);
     };
 
     return (
@@ -69,18 +68,18 @@ const CompletionModal: React.FC<CompletionModalProps> = ({ title, message, nextM
                             className="w-full bg-slate-700/50 border border-slate-600 rounded-lg p-3 text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-400 focus:border-teal-400 mb-4 min-h-[80px]"
                         />
                          <div className="my-4">
-                            <h3 className="text-sm font-semibold text-white mb-2">How was your focus? (Optional)</h3>
+                            <h3 className="text-sm font-semibold text-white mb-2">How was your focus? (Click to continue)</h3>
                             <div className="flex justify-center gap-2">
-                                <FocusLevelButton level="complete_focus" label="Full Focus" icon="😊" selected={focusLevel} onSelect={handleSelectFocus} />
-                                <FocusLevelButton level="half_focus" label="Half Focus" icon="🤔" selected={focusLevel} onSelect={handleSelectFocus} />
-                                <FocusLevelButton level="none_focus" label="Distracted" icon="😩" selected={focusLevel} onSelect={handleSelectFocus} />
+                                <FocusLevelButton level="complete_focus" label="Full Focus" icon="😊" selected={null} onSelect={handleSelectFocusAndContinue} />
+                                <FocusLevelButton level="half_focus" label="Half Focus" icon="🤔" selected={null} onSelect={handleSelectFocusAndContinue} />
+                                <FocusLevelButton level="none_focus" label="Distracted" icon="😩" selected={null} onSelect={handleSelectFocusAndContinue} />
                             </div>
                         </div>
                     </>
                 )}
                 
                 <button
-                    onClick={() => onContinue(comment, focusLevel)}
+                    onClick={() => onContinue(comment, null)}
                     className={`w-full p-4 ${buttonBg} text-white font-bold rounded-lg transition-transform hover:scale-105 uppercase tracking-wider`}
                 >
                     Start Next Phase
