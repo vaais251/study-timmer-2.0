@@ -42,6 +42,7 @@ export const playFocusEndSound = () => { playSound(1046.50, 0.1); setTimeout(() 
 export const playBreakStartSound = () => { playSound(880, 0.2); setTimeout(() => playSound(783.99, 0.2), 200); setTimeout(() => playSound(659.25, 0.2), 400); setTimeout(() => playSound(523.25, 0.3), 600); };
 export const playBreakEndSound = () => { playSound(659.25, 0.15); setTimeout(() => playSound(659.25, 0.15), 200); setTimeout(() => playSound(783.99, 0.2), 400); setTimeout(() => playSound(1046.50, 0.25), 600); };
 export const playAlertLoop = () => { playSound(1000, 0.3); setTimeout(() => playSound(1200, 0.3), 400); };
+export const playNotificationSound = () => { playSound(880.00, 0.1); setTimeout(() => playSound(1046.50, 0.2), 120); };
 
 
 // --- White Noise ---

@@ -1,5 +1,6 @@
 
 
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
@@ -7,7 +8,7 @@ import * as dbService from './services/dbService';
 import { NewNotification } from './services/dbService';
 import { Task, Settings, Mode, Page, DbDailyLog, Project, Goal, Target, AppState, PomodoroHistory, Commitment, ChatMessage, AiMemory, AppNotification, FocusLevel } from './types';
 import { getTodayDateString } from './utils/date';
-import { playFocusStartSound, playFocusEndSound, playBreakStartSound, playBreakEndSound, playAlertLoop, resumeAudioContext } from './utils/audio';
+import { playFocusStartSound, playFocusEndSound, playBreakStartSound, playBreakEndSound, playAlertLoop, resumeAudioContext, playNotificationSound } from './utils/audio';
 
 import Navbar from './components/layout/Navbar';
 import TimerPage from './pages/TimerPage';
@@ -469,7 +470,7 @@ const App: React.FC = () => {
             }
         };
     
-        // 1. Deadline Reminders
+        // 1. Deadline Reminders & Alerts
         const todayStr = getTodayDateString(today);
         const tomorrow = new Date(today);
         tomorrow.setDate(today.getDate() + 1);
@@ -478,20 +479,27 @@ const App: React.FC = () => {
         const tomorrowStr = getTodayDateString(tomorrow);
         const threeDaysStr = getTodayDateString(threeDaysFromNow);
     
-        // Add notifications for tasks due today
-        tasks.forEach(task => {
-            if (task.due_date === todayStr && !task.completed_at) {
-                createNotificationPayload(`task-due-today-${task.id}`, `Task "${task.text}" is due today!`, 'deadline');
-            }
-        });
-
         [...projects, ...targets].forEach(item => {
-            if ('deadline' in item && item.deadline && item.status !== 'completed' && item.status !== 'incomplete') {
+            // Ensure the item has a deadline and is currently active or due/incomplete
+            if ('deadline' in item && item.deadline && (item.status === 'active' || item.status === 'due' || item.status === 'incomplete')) {
+                const itemType = 'name' in item ? 'project' : 'target';
                 const itemName = 'name' in item ? item.name : item.text;
-                if (item.deadline === tomorrowStr) {
-                    createNotificationPayload(`deadline-${item.id}-1day`, `"${itemName}" is due tomorrow!`, 'deadline');
-                } else if (item.deadline === threeDaysStr) {
-                    createNotificationPayload(`deadline-${item.id}-3day`, `Reminder: "${itemName}" is due in 3 days.`, 'deadline');
+                const itemTypeName = itemType.charAt(0).toUpperCase() + itemType.slice(1);
+    
+                // NEW: Critical Alert for overdue items
+                if (item.status === 'due' || item.status === 'incomplete') {
+                    const message = item.status === 'due'
+                        ? `${itemTypeName} "${itemName}" is overdue!`
+                        : `${itemTypeName} "${itemName}" was missed!`;
+                    createNotificationPayload(`${itemType}-overdue-${item.id}`, message, 'alert');
+                } else if (item.status === 'active') { // Only create warnings for active items
+                    if (item.deadline === todayStr) {
+                        createNotificationPayload(`${itemType}-due-today-${item.id}`, `${itemTypeName} "${itemName}" is due today!`, 'deadline');
+                    } else if (item.deadline === tomorrowStr) {
+                        createNotificationPayload(`${itemType}-due-1day-${item.id}`, `${itemTypeName} "${itemName}" is due tomorrow!`, 'deadline');
+                    } else if (item.deadline === threeDaysStr) {
+                        createNotificationPayload(`${itemType}-due-3day-${item.id}`, `Reminder: ${itemTypeName} "${itemName}" is due in 3 days.`, 'deadline');
+                    }
                 }
             }
         });
@@ -537,6 +545,7 @@ const App: React.FC = () => {
         if (newNotifications.length > 0) {
             const addAndRefreshNotifications = async () => {
                 await dbService.addNotifications(newNotifications);
+                playNotificationSound();
                 const freshNotifications = await dbService.getNotifications();
                 if (freshNotifications) {
                     setNotifications(freshNotifications);

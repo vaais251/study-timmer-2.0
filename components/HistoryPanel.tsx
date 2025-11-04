@@ -940,6 +940,7 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                 lineChartData: [], 
                 taskBreakdownData: [{ name: 'Completed', value: 0 }, { name: 'Pending', value: 0 }],
                 projectBreakdownData: [{ name: 'Completed', value: 0 }, { name: 'Pending', value: 0 }],
+                targetBreakdownData: [{ name: 'Completed', value: 0 }, { name: 'Active', value: 0 }, { name: 'Incomplete', value: 0 }],
                 tagAnalysisData: [],
                 focusLineChartData: [],
                 dailyPomVolumeChartData: [],
@@ -1131,6 +1132,18 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
             { name: 'Due', value: totalDueProjects },
         ].filter(d => d.value > 0);
         
+        const targetCounts = { completed: 0, active: 0, incomplete: 0 };
+        allTargets.forEach(target => {
+            if (target.status) {
+                targetCounts[target.status]++;
+            }
+        });
+        const targetBreakdownData = [
+            { name: 'Completed', value: targetCounts.completed },
+            { name: 'Active', value: targetCounts.active },
+            { name: 'Incomplete', value: targetCounts.incomplete },
+        ].filter(d => d.value > 0);
+
         const tagAnalysisData = (() => {
             // Authoritative calculation using pomodoro_history as the source of truth for time spent.
             // This ensures consistency with the Mastery Tracker.
@@ -1170,7 +1183,7 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
         return {
             totalFocus, completedCount, totalTasks, pomsDone, pomsEst, projectsCompleted, targetsCompleted,
             totalProjectsInRange, totalTargetsInRange,
-            lineChartData, taskBreakdownData, projectBreakdownData, tagAnalysisData, focusLineChartData, dailyPomVolumeChartData,
+            lineChartData, taskBreakdownData, projectBreakdownData, targetBreakdownData, tagAnalysisData, focusLineChartData, dailyPomVolumeChartData,
             averageDailyFocus,
             dayDiff
         };
@@ -1443,6 +1456,7 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
 
     const COLORS_TASKS = ['#34D399', '#F87171'];
     const COLORS_PROJECTS = ['#34D399', '#60A5FA', '#F87171']; // Completed, Active, Due
+    const COLORS_TARGETS = ['#34D399', '#60A5FA', '#F87171']; // Completed, Active, Incomplete
     const COLORS_PIE = ['#F59E0B', '#10B981', '#84CC16', '#EC4899', '#38BDF8', '#F43F5E', '#6366F1'];
 
 
@@ -1514,6 +1528,7 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                 dataForTab.dailyFocusConsistency = consistencyLogs.map(l => ({ date: l.date, minutes: l.total_focus_minutes }));
                 dataForTab.dailyFocusTrend = aggregatedData.focusLineChartData;
                 dataForTab.projectStatusBreakdown = aggregatedData.projectBreakdownData;
+                dataForTab.targetStatusBreakdown = aggregatedData.targetBreakdownData;
                 dataForTab.taskStatusBreakdown = aggregatedData.taskBreakdownData;
                 break;
             case 'tasks':
@@ -1813,6 +1828,18 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
             </PieChart>
         </ResponsiveContainer>
     );
+    
+    const targetBreakdownPieChartElement = (
+        <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+                <Pie data={aggregatedData.targetBreakdownData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} fill="#8884d8" label>
+                    {aggregatedData.targetBreakdownData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS_TARGETS[index % COLORS_TARGETS.length]} />)}
+                </Pie>
+                <Tooltip contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }} itemStyle={{ color: 'white' }} />
+                <Legend wrapperStyle={{fontSize: "12px"}}/>
+            </PieChart>
+        </ResponsiveContainer>
+    );
 
     const avgDailyFocusChartElement = (
         <ResponsiveContainer width="100%" height="100%">
@@ -1946,6 +1973,15 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                             <button onClick={() => openInsightModal('Overall Project Breakdown', aggregatedData.projectBreakdownData, <div className="h-64">{projectBreakdownPieChartElement}</div>)} className="p-1 text-purple-400 hover:text-purple-300 transition" title="Get AI Insights"><SparklesIcon /></button>
                         </div>
                         <div className="h-64">{projectBreakdownPieChartElement}</div>
+                    </div>
+                    
+                    {/* Overall Target Breakdown */}
+                    <div>
+                        <div className="flex justify-center items-center gap-2 mb-2">
+                            <h3 className="text-lg font-semibold text-white text-center">Overall Target Breakdown</h3>
+                            <button onClick={() => openInsightModal('Overall Target Breakdown', aggregatedData.targetBreakdownData, <div className="h-64">{targetBreakdownPieChartElement}</div>)} className="p-1 text-purple-400 hover:text-purple-300 transition" title="Get AI Insights"><SparklesIcon /></button>
+                        </div>
+                        <div className="h-64">{targetBreakdownPieChartElement}</div>
                     </div>
 
                     {/* Overall Task Breakdown */}

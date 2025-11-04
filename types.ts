@@ -156,7 +156,7 @@ export interface AiMemory {
 export interface AppNotification {
   id: string;
   message: string;
-  type: 'deadline' | 'milestone' | 'info';
+  type: 'deadline' | 'milestone' | 'alert';
   created_at: string;
   read: boolean;
   unique_id: string;

@@ -1,7 +1,8 @@
 import React from 'react';
 import { AppNotification } from '../../types';
-import { BellIcon, CheckIcon, TrashIcon, FilledStarIcon } from './Icons';
+import { BellIcon, CheckIcon, TrashIcon, FilledStarIcon, ExclamationTriangleIcon } from './Icons';
 
+// FIX: Define `minutes`, `hours`, and `days` before they are used to calculate relative time.
 const timeAgo = (isoString: string): string => {
     if (!isoString) {
         return 'just now';
@@ -18,14 +19,16 @@ const timeAgo = (isoString: string): string => {
         return 'in the future';
     }
     
-    const minutes = Math.round(seconds / 60);
-    const hours = Math.round(minutes / 60);
-    const days = Math.round(hours / 24);
-
     if (seconds < 5) return 'just now';
     if (seconds < 60) return `${seconds}s ago`;
+
+    const minutes = Math.round(seconds / 60);
     if (minutes < 60) return `${minutes}m ago`;
+
+    const hours = Math.round(minutes / 60);
     if (hours < 24) return `${hours}h ago`;
+
+    const days = Math.round(hours / 24);
     if (days < 7) return `${days}d ago`;
     
     return date.toLocaleDateString();
@@ -42,15 +45,22 @@ interface NotificationPanelProps {
 const NotificationPanel: React.FC<NotificationPanelProps> = ({ notifications, onMarkRead, onMarkAllRead, onClearAll, onClose }) => {
     const unreadCount = notifications.filter(n => !n.read).length;
 
-    const getIconForType = (type: AppNotification['type']) => {
-        switch (type) {
-            case 'deadline':
-                return <BellIcon />;
-            case 'milestone':
-                return <FilledStarIcon className="w-6 h-6 text-yellow-400" />;
-            default:
-                return <BellIcon />;
-        }
+    const typeStyles: { [key in AppNotification['type']]: { icon: React.ReactNode; iconClass: string; borderClass: string } } = {
+        milestone: {
+            icon: <FilledStarIcon className="w-6 h-6" />,
+            iconClass: 'text-green-400',
+            borderClass: 'border-l-green-400',
+        },
+        deadline: {
+            icon: <BellIcon />,
+            iconClass: 'text-amber-400',
+            borderClass: 'border-l-amber-400',
+        },
+        alert: {
+            icon: <ExclamationTriangleIcon />,
+            iconClass: 'text-red-500',
+            borderClass: 'border-l-red-500',
+        },
     };
 
     return (
@@ -70,24 +80,27 @@ const NotificationPanel: React.FC<NotificationPanelProps> = ({ notifications, on
                 <div className="overflow-y-auto flex-grow">
                     {notifications.length > 0 ? (
                         <ul>
-                            {notifications.map(n => (
-                                <li key={n.id} className={`p-3 border-b border-slate-700/50 transition-colors ${!n.read ? 'bg-slate-700/30' : ''}`}>
-                                    <div className="flex items-start gap-3">
-                                        <div className={`mt-1 flex-shrink-0 ${n.type === 'deadline' ? 'text-amber-400' : 'text-teal-300'}`}>
-                                            {getIconForType(n.type)}
+                            {notifications.map(n => {
+                                const styles = typeStyles[n.type] || typeStyles.deadline;
+                                return (
+                                    <li key={n.id} className={`p-3 border-b border-slate-700/50 border-l-4 ${!n.read ? 'bg-slate-700/30' : ''} ${styles.borderClass}`}>
+                                        <div className="flex items-start gap-3">
+                                            <div className={`mt-1 flex-shrink-0 ${styles.iconClass}`}>
+                                                {styles.icon}
+                                            </div>
+                                            <div className="flex-grow">
+                                                <p className="text-sm text-white/90">{n.message}</p>
+                                                <p className="text-xs text-slate-400 mt-1">{timeAgo(n.created_at)}</p>
+                                            </div>
+                                            {!n.read && (
+                                                <button onClick={() => onMarkRead(n.id)} className="p-1 text-slate-400 hover:text-white" title="Mark as read">
+                                                    <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+                                                </button>
+                                            )}
                                         </div>
-                                        <div className="flex-grow">
-                                            <p className="text-sm text-white/90">{n.message}</p>
-                                            <p className="text-xs text-slate-400 mt-1">{timeAgo(n.created_at)}</p>
-                                        </div>
-                                        {!n.read && (
-                                            <button onClick={() => onMarkRead(n.id)} className="p-1 text-slate-400 hover:text-white" title="Mark as read">
-                                                <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-                                            </button>
-                                        )}
-                                    </div>
-                                </li>
-                            ))}
+                                    </li>
+                                );
+                            })}
                         </ul>
                     ) : (
                         <p className="p-6 text-center text-slate-400">No notifications yet.</p>
