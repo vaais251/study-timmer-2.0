@@ -1,9 +1,3 @@
-
-
-
-
-
-
 import { supabase } from './supabaseClient';
 import { Settings, Task, DbDailyLog, Project, Goal, Target, PomodoroHistory, Commitment, ProjectUpdate, AiMemory, AppNotification, FocusLevel } from '../types';
 import { getTodayDateString } from '../utils/date';
@@ -163,7 +157,7 @@ export const recalculateTargetProgress = async (targetId: string): Promise<void>
         .map(t => t.id);
 
     if (contributingTaskIds.length === 0) {
-        await supabase.from('targets').update({ progress_minutes: 0 }).eq('id', targetId);
+        await supabase.from('targets').update({ progress_minutes: 0, completed_at: null }).eq('id', targetId);
         return;
     }
 
@@ -395,7 +389,16 @@ export const deleteTask = async (id: string): Promise<boolean> => {
     }
 
     // Delete associated history first
-    await supabase.from('pomodoro_history').delete().eq('task_id', id);
+    const { error: historyDeleteError } = await supabase
+        .from('pomodoro_history')
+        .delete()
+        .eq('user_id', taskToDelete.user_id)
+        .eq('task_id', id);
+
+    if (historyDeleteError) {
+        console.error("Error deleting pomodoro history for task:", historyDeleteError);
+        return false;
+    }
 
     // Then delete the task
     const { error: deleteError } = await supabase.from('tasks').delete().eq('id', id);
