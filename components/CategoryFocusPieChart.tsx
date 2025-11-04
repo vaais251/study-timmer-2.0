@@ -118,12 +118,11 @@ const CategoryFocusPieChart: React.FC<CategoryFocusPieChartProps> = ({ tasks, to
 
     return (
         <>
-            {/* FIX: Added the required 'title' prop to the Panel component. The original internal h2 was removed, and the AI insight button was repositioned. */}
             <Panel title="Today's Focus Distribution">
                 <div className="relative">
                     <button
                         onClick={() => setIsModalOpen(true)}
-                        className="absolute -top-4 right-0 p-1 text-purple-400 hover:text-purple-300 transition z-10"
+                        className="absolute -top-12 right-0 p-1 text-purple-400 hover:text-purple-300 transition z-10"
                         title="Get AI Insights for this chart"
                     >
                         <SparklesIcon />

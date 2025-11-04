@@ -79,8 +79,7 @@ const priorityBorderColors: { [key: number]: string } = {
     4: 'border-l-4 border-slate-500',
 };
 
-// FIX: Renamed destructured prop from `onBringForward` to `onBringTaskForward` to match `TaskItemProps`.
-const TaskItem = React.forwardRef<HTMLLIElement, TaskItemProps>(({ task, isCompleted, settings, projects, onDelete, onMove, onUpdateTaskTimers, onUpdateTask, onMarkTaskIncomplete, dragProps, isTomorrowTask, onBringTaskForward, displayDate, isJustAdded }, ref) => {
+const TaskItem = React.memo(React.forwardRef<HTMLLIElement, TaskItemProps>(({ task, isCompleted, settings, projects, onDelete, onMove, onUpdateTaskTimers, onUpdateTask, onMarkTaskIncomplete, dragProps, isTomorrowTask, onBringTaskForward, displayDate, isJustAdded }, ref) => {
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
     const [editText, setEditText] = useState(task.text);
@@ -239,7 +238,6 @@ const TaskItem = React.forwardRef<HTMLLIElement, TaskItemProps>(({ task, isCompl
                     `${task.completed_poms}/${task.total_poms}`
                 )}
             </span>
-            {/* FIX: Use correct `onBringTaskForward` prop. */}
             {isTomorrowTask && onBringTaskForward && (
                 <button onClick={() => onBringTaskForward(task.id)} className="p-1 text-green-300 hover:text-green-200 transition" title="Move to Today">
                     <BringForwardIcon />
@@ -271,7 +269,7 @@ const TaskItem = React.forwardRef<HTMLLIElement, TaskItemProps>(({ task, isCompl
             )}
         </div>
     </li>
-)});
+)}));
 
 
 interface TaskInputGroupProps {
@@ -714,7 +712,6 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasksToday, tasksForTomorrow,
                            isTomorrowTask={true}
                            displayDate={task.due_date}
                            isJustAdded={task.id === justAddedTaskId}
-                           // FIX: Corrected typo from onBringForward to onBringTaskForward
                            onBringTaskForward={onBringTaskForward}
                            dragProps={{
                                draggable: true,

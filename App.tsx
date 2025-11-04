@@ -1,5 +1,6 @@
 
 
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
@@ -222,6 +223,8 @@ const App: React.FC = () => {
         }
     }, []); // Run only once on component mount
 
+    // --- START PERFORMANCE REFACTOR: GRANULAR REFRESH FUNCTIONS ---
+
     // Extracted logic to process pomodoro history into logs
     const processAndSetHistoryData = useCallback((history: PomodoroHistory[]) => {
         const today = getTodayDateString();
@@ -263,17 +266,75 @@ const App: React.FC = () => {
         setTodaysHistory(freshTodaysHistory);
         setHistoricalLogs(authoritativeHistoricalLogs);
         setDailyLog(freshTodayLog);
-    }, []); // State setters are stable
+    }, []);
+
+    const refreshHistoryAndLogs = useCallback(async () => {
+        if (!session) return;
+        const today = getTodayDateString();
+        const fourteenDaysAgo = new Date();
+        fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 13);
+        const startDate = getTodayDateString(fourteenDaysAgo);
+
+        const allPomodoroHistoryForRange = await dbService.getPomodoroHistory(startDate, today);
+        processAndSetHistoryData(allPomodoroHistoryForRange);
+    }, [session, processAndSetHistoryData]);
+
+    const refreshTasks = useCallback(async () => {
+        if (!session) return;
+        const userTasks = await dbService.getTasks();
+        if (userTasks) setTasks(userTasks);
+    }, [session]);
+
+    const refreshProjects = useCallback(async () => {
+        if (!session) return;
+        const updatedProjects = await dbService.checkAndUpdateDueProjects();
+        if (updatedProjects) {
+            setProjects(updatedProjects);
+        } else {
+            const userProjects = await dbService.getProjects();
+            if (userProjects) setProjects(userProjects);
+        }
+    }, [session]);
+
+    const refreshGoals = useCallback(async () => {
+        if (!session) return;
+        const userGoals = await dbService.getGoals();
+        if (userGoals) setGoals(userGoals);
+    }, [session]);
+    
+    const refreshTargets = useCallback(async () => {
+        if (!session) return;
+        const userTargets = await dbService.getTargets();
+        if (userTargets) setTargets(augmentTargetsWithStatus(userTargets));
+    }, [session]);
+
+    const refreshCommitments = useCallback(async () => {
+        if (!session) return;
+        const updatedCommitments = await dbService.checkAndUpdatePastDueCommitments();
+        if (updatedCommitments) {
+            setAllCommitments(updatedCommitments);
+        } else {
+            const userCommitments = await dbService.getCommitments();
+            if (userCommitments) setAllCommitments(userCommitments);
+        }
+    }, [session]);
+    
+    const refreshAiMemories = useCallback(async () => {
+        if (!session) return;
+        const memories = await dbService.getAiMemories();
+        if (memories) setAiMemories(memories);
+    }, [session]);
+
+    const refreshNotifications = useCallback(async () => {
+        if (!session) return;
+        const userNotifications = await dbService.getNotifications();
+        if (userNotifications) setNotifications(userNotifications);
+    }, [session]);
 
     const fetchData = useCallback(async (showLoading = true) => {
         if (!session) return;
         if (showLoading) setIsLoading(true);
         try {
-            const today = getTodayDateString();
-            const fourteenDaysAgo = new Date();
-            fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 13); // Today + 13 previous days for week-over-week
-            const startDate = getTodayDateString(fourteenDaysAgo);
-
             // Fetch raw data sources first
             const [userSettings, userTasks, userProjects, userGoals, userTargets, userCommitments, allPomodoroHistoryForRange, userAiMemories, userNotifications] = await Promise.all([
                 dbService.getSettings(),
@@ -282,13 +343,13 @@ const App: React.FC = () => {
                 dbService.getGoals(),
                 dbService.getTargets(),
                 dbService.getCommitments(),
-                dbService.getPomodoroHistory(startDate, today), // Fetch raw history as the source of truth
+                dbService.getPomodoroHistory(getTodayDateString(new Date(Date.now() - 13 * 24 * 60 * 60 * 1000)), getTodayDateString()),
                 dbService.getAiMemories(),
                 dbService.getNotifications()
             ]);
 
             // --- Process Pomodoro History to generate authoritative logs ---
-            processAndSetHistoryData(allPomodoroHistoryForRange);
+            processAndSetHistoryData(allPomodoroHistoryForRange || []);
 
             // Set other state from fetched data
             if (userSettings) setSettings(userSettings);
@@ -301,7 +362,6 @@ const App: React.FC = () => {
                 setProjects(userProjects);
             }
 
-            // Check for and auto-complete past-due commitments
             const updatedCommitmentsAfterCheck = await dbService.checkAndUpdatePastDueCommitments();
             if (updatedCommitmentsAfterCheck) {
                 setAllCommitments(updatedCommitmentsAfterCheck);
@@ -315,12 +375,9 @@ const App: React.FC = () => {
                 setTargets(augmentTargetsWithStatus(userTargets));
             }
 
-
             if (userAiMemories) setAiMemories(userAiMemories);
             if (userNotifications) setNotifications(userNotifications);
             
-            // This logic block only runs on the very first data fetch after login,
-            // not on subsequent refetches, preserving the timer state.
             if (showLoading && !didRestoreFromStorage) {
                 const firstTask = userTasks?.filter(t => t.due_date === getTodayDateString() && !t.completed_at)[0];
                 const isStopwatch = firstTask?.total_poms < 0;
@@ -340,6 +397,8 @@ const App: React.FC = () => {
             if (showLoading) setIsLoading(false);
         }
     }, [session, didRestoreFromStorage, processAndSetHistoryData]);
+
+    // --- END PERFORMANCE REFACTOR ---
 
     useEffect(() => {
         if (session?.user?.id && session.user.id !== fetchedForUserId.current) {
@@ -650,14 +709,11 @@ const App: React.FC = () => {
             const addAndRefreshNotifications = async () => {
                 await dbService.addNotifications(newNotifications);
                 playNotificationSound();
-                const freshNotifications = await dbService.getNotifications();
-                if (freshNotifications) {
-                    setNotifications(freshNotifications);
-                }
+                await refreshNotifications();
             };
             addAndRefreshNotifications();
         }
-    }, [isLoading, session, tasks, projects, targets, historicalLogs, notifications, clearedNotificationIds, allPomodoroHistory]);
+    }, [isLoading, session, tasks, projects, targets, historicalLogs, notifications, clearedNotificationIds, allPomodoroHistory, refreshNotifications]);
 
     const handleMarkNotificationRead = async (id: string) => {
         const updated = await dbService.markNotificationRead(id);
@@ -741,7 +797,7 @@ const App: React.FC = () => {
         if (!project || project.status !== 'active' || project.completion_criteria_type !== 'duration_minutes') return;
         
         await dbService.recalculateProjectProgress(project.id);
-        await fetchData(false);
+        await refreshProjects();
     };
 
     // Phase Completion Logic
@@ -923,8 +979,8 @@ const App: React.FC = () => {
             await dbService.addProjectUpdate(currentTask.project_id, todayString, `Completed task: "${currentTask.text}"`, currentTask.id);
         }
         
-        // 3. Trigger a full data refresh to sync UI
-        await fetchData(false);
+        // 3. Trigger a selective data refresh to sync UI
+        await Promise.all([refreshTasks(), refreshHistoryAndLogs(), refreshProjects(), refreshTargets()]);
         
         // 4. Reset the timer for the next task
         const nextTask = tasks.filter(t => t.due_date === todayString && !t.completed_at)[0];
@@ -1050,7 +1106,13 @@ const App: React.FC = () => {
                 await handleTaskCompletion(taskComment);
             }
             
-            await fetchData(false);
+            await Promise.all([
+                refreshHistoryAndLogs(),
+                refreshTasks(),
+                refreshProjects(),
+                refreshTargets(),
+                refreshAiMemories(),
+            ]);
         };
 
         performBackgroundUpdates().catch(err => {
@@ -1064,7 +1126,7 @@ const App: React.FC = () => {
             custom_focus_duration: newTimers.focus,
             custom_break_duration: newTimers.break,
         });
-        await fetchData(false);
+        await refreshTasks();
     };
 
     const handleUpdateTask = async (id: string, newText: string, newTags: string[], newPoms: number, projectId: string | null, priority: number | null) => {
@@ -1075,27 +1137,30 @@ const App: React.FC = () => {
             project_id: projectId,
             priority: priority,
         });
-        await fetchData(false);
+        await Promise.all([refreshTasks(), refreshProjects(), refreshTargets()]);
     };
 
     const handleAddTask = async (text: string, poms: number, dueDate: string, projectId: string | null, tags: string[], priority: number | null) => {
         await dbService.addTask(text, poms, dueDate, projectId, tags, priority);
-        await fetchData(false);
+        await refreshTasks();
+        if (projectId) {
+            await refreshProjects();
+        }
     };
 
     const handleDeleteTask = async (id: string) => {
         await dbService.deleteTask(id);
-        await fetchData(false);
+        await Promise.all([refreshTasks(), refreshProjects(), refreshTargets()]);
     };
 
     const handleMoveTask = async (id: string, action: 'postpone' | 'duplicate') => {
         await dbService.moveTask(id, action);
-        await fetchData(false);
+        await refreshTasks();
     };
     
     const handleBringTaskForward = async (id: string) => {
         await dbService.bringTaskForward(id);
-        await fetchData(false);
+        await refreshTasks();
     };
 
     const handleReorderTasks = async (reorderedTasks: Task[]) => {
@@ -1108,19 +1173,19 @@ const App: React.FC = () => {
         });
 
         await dbService.updateTaskOrder(reorderedTasks.map((task, index) => ({ id: task.id, task_order: index })));
-        await fetchData(false);
+        await refreshTasks();
     };
 
     const handleMarkTaskIncomplete = async (id: string) => {
         await dbService.markTaskIncomplete(id);
-        await fetchData(false);
+        await Promise.all([refreshTasks(), refreshProjects(), refreshTargets()]);
     };
 
     // --- Project Handlers ---
     const handleAddProject = async (name: string, description: string | null = null, startDate: string | null = null, deadline: string | null = null, criteria: {type: Project['completion_criteria_type'], value: number | null} = {type: 'manual', value: null}, priority: number | null = null, activeDays: number[] | null = null): Promise<string | null> => {
         const newProject = await dbService.addProject(name, description, startDate, deadline, criteria.type, criteria.value, priority, activeDays);
         if (newProject) {
-            await fetchData(false);
+            await refreshProjects();
             return newProject.id;
         }
         return null;
@@ -1128,13 +1193,13 @@ const App: React.FC = () => {
     
     const handleUpdateProject = async (id: string, updates: Partial<Project>) => {
         await dbService.updateProject(id, updates);
-        await fetchData(false);
+        await refreshProjects();
     };
 
     const handleDeleteProject = async (id: string) => {
         const result = await dbService.deleteProject(id);
         if (result.success) {
-            await fetchData(false);
+            await Promise.all([refreshProjects(), refreshTasks()]);
         } else if (result.error) {
             alert(`Error: ${result.error}`);
         }
@@ -1143,22 +1208,22 @@ const App: React.FC = () => {
     // --- Goal Handlers ---
     const handleAddGoal = async (text: string) => {
         await dbService.addGoal(text);
-        await fetchData(false);
+        await refreshGoals();
     };
     
     const handleUpdateGoal = async (id: string, text: string) => {
         await dbService.updateGoal(id, { text });
-        await fetchData(false);
+        await refreshGoals();
     };
 
     const handleDeleteGoal = async (id: string) => {
         await dbService.deleteGoal(id);
-        await fetchData(false);
+        await refreshGoals();
     };
 
     const handleSetGoalCompletion = async (id: string, isComplete: boolean) => {
         await dbService.setGoalCompletion(id, isComplete ? new Date().toISOString() : null);
-        await fetchData(false);
+        await refreshGoals();
     };
     
     // --- Target Handlers ---
@@ -1172,62 +1237,62 @@ const App: React.FC = () => {
         targetMinutes: number | null
     ) => {
         await dbService.addTarget(text, deadline, priority, startDate, completionMode, tags, targetMinutes);
-        await fetchData(false);
+        await refreshTargets();
     };
     
     const handleUpdateTarget = async (id: string, updates: Partial<Target>) => {
         await dbService.updateTarget(id, updates);
-        await fetchData(false);
+        await refreshTargets();
     };
 
     const handleDeleteTarget = async (id: string) => {
         await dbService.deleteTarget(id);
-        await fetchData(false);
+        await refreshTargets();
     };
 
     // --- Commitment Handlers ---
     const handleAddCommitment = async (text: string, dueDate: string | null) => {
         await dbService.addCommitment(text, dueDate);
-        await fetchData(false);
+        await refreshCommitments();
     };
 
     const handleUpdateCommitment = async (id: string, updates: { text: string; dueDate: string | null }) => {
         await dbService.updateCommitment(id, updates);
-        await fetchData(false);
+        await refreshCommitments();
     };
 
     const handleDeleteCommitment = async (id: string) => {
         await dbService.deleteCommitment(id);
-        await fetchData(false);
+        await refreshCommitments();
     };
 
     const handleSetCommitmentCompletion = async (id: string, isComplete: boolean) => {
         await dbService.setCommitmentCompletion(id, isComplete);
-        await fetchData(false);
+        await refreshCommitments();
     };
     
     const handleMarkCommitmentBroken = async (id: string) => {
         await dbService.markCommitmentBroken(id);
-        await fetchData(false);
+        await refreshCommitments();
     };
 
     // --- Reschedule Handlers ---
     const handleRescheduleProject = async (id: string, newDeadline: string | null) => {
         await dbService.rescheduleProject(id, newDeadline);
         setToastNotification('Project rescheduled successfully!');
-        await fetchData(false);
+        await refreshProjects();
     };
 
     const handleRescheduleTarget = async (id: string, newDeadline: string) => {
         await dbService.rescheduleTarget(id, newDeadline);
         setToastNotification('Target rescheduled successfully!');
-        await fetchData(false);
+        await refreshTargets();
     };
 
     const handleRescheduleCommitment = async (id: string, newDueDate: string | null) => {
         await dbService.rescheduleCommitment(id, newDueDate);
         setToastNotification('Commitment rescheduled successfully!');
-        await fetchData(false);
+        await refreshCommitments();
     };
 
     const handleRescheduleItemFromAI = async (itemId: string, itemType: 'project' | 'target' | 'commitment', newDate: string | null): Promise<void> => {
@@ -1251,14 +1316,12 @@ const App: React.FC = () => {
     // --- AI Coach Specific Task Adder (for promise-based flow) ---
     const handleAddTaskFromAI = async (text: string, poms: number, dueDate: string, projectId: string | null, tags: string[], priority: number | null): Promise<void> => {
         await dbService.addTask(text, poms, dueDate, projectId, tags, priority);
-        await fetchData(false);
+        await refreshTasks();
+        if (projectId) await refreshProjects();
     };
 
-    const refreshAiMemories = async () => {
-        const memories = await dbService.getAiMemories();
-        if (memories) {
-            setAiMemories(memories);
-        }
+    const handleMemoryChangeFromAI = async () => {
+        await refreshAiMemories();
         setToastNotification('🧠 AI memory updated!');
     };
 
@@ -1267,7 +1330,6 @@ const App: React.FC = () => {
         await dbService.updateSettings(newSettings);
         setSettings(newSettings);
         setToastNotification('Settings saved!');
-        await fetchData(false);
     };
 
     if (!session) {
@@ -1333,7 +1395,7 @@ const App: React.FC = () => {
                     chatMessages={aiChatMessages}
                     setChatMessages={setAiChatMessages}
                     aiMemories={aiMemories}
-                    onMemoryChange={refreshAiMemories}
+                    onMemoryChange={handleMemoryChangeFromAI}
                 />;
             case 'goals':
                 return <GoalsPage 

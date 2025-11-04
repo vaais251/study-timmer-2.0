@@ -1,7 +1,7 @@
 
 
+
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-// FIX: Import the 'Commitment' type to resolve multiple 'Cannot find name' errors.
 import { Goal, Target, Project, Task, PomodoroHistory, ProjectUpdate, Commitment } from '../types';
 import Panel from '../components/common/Panel';
 import { TrashIcon, EditIcon, StarIcon, LockIcon, CheckIcon, TargetIcon as GoalsIcon, RescheduleIcon } from '../components/common/Icons';
