@@ -60,3 +60,9 @@ export const BrainIcon: React.FC = () => <svg {...iconWithStrokeProps}><path d="
 export const UserIcon: React.FC = () => <svg {...iconWithStrokeProps}><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>;
 export const SparklesIcon: React.FC = () => <svg {...iconWithStrokeProps}><path d="M12 3L9.5 8.5 4 11l5.5 2.5L12 19l2.5-5.5L20 11l-5.5-2.5z"/></svg>;
 export const SendIcon: React.FC = () => <svg {...commonProps}><path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" /></svg>;
+
+// Stats Page Icons
+export const LayoutIcon: React.FC = () => <svg {...iconWithStrokeProps}><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>;
+export const ListIcon: React.FC = () => <svg {...iconWithStrokeProps}><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>;
+export const TagIcon: React.FC = () => <svg {...iconWithStrokeProps}><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><line x1="7" y1="7" x2="7.01" y2="7"></line></svg>;
+export const SignalIcon: React.FC = () => <svg {...iconWithStrokeProps}><path d="M2 20h.01M6 20v-4M10 20v-8M14 20v-12M18 20v-16"/></svg>;

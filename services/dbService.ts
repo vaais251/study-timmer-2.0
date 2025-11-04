@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient';
-import { Settings, Task, DbDailyLog, Project, Goal, Target, PomodoroHistory, Commitment, ProjectUpdate, AiMemory, AppNotification, PersonalBest } from '../types';
+import { Settings, Task, DbDailyLog, Project, Goal, Target, PomodoroHistory, Commitment, ProjectUpdate, AiMemory, AppNotification, FocusLevel } from '../types';
 import { getTodayDateString } from '../utils/date';
 
 // --- Settings ---
@@ -1048,7 +1048,7 @@ export const getTodaysPomodoroHistory = async (): Promise<PomodoroHistory[]> => 
 };
 
 
-export const addPomodoroHistory = async (taskId: string | null, duration: number, difficulty: 'complete_focus' | 'half_focus' | 'none_focus' | null): Promise<void> => {
+export const addPomodoroHistory = async (taskId: string | null, duration: number, difficulty: FocusLevel | null): Promise<void> => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
@@ -1060,7 +1060,6 @@ export const addPomodoroHistory = async (taskId: string | null, duration: number
     }]);
 
     if (error) {
-        // Log the full error for better debugging.
         console.error("Error adding pomodoro history:", JSON.stringify(error, null, 2));
     }
 };
@@ -1149,45 +1148,6 @@ export const getConsistencyLogs = async (days?: number, year?: number): Promise<
     
     return data || [];
 };
-
-// --- Personal Bests ---
-
-export const getPersonalBests = async (): Promise<PersonalBest[] | null> => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return null;
-
-    const { data, error } = await supabase
-        .from('personal_bests')
-        .select('*')
-        .eq('user_id', user.id);
-    
-    if (error) {
-        console.error("Error fetching personal bests:", error);
-        return null;
-    }
-    return data;
-};
-
-export const upsertPersonalBest = async (metric: string, value: number): Promise<PersonalBest | null> => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return null;
-
-    const { data, error } = await supabase
-        .from('personal_bests')
-        .upsert(
-            { user_id: user.id, metric, value, achieved_at: new Date().toISOString() },
-            { onConflict: 'user_id, metric' }
-        )
-        .select()
-        .single();
-    
-    if (error) {
-        console.error("Error upserting personal best:", error);
-        return null;
-    }
-    return data;
-};
-
 
 // --- AI Memories ---
 
@@ -1297,9 +1257,9 @@ export const addNotifications = async (notifications: NewNotification[]): Promis
         ...n,
         user_id: user.id,
     }));
-
-    // FIX: The `insert` method does not support `onConflict`. Switched to `upsert`
-    // with `ignoreDuplicates: true` to achieve the desired "insert or ignore" behavior.
+    // FIX: The `.insert()` method was used with an incorrect `onConflict` option.
+    // Switched to `.upsert()` with the `ignoreDuplicates: true` option to correctly ignore
+    // notifications that already exist, based on the `user_id` and `unique_id` constraint.
     const { error } = await supabase
         .from('notifications')
         .upsert(notificationsToInsert, { onConflict: 'user_id, unique_id', ignoreDuplicates: true }); // Use onConflict to ignore duplicates

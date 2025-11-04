@@ -1,13 +1,8 @@
-
-
 import { GoogleGenAI, GenerateContentResponse, FunctionDeclaration, Part, Type } from "@google/genai";
-import { Goal, Target, Project, Commitment, Task, AiMemory, PomodoroHistory, PersonalBest } from '../types';
+import { Goal, Target, Project, Commitment, Task, AiMemory, PomodoroHistory } from '../types';
 
-// IMPORTANT: The API key is sourced from the `process.env.API_KEY` environment
-// variable. This is a security best practice. Do NOT hardcode API keys directly
-// in the source code, as it exposes them to anyone with access to the code.
-// The development environment automatically provides the key via this variable.
-const API_KEY = process.env.API_KEY;
+// Hardcoded for testing as requested by the user.
+const API_KEY = "AIzaSyBT9IN5PiyqaWBdM9NekDg5d-5fWDuhZnE";
 
 export async function getChartInsight(chartTitle: string, chartData: any): Promise<string> {
     const prompt = `
@@ -39,7 +34,7 @@ export async function getChartInsight(chartTitle: string, chartData: any): Promi
 
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-pro',
-            contents: prompt,
+            contents: [{ parts: [{ text: prompt }] }],
         });
         
         const text = response.text;
@@ -86,7 +81,7 @@ export async function getTabSummary(tabName: string, data: any): Promise<string>
 
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-pro',
-            contents: prompt,
+            contents: [{ parts: [{ text: prompt }] }],
         });
         
         const text = response.text;
@@ -112,7 +107,7 @@ export async function generateContent(prompt: string): Promise<string> {
 
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-pro',
-            contents: prompt,
+            contents: [{ parts: [{ text: prompt }] }],
             config: {
                 // No tools for this simple utility call to avoid complexity.
             },
@@ -143,9 +138,8 @@ export interface AgentContext {
     commitments: Pick<Commitment, 'id' | 'text' | 'due_date'>[];
     tasks: Pick<Task, 'id' | 'text' | 'due_date' | 'completed_at' | 'project_id' | 'completed_poms' | 'total_poms' | 'comments' | 'priority' | 'tags'>[];
     dailyLogs: { date: string; total_focus_minutes: number; completed_sessions: number }[];
-    pomodoroHistory: Pick<PomodoroHistory, 'task_id' | 'ended_at' | 'duration_minutes' | 'difficulty'>[];
+    pomodoroHistory: Pick<PomodoroHistory, 'task_id' | 'ended_at' | 'duration_minutes'>[];
     aiMemories: Pick<AiMemory, 'id' | 'type' | 'content' | 'tags' | 'created_at'>[];
-    personalBests: Pick<PersonalBest, 'metric' | 'value' | 'achieved_at'>[];
     dateRangeDescription: string;
 }
 
@@ -156,7 +150,7 @@ export async function runAgent(
 ): Promise<GenerateContentResponse> {
     const ai = new GoogleGenAI({ apiKey: API_KEY });
 
-    const systemInstruction = `You are PomoAI, an expert productivity coach and data analyst integrated into a Pomodoro study application. You have read-only access to a snapshot of the user's planning and performance data, provided below. This snapshot covers ${context.dateRangeDescription}. Your primary role is to help the user understand their data, find insights, plan their work, and take action on their behalf using your available tools. You are conversational, encouraging, and highly analytical. You have access to the user's personal bests; you should use this data to congratulate them on their achievements and provide motivation. The app supports two primary work modes for tasks:
+    const systemInstruction = `You are PomoAI, an expert productivity coach and data analyst integrated into a Pomodoro study application. You have read-only access to a snapshot of the user's planning and performance data, provided below. This snapshot covers ${context.dateRangeDescription}. Your primary role is to help the user understand their data, find insights, plan their work, and take action on their behalf using your available tools. You are conversational, encouraging, and highly analytical. The app supports two primary work modes for tasks:
 1.  **Pomodoro Mode**: Traditional countdown timers for focused work sessions. These are for tasks with a defined scope, estimated in 'poms'.
 2.  **Stopwatch Mode**: A flexible, open-ended timer that counts up from zero. This is ideal for tasks where the duration is unknown, like creative work or open-ended research. Time is tracked and logged as a single session when the user manually completes the task. You can identify these tasks as having a \`total_poms\` value of -1.
 
@@ -227,12 +221,11 @@ You have access to the user's data, structured in the following tables. Use this
     *   \`custom_focus_duration\` (number | null): Override for default focus time (in minutes).
     *   \`priority\` (integer | null): Optional priority from 1 (highest) to 4 (lowest).
 
-5.  **pomodoro_history** - The authoritative log of all completed focus sessions. Use the 'difficulty' column to understand the user's perceived focus level during the session. 'complete_focus' means the user was fully engaged, while 'none_focus' indicates they were distracted. This is valuable qualitative data.
+5.  **pomodoro_history** - The authoritative log of all completed focus sessions.
     *   \`id\` (string, PK): Unique identifier.
     *   \`task_id\` (string | null, FK -> tasks.id): The task worked on during this session.
     *   \`ended_at\` (timestamp): Exact timestamp when the focus session ended.
     *   \`duration_minutes\` (number): The duration of the focus session.
-    *   \`difficulty\` (string | null): The user-rated focus level of the session ('complete_focus', 'half_focus', 'none_focus').
 
 6.  **commitments** - Promises or accountability items.
     *   \`id\` (string, PK): Unique identifier.
@@ -259,19 +252,11 @@ You have access to the user's data, structured in the following tables. Use this
     *   \`completed_sessions\` (number)
     *   \`total_focus_minutes\` (number)
 
-10. **personal_bests** (Provided in context as 'Personal Bests') - A record of the user's personal bests.
-    *   \`metric\` (string): The name of the metric (e.g., 'longest_streak').
-    *   \`value\` (number): The record value.
-    *   \`achieved_at\` (timestamp): When the record was set.
-
 --- CONTEXT DATA (${context.dateRangeDescription}) ---
 The following is a snapshot of the user's data for the specified period.
 
 == AI MEMORY BANK (Learnings & Personal Context) ==
 ${context.aiMemories.map(m => `- [${m.type.toUpperCase()}] (ID: ${m.id}) ${m.content} ${m.tags ? `Tags: [${m.tags.join(', ')}]` : ''}`).join('\n') || "No memories yet."}
-
-== PERSONAL BESTS ==
-${context.personalBests.map(b => `- ${b.metric.replace(/_/g, ' ')}: ${b.value}${b.metric.includes('streak') ? ' days' : ''} (Achieved on ${b.achieved_at.split('T')[0]})`).join('\n') || "No personal bests recorded yet."}
 
 == CORE GOALS ==
 ${context.goals.map(g => `- ${g.text} (ID: ${g.id})`).join('\n') || "No core goals set."}
@@ -305,7 +290,7 @@ ${context.dailyLogs.map(log => `- Date: ${log.date}, Focus Time: ${log.total_foc
 
 == POMODORO HISTORY IN RANGE ==
 This is the raw log of individual focus sessions. Use the \`ended_at\` timestamp for detailed time-of-day analysis.
-${context.pomodoroHistory.map(p => `- Ended: ${p.ended_at}, Duration: ${p.duration_minutes} min, Difficulty: ${p.difficulty || 'N/A'}, TaskID: ${p.task_id || 'None'}`).join('\n') || 'No individual focus sessions recorded in this range.'}
+${context.pomodoroHistory.map(p => `- Ended: ${p.ended_at}, Duration: ${p.duration_minutes} min, TaskID: ${p.task_id || 'None'}`).join('\n') || 'No individual focus sessions recorded in this range.'}
 --- END OF CONTEXT ---
 
 Based on this detailed data and schema, answer the user's questions and execute commands with precision.`;
@@ -314,7 +299,7 @@ Based on this detailed data and schema, answer the user's questions and execute 
         model: 'gemini-2.5-pro',
         contents: history,
         config: {
-            systemInstruction: systemInstruction,
+            systemInstruction: { parts: [{ text: systemInstruction }] },
             tools: [{ functionDeclarations: tools }],
         }
     });

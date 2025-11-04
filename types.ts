@@ -105,6 +105,9 @@ export interface DbDailyLog {
     total_focus_minutes: number;
 }
 
+// New type for focus level
+export type FocusLevel = 'complete_focus' | 'half_focus' | 'none_focus';
+
 // Corresponds to the new `pomodoro_history` table
 export interface PomodoroHistory {
     id: string;
@@ -112,17 +115,7 @@ export interface PomodoroHistory {
     task_id: string | null;
     ended_at: string;
     duration_minutes: number;
-    difficulty?: 'complete_focus' | 'half_focus' | 'none_focus' | null;
-}
-
-// Corresponds to the new `personal_bests` table
-export interface PersonalBest {
-    id: string;
-    created_at: string;
-    user_id: string;
-    metric: string;
-    value: number;
-    achieved_at: string;
+    difficulty: FocusLevel | null;
 }
 
 

@@ -1,4 +1,3 @@
-
 import React, { useMemo, useState } from 'react';
 import Panel from './common/Panel';
 import { Task, DbDailyLog } from '../types';
@@ -103,16 +102,12 @@ const StatsPanel: React.FC<StatsPanelProps> = ({ completedToday, tasksToday, his
             </div>
         );
 
-        // --- Other calculations for the rest of the panel ---
+        // Other calculations for the rest of the panel
+        const totalTasks = completedToday.length + tasksToday.length;
+        const completionPercentage = totalTasks === 0 ? 0 : Math.round((completedToday.length / totalTasks) * 100);
         const allTasks = [...completedToday, ...tasksToday];
-
-        // Correctly calculate poms done and estimated, excluding stopwatch tasks from estimation.
         const pomsDone = allTasks.reduce((acc, task) => acc + (task.completed_poms || 0), 0);
-        const pomsEst = allTasks.filter(t => t.total_poms > 0).reduce((acc, task) => acc + (task.total_poms || 0), 0);
-        
-        // New completion percentage based on poms
-        const completionPercentage = pomsEst === 0 ? 0 : Math.round((pomsDone / pomsEst) * 100);
-        
+        const pomsEst = allTasks.reduce((acc, task) => acc + (task.total_poms || 0), 0);
         const stats = { completionPercentage, pomsDone, pomsEst };
 
         const chartData = [

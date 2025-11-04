@@ -1,29 +1,57 @@
 import React, { useState } from 'react';
-import { Mode } from '../types';
+import { Mode, FocusLevel } from '../types';
 
 interface CompletionModalProps {
     title: string;
     message: string;
     nextMode: Mode;
     showCommentBox: boolean;
-    onContinue: (comment: string, difficulty: 'complete_focus' | 'half_focus' | 'none_focus' | null) => void;
+    onContinue: (comment: string, focusLevel: FocusLevel | null) => void;
 }
 
-type Difficulty = 'complete_focus' | 'half_focus' | 'none_focus';
+const FocusLevelButton: React.FC<{ level: FocusLevel; label: string; icon: string; selected: FocusLevel | null; onSelect: (level: FocusLevel) => void; }> = ({ level, label, icon, selected, onSelect }) => {
+    const isSelected = selected === level;
+    const colors = {
+        complete_focus: {
+            bg: 'bg-green-500/20 hover:bg-green-500/40',
+            selectedBg: 'bg-green-500 text-white',
+            text: 'text-green-300'
+        },
+        half_focus: {
+            bg: 'bg-amber-500/20 hover:bg-amber-500/40',
+            selectedBg: 'bg-amber-500 text-white',
+            text: 'text-amber-300'
+        },
+        none_focus: {
+            bg: 'bg-red-500/20 hover:bg-red-500/40',
+            selectedBg: 'bg-red-500 text-white',
+            text: 'text-red-300'
+        }
+    };
+    
+    return (
+        <button
+            onClick={() => onSelect(level)}
+            className={`flex-1 p-2 rounded-lg transition-all border-2 border-transparent ${isSelected ? colors[level].selectedBg : colors[level].bg}`}
+        >
+            <div className="text-3xl">{icon}</div>
+            <div className={`text-xs font-semibold mt-1 ${isSelected ? 'text-white' : colors[level].text}`}>{label}</div>
+        </button>
+    );
+};
+
 
 const CompletionModal: React.FC<CompletionModalProps> = ({ title, message, nextMode, showCommentBox, onContinue }) => {
     const [comment, setComment] = useState('');
-    const [difficulty, setDifficulty] = useState<Difficulty | null>(null);
+    const [focusLevel, setFocusLevel] = useState<FocusLevel | null>(null);
     
     const isFocusNext = nextMode === 'focus';
     const accentColor = isFocusNext ? 'text-teal-400' : 'text-purple-400';
     const buttonBg = isFocusNext ? 'bg-teal-500 hover:bg-teal-600' : 'bg-purple-500 hover:bg-purple-600';
 
-    const difficultyOptions: { label: string; value: Difficulty }[] = [
-        { label: 'Complete Focus', value: 'complete_focus' },
-        { label: 'Half Focus', value: 'half_focus' },
-        { label: 'None Focus', value: 'none_focus' },
-    ];
+    const handleSelectFocus = (level: FocusLevel) => {
+        setFocusLevel(prev => prev === level ? null : level);
+    };
 
     return (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex justify-center items-center z-50 animate-fadeIn">
@@ -33,36 +61,26 @@ const CompletionModal: React.FC<CompletionModalProps> = ({ title, message, nextM
                 <p className="text-slate-300 mb-6" dangerouslySetInnerHTML={{ __html: message }} />
                 
                 {showCommentBox && (
-                    <div className="space-y-4 mb-6">
+                    <>
                         <textarea 
                             value={comment}
                             onChange={(e) => setComment(e.target.value)}
                             placeholder="What did you accomplish? (Optional)"
-                            className="w-full bg-slate-700/50 border border-slate-600 rounded-lg p-3 text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-400 focus:border-teal-400 min-h-[80px]"
+                            className="w-full bg-slate-700/50 border border-slate-600 rounded-lg p-3 text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-400 focus:border-teal-400 mb-4 min-h-[80px]"
                         />
-                         <div>
-                            <label className="text-sm text-slate-300 mb-2 block">How was your focus? (Optional)</label>
+                         <div className="my-4">
+                            <h3 className="text-sm font-semibold text-white mb-2">How was your focus? (Optional)</h3>
                             <div className="flex justify-center gap-2">
-                                {difficultyOptions.map(opt => (
-                                    <button
-                                        key={opt.value}
-                                        onClick={() => setDifficulty(opt.value)}
-                                        className={`px-4 py-2 rounded-full font-semibold border-2 transition-colors text-sm
-                                            ${difficulty === opt.value
-                                                ? 'bg-cyan-500 border-cyan-500 text-white'
-                                                : 'bg-transparent border-slate-600 text-slate-300 hover:bg-slate-700'
-                                            }`}
-                                    >
-                                        {opt.label}
-                                    </button>
-                                ))}
+                                <FocusLevelButton level="complete_focus" label="Full Focus" icon="😊" selected={focusLevel} onSelect={handleSelectFocus} />
+                                <FocusLevelButton level="half_focus" label="Half Focus" icon="🤔" selected={focusLevel} onSelect={handleSelectFocus} />
+                                <FocusLevelButton level="none_focus" label="Distracted" icon="😩" selected={focusLevel} onSelect={handleSelectFocus} />
                             </div>
                         </div>
-                    </div>
+                    </>
                 )}
                 
                 <button
-                    onClick={() => onContinue(comment, difficulty)}
+                    onClick={() => onContinue(comment, focusLevel)}
                     className={`w-full p-4 ${buttonBg} text-white font-bold rounded-lg transition-transform hover:scale-105 uppercase tracking-wider`}
                 >
                     Start Next Phase

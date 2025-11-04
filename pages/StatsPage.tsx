@@ -6,7 +6,7 @@ import { DbDailyLog, Task, Project, Target, Settings, PomodoroHistory } from '..
 import { getTodayDateString, getMonthStartDateString, getSevenDaysAgoDateString } from '../utils/date';
 import AISummaryModal from '../components/common/AISummaryModal';
 import { getTabSummary } from '../services/geminiService';
-import { SparklesIcon } from '../components/common/Icons';
+import { SparklesIcon, LayoutIcon, ListIcon, TagIcon, SignalIcon } from '../components/common/Icons';
 
 const StatsPage: React.FC = () => {
     const [historyRange, setHistoryRange] = useState(() => ({
@@ -28,7 +28,7 @@ const StatsPage: React.FC = () => {
     const [consistencyPomodoroHistory, setConsistencyPomodoroHistory] = useState<PomodoroHistory[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [activeTab, setActiveTab] = useState<'dashboard' | 'tasks' | 'categories' | 'priorities'>('dashboard');
+    const [activeTab, setActiveTab] = useState<'dashboard' | 'tasks' | 'categories' | 'priorities' | 'focus'>('dashboard');
 
     const [summaryModalState, setSummaryModalState] = useState<{ isOpen: boolean; title: string; fetcher: (() => Promise<string>) | null }>({
         isOpen: false,
@@ -105,22 +105,25 @@ const StatsPage: React.FC = () => {
             targetsMetInRange: targets,
             consistencyLogs: consistencyLogs,
             pomodoroHistoryForTimeline: timelinePomodoroHistory,
+            pomodoroHistoryForRange: pomodoroHistory,
+            allTasksForRange: allTasks,
         };
 
         const fetcher = () => getTabSummary("Overall History", dataForSummary);
         setSummaryModalState({ isOpen: true, title, fetcher });
 
-    }, [isLoading, historyRange, logs, tasks, projects, targets, consistencyLogs, timelinePomodoroHistory]);
+    }, [isLoading, historyRange, logs, tasks, projects, targets, consistencyLogs, timelinePomodoroHistory, pomodoroHistory, allTasks]);
 
     const handleCloseSummaryModal = () => {
         setSummaryModalState({ isOpen: false, title: '', fetcher: null });
     };
 
     const tabs = [
-        { key: 'dashboard', label: 'Dashboard' },
-        { key: 'tasks', label: 'Tasks' },
-        { key: 'categories', label: 'Categories' },
-        { key: 'priorities', label: 'Priorities' },
+        { key: 'dashboard', label: 'Dashboard', icon: <LayoutIcon /> },
+        { key: 'tasks', label: 'Tasks', icon: <ListIcon /> },
+        { key: 'categories', label: 'Categories', icon: <TagIcon /> },
+        { key: 'priorities', label: 'Priorities', icon: <SignalIcon /> },
+        { key: 'focus', label: 'Focus Quality', icon: <SparklesIcon /> },
     ];
     
     if (isLoading) {
@@ -140,13 +143,15 @@ const StatsPage: React.FC = () => {
                         <button
                             key={tab.key}
                             onClick={() => setActiveTab(tab.key as any)}
-                            className={`flex-1 p-2 text-xs sm:text-sm rounded-full font-bold transition-colors whitespace-nowrap ${
+                            className={`flex-grow sm:flex-grow-0 p-2 sm:px-4 sm:py-2 text-xs sm:text-sm rounded-full font-bold transition-colors flex justify-center items-center ${
                                 activeTab === tab.key
                                     ? 'bg-slate-700 text-white shadow-inner'
                                     : 'text-slate-400 hover:bg-slate-700/50 hover:text-white'
                             }`}
+                            title={tab.label}
                         >
-                            {tab.label}
+                            <span className="sm:hidden">{tab.icon}</span>
+                            <span className="hidden sm:inline whitespace-nowrap">{tab.label}</span>
                         </button>
                     ))}
                 </div>
