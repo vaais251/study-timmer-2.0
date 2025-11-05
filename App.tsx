@@ -996,43 +996,76 @@ const App: React.FC = () => {
     };
 
     // Modal Continue Handler
-    const handleModalContinue = (comment: string, focusLevel: FocusLevel | null) => {
+    const handleModalContinue = async (comment: string, focusLevel: FocusLevel | null) => {
         if (notificationInterval.current) clearInterval(notificationInterval.current);
-
+    
         const wasFocusSession = modalContent.showCommentBox;
         const taskJustWorkedOn = tasksToday.find(t => !t.completed_at);
-        const sessionTotalTime = appState.sessionTotalTime; // Capture for background task.
+        const sessionTotalTime = appState.sessionTotalTime;
+    
+        // --- Perform critical data updates and get an optimistic result ---
+        let optimisticTasks = tasks;
+    
+        if (wasFocusSession && taskJustWorkedOn) {
+            // Handle @learn logic separately, can be fire-and-forget
+            let taskComment = comment;
+            const learnRegex = /@learn\s(.+)/i;
+            const learnMatch = comment.match(learnRegex);
+    
+            if (learnMatch && learnMatch[1]) {
+                taskComment = comment.substring(0, learnMatch.index).trim();
+                const learningContentRaw = learnMatch[1].trim();
+                const hashtagRegex = /#(\w+)/g;
+                const tagsFromLearn: string[] = [];
+                let match;
+                while ((match = hashtagRegex.exec(learningContentRaw)) !== null) {
+                    tagsFromLearn.push(match[1]);
+                }
+                const cleanLearningContent = learningContentRaw.replace(hashtagRegex, '').trim();
+                const combinedTags = [...new Set([...(taskJustWorkedOn.tags || []), ...tagsFromLearn])];
+                // Not awaiting this as it doesn't affect the next timer
+                dbService.addAiMemory('learning', cleanLearningContent, combinedTags, taskJustWorkedOn.id).then(newMemory => {
+                    if (newMemory) {
+                        setToastNotification('🧠 AI memory updated!');
+                        refreshAiMemories(); // fire and forget
+                    }
+                });
+            }
+    
+            // Await the crucial task update
+            const updatedTask = await handleTaskCompletion(taskJustWorkedOn, taskComment);
+            
+            if (updatedTask) {
+                optimisticTasks = tasks.map(t => t.id === updatedTask!.id ? updatedTask! : t);
+            }
+        }
+        
+        // --- Start UI transition immediately using optimistic data ---
+        const nextMode = modalContent.nextMode;
         const currentSessionNumber = appState.currentSession;
         const sessionsPerCycle = settings.sessionsPerCycle;
-
-        // --- Start UI transition immediately ---
-        const nextMode = modalContent.nextMode;
         
         const newCurrentSession = nextMode === 'focus' 
             ? (currentSessionNumber >= sessionsPerCycle ? 1 : currentSessionNumber + 1)
             : currentSessionNumber;
         
-        // Predict the next task for setting the timer correctly
-        const willBeComplete = wasFocusSession && taskJustWorkedOn && taskJustWorkedOn.total_poms > 0 && (taskJustWorkedOn.completed_poms + 1 >= taskJustWorkedOn.total_poms);
-
         let nextTaskForTimer: Task | undefined;
+    
         if (nextMode === 'break') {
-            // Break timer is based on the task just worked on
             nextTaskForTimer = taskJustWorkedOn;
-        } else { // nextMode is 'focus'
-            if (willBeComplete) {
-                // Find the next task in the sorted list
-                const completedTaskIndex = tasksToday.findIndex(t => t.id === taskJustWorkedOn!.id);
-                nextTaskForTimer = tasksToday[completedTaskIndex + 1];
-            } else {
-                // Next task is the current one (if not complete) or the first in the list
-                nextTaskForTimer = tasksToday.find(t => !t.completed_at);
+        } else {
+            // Get the next task from the optimistically updated list
+            const optimisticTasksToday = optimisticTasks.filter(t => t.due_date === todayString && !t.completed_at);
+            // Re-apply sorting to be consistent with the tasksToday memo
+            if (todaySortBy === 'priority') {
+                optimisticTasksToday.sort((a, b) => (a.priority ?? 5) - (b.priority ?? 5) || (a.task_order ?? Infinity) - (b.task_order ?? Infinity));
             }
+            nextTaskForTimer = optimisticTasksToday[0];
         }
         
         let newTime;
         let newTotalTime;
-
+    
         if (nextMode === 'break') {
             newTime = (taskJustWorkedOn?.custom_break_duration || settings.breakDuration) * 60;
             newTotalTime = newTime;
@@ -1048,7 +1081,7 @@ const App: React.FC = () => {
         }
         
         const newEndTime = nextMode === 'break' ? Date.now() + newTime * 1000 : null;
-
+    
         setAppState(prev => ({
             ...prev,
             mode: nextMode,
@@ -1060,60 +1093,40 @@ const App: React.FC = () => {
         setPhaseEndTime(newEndTime);
         setIsModalVisible(false);
         playStartSound();
-
-        // --- Perform DB updates in the background ---
-        const performBackgroundUpdates = async () => {
+    
+        // Optimistically update the main state right away
+        setTasks(optimisticTasks);
+    
+        // --- Perform remaining non-critical DB updates in the background ---
+        const performRemainingUpdates = async () => {
             if (wasFocusSession) {
                 const focusDuration = Math.round(sessionTotalTime / 60);
-
+    
                 await dbService.addPomodoroHistory(taskJustWorkedOn?.id || null, focusDuration, focusLevel);
                 
                 if (taskJustWorkedOn?.id) {
+                    const recalcPromises: Promise<any>[] = [];
                     if (taskJustWorkedOn.tags && taskJustWorkedOn.tags.length > 0) {
-                        await dbService.recalculateProgressForAffectedTargets(taskJustWorkedOn.tags, session?.user.id || '');
+                       recalcPromises.push(dbService.recalculateProgressForAffectedTargets(taskJustWorkedOn.tags, session?.user.id || ''));
                     }
                     if (taskJustWorkedOn.project_id) {
-                        await checkProjectDurationCompletion(taskJustWorkedOn.id, focusDuration);
+                        recalcPromises.push(checkProjectDurationCompletion(taskJustWorkedOn.id, focusDuration));
                     }
+                    await Promise.all(recalcPromises);
                 }
-            }
-
-            let taskComment = comment;
-            if (wasFocusSession && taskJustWorkedOn) {
-                const learnRegex = /@learn\s(.+)/i;
-                const learnMatch = comment.match(learnRegex);
-
-                if (learnMatch && learnMatch[1]) {
-                    taskComment = comment.substring(0, learnMatch.index).trim();
-                    const learningContentRaw = learnMatch[1].trim();
-                    const hashtagRegex = /#(\w+)/g;
-                    const tagsFromLearn: string[] = [];
-                    let match;
-                    while ((match = hashtagRegex.exec(learningContentRaw)) !== null) {
-                        tagsFromLearn.push(match[1]);
-                    }
-                    const cleanLearningContent = learningContentRaw.replace(hashtagRegex, '').trim();
-                    const combinedTags = [...new Set([...(taskJustWorkedOn.tags || []), ...tagsFromLearn])];
-                    const newMemory = await dbService.addAiMemory('learning', cleanLearningContent, combinedTags, taskJustWorkedOn.id);
-                    if (newMemory) {
-                        setToastNotification('🧠 AI memory updated!');
-                    }
-                }
-                await handleTaskCompletion(taskJustWorkedOn, taskComment);
             }
             
+            // Finally, refresh everything from the DB to ensure consistency
             await Promise.all([
                 refreshHistoryAndLogs(),
                 refreshTasks(),
                 refreshProjects(),
                 refreshTargets(),
-                refreshAiMemories(),
             ]);
         };
-
-        performBackgroundUpdates().catch(err => {
+    
+        performRemainingUpdates().catch(err => {
             console.error("Error during background data update:", err);
-            // Optionally show an error toast to the user here
         });
     };
     
