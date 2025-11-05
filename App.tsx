@@ -1,7 +1,4 @@
 
-
-
-
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
@@ -76,6 +73,14 @@ const ToastNotification: React.FC<{ message: string; onDismiss: () => void }> = 
     );
 };
 
+const SyncIndicator: React.FC = () => (
+    <div className="fixed top-20 md:top-6 right-6 z-50 flex items-center gap-2 bg-slate-800/80 backdrop-blur-md text-white px-4 py-2 rounded-full shadow-lg border border-slate-700 animate-fadeIn">
+        <div className="w-4 h-4 border-2 border-white/50 border-t-cyan-400 rounded-full animate-spin"></div>
+        <span className="text-sm font-medium">Syncing...</span>
+    </div>
+);
+
+
 // Helper to derive target status client-side for consistent UI
 const augmentTargetsWithStatus = (targets: Target[]): Target[] => {
     const today = getTodayDateString();
@@ -121,6 +126,7 @@ const App: React.FC = () => {
     const [historicalLogs, setHistoricalLogs] = useState<DbDailyLog[]>([]);
     const [aiMemories, setAiMemories] = useState<AiMemory[]>([]);
     const [toastNotification, setToastNotification] = useState<string | null>(null);
+    const [isSyncing, setIsSyncing] = useState(false);
     
     // State for AI Coach Chat - lifted up for persistence
     const [aiChatMessages, setAiChatMessages] = useState<ChatMessage[]>([
@@ -790,7 +796,7 @@ const App: React.FC = () => {
     }, [appState.mode]);
 
     // Check project completion after a focus session
-    const checkProjectDurationCompletion = async (taskId: string, durationAdded: number) => {
+    const checkProjectDurationCompletion = useCallback(async (taskId: string, durationAdded: number) => {
         const task = tasks.find(t => t.id === taskId);
         if (!task || !task.project_id) return;
 
@@ -799,7 +805,7 @@ const App: React.FC = () => {
         
         await dbService.recalculateProjectProgress(project.id);
         await refreshProjects();
-    };
+    }, [tasks, projects, refreshProjects]);
 
     // Phase Completion Logic
     const completePhase = useCallback(async () => {
@@ -996,51 +1002,40 @@ const App: React.FC = () => {
     };
 
     // Modal Continue Handler
-    const handleModalContinue = async (comment: string, focusLevel: FocusLevel | null) => {
+    const handleModalContinue = (comment: string, focusLevel: FocusLevel | null) => {
+        // --- Immediate UI Updates ---
         if (notificationInterval.current) clearInterval(notificationInterval.current);
+        setIsModalVisible(false);
+        setIsSyncing(true);
+        playStartSound();
     
         const wasFocusSession = modalContent.showCommentBox;
         const taskJustWorkedOn = tasksToday.find(t => !t.completed_at);
         const sessionTotalTime = appState.sessionTotalTime;
     
-        // --- Perform critical data updates and get an optimistic result ---
-        let optimisticTasks = tasks;
-    
+        // 1. Create a purely optimistic version of the task that was just worked on.
+        let optimisticUpdatedTask: Task | null = null;
         if (wasFocusSession && taskJustWorkedOn) {
-            // Handle @learn logic separately, can be fire-and-forget
-            let taskComment = comment;
-            const learnRegex = /@learn\s(.+)/i;
-            const learnMatch = comment.match(learnRegex);
+            optimisticUpdatedTask = {
+                ...taskJustWorkedOn,
+                completed_poms: taskJustWorkedOn.total_poms < 0
+                    ? taskJustWorkedOn.completed_poms // Stopwatch poms don't increment this way
+                    : taskJustWorkedOn.completed_poms + 1,
+                comments: comment ? [...(taskJustWorkedOn.comments || []), comment] : taskJustWorkedOn.comments,
+            };
     
-            if (learnMatch && learnMatch[1]) {
-                taskComment = comment.substring(0, learnMatch.index).trim();
-                const learningContentRaw = learnMatch[1].trim();
-                const hashtagRegex = /#(\w+)/g;
-                const tagsFromLearn: string[] = [];
-                let match;
-                while ((match = hashtagRegex.exec(learningContentRaw)) !== null) {
-                    tagsFromLearn.push(match[1]);
-                }
-                const cleanLearningContent = learningContentRaw.replace(hashtagRegex, '').trim();
-                const combinedTags = [...new Set([...(taskJustWorkedOn.tags || []), ...tagsFromLearn])];
-                // Not awaiting this as it doesn't affect the next timer
-                dbService.addAiMemory('learning', cleanLearningContent, combinedTags, taskJustWorkedOn.id).then(newMemory => {
-                    if (newMemory) {
-                        setToastNotification('🧠 AI memory updated!');
-                        refreshAiMemories(); // fire and forget
-                    }
-                });
-            }
-    
-            // Await the crucial task update
-            const updatedTask = await handleTaskCompletion(taskJustWorkedOn, taskComment);
-            
-            if (updatedTask) {
-                optimisticTasks = tasks.map(t => t.id === updatedTask!.id ? updatedTask! : t);
+            // If this pom completes the task, optimistically mark it so.
+            if (taskJustWorkedOn.total_poms > 0 && optimisticUpdatedTask.completed_poms >= taskJustWorkedOn.total_poms) {
+                optimisticUpdatedTask.completed_at = new Date().toISOString();
             }
         }
         
-        // --- Start UI transition immediately using optimistic data ---
+        // 2. Create the optimistic task list for UI state
+        const optimisticTasks = optimisticUpdatedTask 
+            ? tasks.map(t => t.id === optimisticUpdatedTask!.id ? optimisticUpdatedTask! : t)
+            : tasks;
+            
+        // 3. Determine next timer state based on optimistic data
         const nextMode = modalContent.nextMode;
         const currentSessionNumber = appState.currentSession;
         const sessionsPerCycle = settings.sessionsPerCycle;
@@ -1054,9 +1049,7 @@ const App: React.FC = () => {
         if (nextMode === 'break') {
             nextTaskForTimer = taskJustWorkedOn;
         } else {
-            // Get the next task from the optimistically updated list
             const optimisticTasksToday = optimisticTasks.filter(t => t.due_date === todayString && !t.completed_at);
-            // Re-apply sorting to be consistent with the tasksToday memo
             if (todaySortBy === 'priority') {
                 optimisticTasksToday.sort((a, b) => (a.priority ?? 5) - (b.priority ?? 5) || (a.task_order ?? Infinity) - (b.task_order ?? Infinity));
             }
@@ -1082,6 +1075,7 @@ const App: React.FC = () => {
         
         const newEndTime = nextMode === 'break' ? Date.now() + newTime * 1000 : null;
     
+        // 4. Set all UI states at once
         setAppState(prev => ({
             ...prev,
             mode: nextMode,
@@ -1091,20 +1085,42 @@ const App: React.FC = () => {
             isRunning: true,
         }));
         setPhaseEndTime(newEndTime);
-        setIsModalVisible(false);
-        playStartSound();
+        setTasks(optimisticTasks); // This is crucial
     
-        // Optimistically update the main state right away
-        setTasks(optimisticTasks);
+        // --- Perform DB updates in the background ---
+        const performAllUpdatesInBackground = async () => {
+            try {
+                if (wasFocusSession && taskJustWorkedOn) {
+                    // @learn logic
+                    let taskComment = comment;
+                    const learnRegex = /@learn\s(.+)/i;
+                    const learnMatch = comment.match(learnRegex);
     
-        // --- Perform remaining non-critical DB updates in the background ---
-        const performRemainingUpdates = async () => {
-            if (wasFocusSession) {
-                const focusDuration = Math.round(sessionTotalTime / 60);
-    
-                await dbService.addPomodoroHistory(taskJustWorkedOn?.id || null, focusDuration, focusLevel);
-                
-                if (taskJustWorkedOn?.id) {
+                    if (learnMatch && learnMatch[1]) {
+                        taskComment = comment.substring(0, learnMatch.index).trim();
+                        const learningContentRaw = learnMatch[1].trim();
+                        const hashtagRegex = /#(\w+)/g;
+                        const tagsFromLearn: string[] = [];
+                        let match;
+                        while ((match = hashtagRegex.exec(learningContentRaw)) !== null) {
+                            tagsFromLearn.push(match[1]);
+                        }
+                        const cleanLearningContent = learningContentRaw.replace(hashtagRegex, '').trim();
+                        const combinedTags = [...new Set([...(taskJustWorkedOn.tags || []), ...tagsFromLearn])];
+                        
+                        dbService.addAiMemory('learning', cleanLearningContent, combinedTags, taskJustWorkedOn.id).then(newMemory => {
+                            if (newMemory) {
+                                setToastNotification('🧠 AI memory updated!');
+                                refreshAiMemories();
+                            }
+                        });
+                    }
+                    
+                    // Now run the DB updates
+                    await handleTaskCompletion(taskJustWorkedOn, taskComment);
+                    const focusDuration = Math.round(sessionTotalTime / 60);
+                    await dbService.addPomodoroHistory(taskJustWorkedOn.id, focusDuration, focusLevel);
+                    
                     const recalcPromises: Promise<any>[] = [];
                     if (taskJustWorkedOn.tags && taskJustWorkedOn.tags.length > 0) {
                        recalcPromises.push(dbService.recalculateProgressForAffectedTargets(taskJustWorkedOn.tags, session?.user.id || ''));
@@ -1114,20 +1130,28 @@ const App: React.FC = () => {
                     }
                     await Promise.all(recalcPromises);
                 }
+            } catch (err) {
+                console.error("Error during background data update:", err);
+                setToastNotification("⚠️ Sync Error. Data might be stale.");
+            } finally {
+                // Refresh everything from DB to ensure consistency, then turn off sync indicator
+                try {
+                     await Promise.all([
+                        refreshHistoryAndLogs(),
+                        refreshTasks(),
+                        refreshProjects(),
+                        refreshTargets(),
+                    ]);
+                } catch (refreshErr) {
+                    console.error("Error during final refresh:", refreshErr);
+                    setToastNotification("⚠️ Sync Error. Please refresh the page.");
+                } finally {
+                    setIsSyncing(false);
+                }
             }
-            
-            // Finally, refresh everything from the DB to ensure consistency
-            await Promise.all([
-                refreshHistoryAndLogs(),
-                refreshTasks(),
-                refreshProjects(),
-                refreshTargets(),
-            ]);
         };
     
-        performRemainingUpdates().catch(err => {
-            console.error("Error during background data update:", err);
-        });
+        performAllUpdatesInBackground();
     };
     
     const handleUpdateTaskTimers = async (id: string, newTimers: { focus: number | null, break: number | null }) => {
@@ -1444,6 +1468,7 @@ const App: React.FC = () => {
     return (
         <div className="bg-slate-900 text-slate-200 min-h-screen" style={{fontFamily: `'Inter', sans-serif`}}>
             {toastNotification && <ToastNotification message={toastNotification} onDismiss={() => setToastNotification(null)} />}
+            {isSyncing && <SyncIndicator />}
             <Navbar 
                 currentPage={page} 
                 setPage={setPage} 
