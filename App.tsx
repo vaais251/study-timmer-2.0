@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
@@ -123,7 +124,6 @@ const App: React.FC = () => {
     const [allCommitments, setAllCommitments] = useState<Commitment[]>([]);
     const [todaysHistory, setTodaysHistory] = useState<PomodoroHistory[]>([]);
     const [allPomodoroHistory, setAllPomodoroHistory] = useState<PomodoroHistory[]>([]);
-    const [historicalLogs, setHistoricalLogs] = useState<DbDailyLog[]>([]);
     const [aiMemories, setAiMemories] = useState<AiMemory[]>([]);
     const [toastNotification, setToastNotification] = useState<string | null>(null);
     const [isSyncing, setIsSyncing] = useState(false);
@@ -132,12 +132,6 @@ const App: React.FC = () => {
     const [aiChatMessages, setAiChatMessages] = useState<ChatMessage[]>([
         { role: 'model', text: 'Hello! I am your AI Coach. I have access to your goals, projects, and performance data. Ask me for insights, a weekly plan, or to add tasks for you!' }
     ]);
-
-    const [dailyLog, setDailyLog] = useState<DbDailyLog>({
-        date: getTodayDateString(),
-        completed_sessions: 0,
-        total_focus_minutes: 0,
-    });
 
     const [page, setPage] = useState<Page>('timer');
     const [isModalVisible, setIsModalVisible] = useState(false);
@@ -198,6 +192,49 @@ const App: React.FC = () => {
         return allCommitments.filter(c => c.status === 'active' && (!c.due_date || c.due_date >= todayString));
     }, [allCommitments, todayString]);
 
+    // DERIVED STATE: Re-calculate daily logs whenever history or task completion status changes.
+    const { dailyLog, historicalLogs } = useMemo(() => {
+        const completedTaskIds = new Set(tasks.filter(t => t.completed_at).map(t => t.id));
+        const today = getTodayDateString();
+        
+        const fourteenDaysAgo = new Date();
+        fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 13);
+        
+        const logsByDate = new Map<string, DbDailyLog>();
+        
+        const loopDate = new Date(fourteenDaysAgo);
+        const todayDate = new Date();
+        todayDate.setHours(23, 59, 59, 999);
+        while (loopDate <= todayDate) {
+            const dateStr = getTodayDateString(loopDate);
+            logsByDate.set(dateStr, {
+                date: dateStr,
+                completed_sessions: 0,
+                total_focus_minutes: 0,
+            });
+            loopDate.setDate(loopDate.getDate() + 1);
+        }
+        
+        // Only sum history for completed tasks or tasks with no ID
+        allPomodoroHistory.forEach(p => {
+            if (!p.task_id || completedTaskIds.has(p.task_id)) {
+                const localDate = new Date(p.ended_at);
+                const date = getTodayDateString(localDate);
+                
+                if (logsByDate.has(date)) {
+                    const log = logsByDate.get(date)!;
+                    log.completed_sessions += 1;
+                    log.total_focus_minutes += Number(p.duration_minutes) || 0;
+                }
+            }
+        });
+
+        const newHistoricalLogs = Array.from(logsByDate.values()).sort((a, b) => a.date.localeCompare(b.date));
+        const newDailyLog = logsByDate.get(today) || { date: today, completed_sessions: 0, total_focus_minutes: 0 };
+
+        return { dailyLog: newDailyLog, historicalLogs: newHistoricalLogs };
+    }, [allPomodoroHistory, tasks]);
+
 
     useEffect(() => {
         supabase.auth.getSession().then(({ data: { session } }) => {
@@ -235,44 +272,10 @@ const App: React.FC = () => {
     // Extracted logic to process pomodoro history into logs
     const processAndSetHistoryData = useCallback((history: PomodoroHistory[]) => {
         const today = getTodayDateString();
-        const fourteenDaysAgo = new Date();
-        fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 13);
-        
-        const logsByDate = new Map<string, DbDailyLog>();
-        
-        // Initialize map for all days in range to handle days with no activity
-        const loopDate = new Date(fourteenDaysAgo);
-        const todayDate = new Date();
-        todayDate.setHours(23, 59, 59, 999); // Ensure today is included
-        while (loopDate <= todayDate) {
-            const dateStr = getTodayDateString(loopDate);
-            logsByDate.set(dateStr, {
-                date: dateStr,
-                completed_sessions: 0,
-                total_focus_minutes: 0,
-            });
-            loopDate.setDate(loopDate.getDate() + 1);
-        }
-        
-        history.forEach(p => {
-            const localDate = new Date(p.ended_at);
-            const date = getTodayDateString(localDate);
-            
-            if (logsByDate.has(date)) {
-                const log = logsByDate.get(date)!;
-                log.completed_sessions += 1;
-                log.total_focus_minutes += Number(p.duration_minutes) || 0;
-            }
-        });
-
-        const authoritativeHistoricalLogs = Array.from(logsByDate.values()).sort((a, b) => a.date.localeCompare(b.date));
         const freshTodaysHistory = history.filter(p => p.ended_at.startsWith(today));
-        const freshTodayLog = logsByDate.get(today) || { date: today, completed_sessions: 0, total_focus_minutes: 0 };
         
         setAllPomodoroHistory(history);
         setTodaysHistory(freshTodaysHistory);
-        setHistoricalLogs(authoritativeHistoricalLogs);
-        setDailyLog(freshTodayLog);
     }, []);
 
     const refreshHistoryAndLogs = useCallback(async () => {
@@ -430,11 +433,9 @@ const App: React.FC = () => {
             setAllCommitments([]);
             setTodaysHistory([]);
             setAllPomodoroHistory([]);
-            setHistoricalLogs([]);
             setAiMemories([]);
             setNotifications([]);
             setAiChatMessages([{ role: 'model', text: 'Hello! I am your AI Coach. I have access to your goals, projects, and performance data. Ask me for insights, a weekly plan, or to add tasks for you!' }]);
-            setDailyLog({ date: getTodayDateString(), completed_sessions: 0, total_focus_minutes: 0 });
             localStorage.removeItem('pomodoroAppState');
         } else if (!session) {
             // Initial state, no session, not loading.
