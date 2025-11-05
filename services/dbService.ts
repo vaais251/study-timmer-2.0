@@ -40,7 +40,8 @@ export const recalculateProjectProgress = async (projectId: string): Promise<voi
         const { data: projectTasks, error: tasksError } = await supabase
             .from('tasks')
             .select('id')
-            .eq('project_id', projectId);
+            .eq('project_id', projectId)
+            .not('completed_at', 'is', null);
 
         if (tasksError) {
             console.error("Error fetching tasks for project duration:", tasksError);
@@ -148,7 +149,8 @@ export const recalculateTargetProgress = async (targetId: string): Promise<void>
         .from('tasks')
         .select('id, tags')
         .eq('user_id', target.user_id)
-        .not('tags', 'is', null);
+        .not('tags', 'is', null)
+        .not('completed_at', 'is', null);
 
     if (tasksError || !tasks) return;
 
