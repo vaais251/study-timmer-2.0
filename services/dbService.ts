@@ -136,7 +136,7 @@ export const recalculateProgressForAffectedTargets = async (tags: string[], user
 export const recalculateTargetProgress = async (targetId: string): Promise<void> => {
     const { data: target, error: targetError } = await supabase
         .from('targets')
-        .select('tags, user_id, target_minutes')
+        .select('tags, user_id, target_minutes, created_at, start_date')
         .eq('id', targetId)
         .single();
 
@@ -144,11 +144,13 @@ export const recalculateTargetProgress = async (targetId: string): Promise<void>
         return;
     }
 
+    // Determine the effective start date for counting progress.
+    // Use the start_date if it exists, otherwise fall back to created_at.
+    const progressStartDate = target.start_date || target.created_at;
+
     const lowerCaseTargetTags = target.tags.map(t => t.toLowerCase());
 
     // 1. Find all COMPLETED tasks that could contribute to this target.
-    // This change is based on user feedback to align with project logic,
-    // which credits time only from completed tasks.
     const { data: tasks, error: tasksError } = await supabase
         .from('tasks')
         .select('id, tags')
@@ -170,11 +172,12 @@ export const recalculateTargetProgress = async (targetId: string): Promise<void>
         return;
     }
 
-    // 2. Sum up history for those tasks
+    // 2. Sum up history for those tasks, ensuring the history entry was created AFTER the target.
     const { data: histories, error: historyError } = await supabase
         .from('pomodoro_history')
         .select('duration_minutes')
-        .in('task_id', contributingTaskIds);
+        .in('task_id', contributingTaskIds)
+        .gte('ended_at', progressStartDate); // Filter out history before the target existed
 
     if (historyError) {
         console.error("Error fetching pomodoro history for target recalculation:", historyError);
