@@ -25,7 +25,7 @@ const StatsPanel: React.FC<StatsPanelProps> = ({ completedToday, tasksToday, his
 
     const { card1, card2, card3, stats, chartData } = useMemo(() => {
         const todayString = getTodayDateString();
-        const today = new Date();
+        const today = new Date(todayString + 'T12:00:00'); // Use a fixed time to avoid TZ issues near midnight
 
         // --- Calculations ---
         const dailyTotals = new Map<string, number>();
@@ -46,13 +46,13 @@ const StatsPanel: React.FC<StatsPanelProps> = ({ completedToday, tasksToday, his
 
         const totalFocusToday = dailyTotals.get(todayString) || 0;
 
-        const yesterday = new Date();
+        const yesterday = new Date(today);
         yesterday.setDate(today.getDate() - 1);
         const totalFocusYesterday = dailyTotals.get(getTodayDateString(yesterday)) || 0;
 
         const totalFocusRecent7Days = getRangeTotal(today, 7);
 
-        const previous7DaysEndDate = new Date();
+        const previous7DaysEndDate = new Date(today);
         previous7DaysEndDate.setDate(today.getDate() - 7);
         const totalFocusPrevious7Days = getRangeTotal(previous7DaysEndDate, 7);
         
@@ -64,11 +64,23 @@ const StatsPanel: React.FC<StatsPanelProps> = ({ completedToday, tasksToday, his
         if (comparisonPeriod === 'yesterday') {
             card1 = { label: "Focus Time", value: `${totalFocusToday}m` };
             
-            const diff = totalFocusToday - totalFocusYesterday;
-            const color = diff > 0 ? 'text-green-400' : diff < 0 ? 'text-red-400' : 'text-white';
-            const symbol = diff > 0 ? '▲' : diff < 0 ? '▼' : '';
-            const text = diff === 0 ? '-' : `${symbol} ${Math.round(Math.abs(diff))}m`;
-            card2Value = <div className={`text-2xl font-semibold ${color}`}>{text}</div>;
+            // Robust comparison logic
+            if (totalFocusToday > 0 && totalFocusYesterday > 0) {
+                const diff = totalFocusToday - totalFocusYesterday;
+                if (diff > 0) {
+                    card2Value = <div className="text-2xl font-semibold text-green-400">▲ {diff}m</div>;
+                } else if (diff < 0) {
+                    card2Value = <div className="text-2xl font-semibold text-red-400">▼ {Math.abs(diff)}m</div>;
+                } else {
+                    card2Value = <div className="text-2xl font-semibold text-white">0m</div>;
+                }
+            } else if (totalFocusToday > 0 && totalFocusYesterday === 0) {
+                card2Value = <div className="text-2xl font-semibold text-green-400">▲ {totalFocusToday}m</div>;
+            } else if (totalFocusToday === 0 && totalFocusYesterday > 0) {
+                card2Value = <div className="text-2xl font-semibold text-red-400">▼ {totalFocusYesterday}m</div>;
+            } else { // both are 0
+                card2Value = <div className="text-2xl font-semibold text-white">-</div>;
+            }
             
             const sevenDayAverageForStatCard = totalFocusRecent7Days > 0 ? Math.round(totalFocusRecent7Days / 7) : 0;
             card3 = { label: "7-Day Avg", value: `${sevenDayAverageForStatCard}m` };
@@ -77,10 +89,14 @@ const StatsPanel: React.FC<StatsPanelProps> = ({ completedToday, tasksToday, his
             card1 = { label: "This Week", value: `${totalFocusRecent7Days}m` };
             
             const diff = totalFocusRecent7Days - totalFocusPrevious7Days;
-            const color = diff > 0 ? 'text-green-400' : diff < 0 ? 'text-red-400' : 'text-white';
-            const symbol = diff > 0 ? '▲' : diff < 0 ? '▼' : '';
-            const text = diff === 0 ? '-' : `${symbol} ${Math.round(Math.abs(diff))}m`;
-            card2Value = <div className={`text-2xl font-semibold ${color}`}>{text}</div>;
+            if (totalFocusRecent7Days > 0 || totalFocusPrevious7Days > 0) {
+                const color = diff > 0 ? 'text-green-400' : diff < 0 ? 'text-red-400' : 'text-white';
+                const symbol = diff > 0 ? '▲' : diff < 0 ? '▼' : '';
+                const text = diff === 0 ? '0m' : `${symbol} ${Math.abs(diff)}m`;
+                card2Value = <div className={`text-2xl font-semibold ${color}`}>{text}</div>;
+            } else {
+                card2Value = <div className="text-2xl font-semibold text-white">-</div>;
+            }
             
             card3 = { label: "Last Week", value: `${totalFocusPrevious7Days}m` };
         }
