@@ -146,13 +146,15 @@ export const recalculateTargetProgress = async (targetId: string): Promise<void>
 
     const lowerCaseTargetTags = target.tags.map(t => t.toLowerCase());
 
-    // 1. Find all tasks that could contribute to this target (both complete and incomplete).
-    // This is the key fix: removing `.not('completed_at', 'is', null)` ensures continuous progress tracking.
+    // 1. Find all COMPLETED tasks that could contribute to this target.
+    // This change is based on user feedback to align with project logic,
+    // which credits time only from completed tasks.
     const { data: tasks, error: tasksError } = await supabase
         .from('tasks')
         .select('id, tags')
         .eq('user_id', target.user_id)
-        .not('tags', 'is', null);
+        .not('tags', 'is', null)
+        .not('completed_at', 'is', null); // Only fetch completed tasks
 
     if (tasksError || !tasks) {
         console.error("Error fetching tasks for target recalculation:", tasksError);
