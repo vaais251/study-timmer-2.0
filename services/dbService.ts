@@ -301,17 +301,26 @@ export const updateTask = async (id: string, updates: Partial<Task>, options = {
         return null;
     }
 
-    // If a completed task is edited to require more poms, mark it as incomplete.
     const wasCompleted = !!originalTask.completed_at;
     const newTotalPoms = updates.total_poms;
 
-    // A task becomes incomplete if it was completed and its new total poms is greater than completed poms
+    // Scenario 1: A completed task is edited to require more poms, making it incomplete.
     const isNowIncomplete = wasCompleted && 
                             newTotalPoms !== undefined && 
                             newTotalPoms > originalTask.completed_poms;
 
     if (isNowIncomplete) {
         updates.completed_at = null;
+    }
+
+    // Scenario 2 (USER'S BUG): An incomplete task's total_poms is reduced, making it complete.
+    const isNowComplete = !wasCompleted &&
+                          newTotalPoms !== undefined &&
+                          newTotalPoms > 0 && // Not a stopwatch task
+                          originalTask.completed_poms >= newTotalPoms;
+    
+    if (isNowComplete) {
+        updates.completed_at = new Date().toISOString();
     }
 
     // 2. Perform the update
@@ -338,10 +347,17 @@ export const updateTask = async (id: string, updates: Partial<Task>, options = {
     const newTags = updatedTask.tags || [];
     
     const projectsToRecalc = new Set<string>();
-    // Recalculate if project changed OR if completion status changed
-    if (originalProject) projectsToRecalc.add(originalProject);
-    if (newProject && newProject !== originalProject) projectsToRecalc.add(newProject);
-    if (isNowIncomplete && originalProject) projectsToRecalc.add(originalProject);
+    
+    const completionStatusChanged = (!!updatedTask.completed_at !== !!originalTask.completed_at);
+    const projectChanged = originalProject !== newProject;
+
+    if (projectChanged) {
+        if(originalProject) projectsToRecalc.add(originalProject);
+        if(newProject) projectsToRecalc.add(newProject);
+    } else if (completionStatusChanged && newProject) {
+        // If project didn't change but completion did, recalc the current project
+        projectsToRecalc.add(newProject);
+    }
     
     for (const projectId of projectsToRecalc) {
         await recalculateProjectProgress(projectId);
