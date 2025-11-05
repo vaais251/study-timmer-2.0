@@ -95,6 +95,7 @@ export interface Settings {
     focusDuration: number;
     breakDuration: number;
     sessionsPerCycle: number;
+    todaySortBy: 'default' | 'priority';
 }
 export interface DbSettings extends Settings {
     user_id: string;

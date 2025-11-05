@@ -193,7 +193,7 @@ export const getSettings = async (): Promise<Settings | null> => {
 
     const { data, error } = await supabase
         .from('settings')
-        .select('focus_duration, break_duration, session_per_cycle')
+        .select('focus_duration, break_duration, session_per_cycle, today_sort_by')
         .eq('user_id', user.id)
         .single();
 
@@ -207,7 +207,8 @@ export const getSettings = async (): Promise<Settings | null> => {
     return {
         focusDuration: data.focus_duration,
         breakDuration: data.break_duration,
-        sessionsPerCycle: data.session_per_cycle
+        sessionsPerCycle: data.session_per_cycle,
+        todaySortBy: data.today_sort_by || 'default',
     };
 };
 
@@ -220,6 +221,7 @@ export const updateSettings = async (settings: Settings): Promise<void> => {
         focus_duration: settings.focusDuration,
         break_duration: settings.breakDuration,
         session_per_cycle: settings.sessionsPerCycle,
+        today_sort_by: settings.todaySortBy,
         updated_at: new Date().toISOString(),
     });
 

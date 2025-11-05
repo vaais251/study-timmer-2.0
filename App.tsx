@@ -1,5 +1,6 @@
 
 
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
@@ -115,6 +116,7 @@ const App: React.FC = () => {
         focusDuration: 25,
         breakDuration: 5,
         sessionsPerCycle: 2,
+        todaySortBy: 'default',
     });
 
     const [tasks, setTasks] = useState<Task[]>([]);
@@ -137,7 +139,6 @@ const App: React.FC = () => {
     const [isModalVisible, setIsModalVisible] = useState(false);
     const [modalContent, setModalContent] = useState({ title: '', message: '', nextMode: 'focus' as Mode, showCommentBox: false });
     const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
-    const [todaySortBy, setTodaySortBy] = useState<'default' | 'priority'>('default');
     
     // New state for in-app notification system
     const [notifications, setNotifications] = useState<AppNotification[]>([]);
@@ -164,7 +165,7 @@ const App: React.FC = () => {
     const tasksToday = useMemo(() => {
         const todayTasks = tasks.filter(t => t.due_date === todayString && !t.completed_at);
     
-        if (todaySortBy === 'priority') {
+        if (settings.todaySortBy === 'priority') {
             // Sort by priority (1 is highest), then by the default task order as a tie-breaker.
             return todayTasks.sort((a, b) => {
                 const priorityA = a.priority ?? 5; // Use a high number for null priority to sort it last
@@ -179,7 +180,7 @@ const App: React.FC = () => {
         // For 'default', the list is already sorted by `task_order` from the database fetch.
         // The `.filter()` operation preserves this order.
         return todayTasks;
-    }, [tasks, todayString, todaySortBy]);
+    }, [tasks, todayString, settings.todaySortBy]);
 
     const tasksForTomorrow = useMemo(() => tasks.filter(t => t.due_date === tomorrowString && !t.completed_at), [tasks, tomorrowString]);
     const tasksFuture = useMemo(() => tasks.filter(t => t.due_date > tomorrowString && !t.completed_at), [tasks, tomorrowString]);
@@ -425,7 +426,7 @@ const App: React.FC = () => {
             setAppState(initialState);
             setPhaseEndTime(null);
             setDidRestoreFromStorage(false);
-            setSettings({ focusDuration: 25, breakDuration: 5, sessionsPerCycle: 2 });
+            setSettings({ focusDuration: 25, breakDuration: 5, sessionsPerCycle: 2, todaySortBy: 'default' });
             setTasks([]);
             setProjects([]);
             setGoals([]);
@@ -1051,7 +1052,7 @@ const App: React.FC = () => {
             nextTaskForTimer = taskJustWorkedOn;
         } else {
             const optimisticTasksToday = optimisticTasks.filter(t => t.due_date === todayString && !t.completed_at);
-            if (todaySortBy === 'priority') {
+            if (settings.todaySortBy === 'priority') {
                 optimisticTasksToday.sort((a, b) => (a.priority ?? 5) - (b.priority ?? 5) || (a.task_order ?? Infinity) - (b.task_order ?? Infinity));
             }
             nextTaskForTimer = optimisticTasksToday[0];
@@ -1197,8 +1198,14 @@ const App: React.FC = () => {
         await refreshTasks();
     };
 
+    const handleSortChange = async (newSortBy: 'default' | 'priority') => {
+        const newSettings: Settings = { ...settings, todaySortBy: newSortBy };
+        setSettings(newSettings); // Optimistic update
+        await dbService.updateSettings(newSettings);
+    };
+
     const handleReorderTasks = async (reorderedTasks: Task[]) => {
-        setTodaySortBy('default');
+        handleSortChange('default');
         
         setTasks(currentTasks => {
             const reorderedIds = new Set(reorderedTasks.map(t => t.id));
@@ -1410,8 +1417,8 @@ const App: React.FC = () => {
                     onUpdateTaskTimers={handleUpdateTaskTimers}
                     onUpdateTask={handleUpdateTask}
                     onMarkTaskIncomplete={handleMarkTaskIncomplete}
-                    todaySortBy={todaySortBy}
-                    onSortTodayByChange={setTodaySortBy}
+                    todaySortBy={settings.todaySortBy}
+                    onSortTodayByChange={handleSortChange}
                 />;
             case 'stats':
                 return <StatsPage />;
