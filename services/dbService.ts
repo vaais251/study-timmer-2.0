@@ -140,19 +140,24 @@ export const recalculateTargetProgress = async (targetId: string): Promise<void>
         .eq('id', targetId)
         .single();
 
-    if (targetError || !target || !target.tags || target.tags.length === 0) return;
+    if (targetError || !target || !target.tags || target.tags.length === 0) {
+        return;
+    }
 
     const lowerCaseTargetTags = target.tags.map(t => t.toLowerCase());
 
-    // 1. Find all tasks that could contribute to this target
+    // 1. Find all tasks that could contribute to this target (both complete and incomplete).
+    // This is the key fix: removing `.not('completed_at', 'is', null)` ensures continuous progress tracking.
     const { data: tasks, error: tasksError } = await supabase
         .from('tasks')
         .select('id, tags')
         .eq('user_id', target.user_id)
-        .not('tags', 'is', null)
-        .not('completed_at', 'is', null);
+        .not('tags', 'is', null);
 
-    if (tasksError || !tasks) return;
+    if (tasksError || !tasks) {
+        console.error("Error fetching tasks for target recalculation:", tasksError);
+        return;
+    }
 
     const contributingTaskIds = tasks
         .filter(t => t.tags && t.tags.some(taskTag => lowerCaseTargetTags.includes(taskTag.toLowerCase())))
@@ -169,7 +174,10 @@ export const recalculateTargetProgress = async (targetId: string): Promise<void>
         .select('duration_minutes')
         .in('task_id', contributingTaskIds);
 
-    if (historyError) return;
+    if (historyError) {
+        console.error("Error fetching pomodoro history for target recalculation:", historyError);
+        return;
+    }
 
     const newProgressMinutes = histories.reduce((sum, h) => sum + (Number(h.duration_minutes) || 0), 0);
 
@@ -181,7 +189,10 @@ export const recalculateTargetProgress = async (targetId: string): Promise<void>
         updates.completed_at = null;
     }
 
-    await supabase.from('targets').update(updates).eq('id', targetId);
+    const { error: updateError } = await supabase.from('targets').update(updates).eq('id', targetId);
+    if (updateError) {
+        console.error("Error updating target progress:", updateError);
+    }
 };
 
 
