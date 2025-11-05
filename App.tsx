@@ -3,6 +3,8 @@
 
 
 
+
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
@@ -712,6 +714,39 @@ const App: React.FC = () => {
                 );
             }
         });
+
+        // 4. Daily Briefing Notification (once per day)
+        const dailyBriefingId = `daily-briefing-${todayStr}`;
+        if (!existingIds.has(dailyBriefingId) && !clearedNotificationIds.has(dailyBriefingId)) {
+            const dayOfWeek = today.getDay(); // 0=Sun, 6=Sat
+    
+            // Find projects for today
+            const projectsToday = projects.filter(p =>
+                p.status === 'active' &&
+                (!p.start_date || p.start_date <= todayStr) &&
+                (!p.active_days || p.active_days.length === 0 || p.active_days.includes(dayOfWeek))
+            ).map(p => p.name);
+    
+            // Find time-based targets with progress
+            const timeTargets = targets.filter(t =>
+                t.status === 'active' &&
+                t.completion_mode === 'focus_minutes' &&
+                t.target_minutes && t.progress_minutes < t.target_minutes
+            ).map(t => `${t.text}: ${t.progress_minutes}/${t.target_minutes}m`);
+    
+            let messageParts: string[] = [];
+            if (projectsToday.length > 0) {
+                messageParts.push(`Projects: ${projectsToday.join(', ')}.`);
+            }
+            if (timeTargets.length > 0) {
+                messageParts.push(`Targets: ${timeTargets.join(', ')}.`);
+            }
+    
+            if (messageParts.length > 0) {
+                const message = `☀️ Daily Briefing! ${messageParts.join(' ')} Let's make today productive!`;
+                createNotificationPayload(dailyBriefingId, message, 'start');
+            }
+        }
     
         if (newNotifications.length > 0) {
             const addAndRefreshNotifications = async () => {

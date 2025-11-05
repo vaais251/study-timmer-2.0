@@ -1,9 +1,6 @@
 import { GoogleGenAI, GenerateContentResponse, FunctionDeclaration, Part, Type } from "@google/genai";
 import { Goal, Target, Project, Commitment, Task, AiMemory, PomodoroHistory } from '../types';
 
-// Hardcoded for testing as requested by the user.
-const API_KEY = "AIzaSyBT9IN5PiyqaWBdM9NekDg5d-5fWDuhZnE";
-
 export async function getChartInsight(chartTitle: string, chartData: any): Promise<string> {
     const prompt = `
         You are a world-class data analyst and productivity coach. Your goal is to help a user understand their study and work habits to become more productive.
@@ -30,7 +27,7 @@ export async function getChartInsight(chartTitle: string, chartData: any): Promi
     `;
 
     try {
-        const ai = new GoogleGenAI({ apiKey: API_KEY });
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-pro',
@@ -77,7 +74,7 @@ export async function getTabSummary(tabName: string, data: any): Promise<string>
     `;
 
     try {
-        const ai = new GoogleGenAI({ apiKey: API_KEY });
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-pro',
@@ -103,7 +100,7 @@ export async function getTabSummary(tabName: string, data: any): Promise<string>
 
 export async function generateContent(prompt: string): Promise<string> {
     try {
-        const ai = new GoogleGenAI({ apiKey: API_KEY });
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-pro',
@@ -148,7 +145,7 @@ export async function runAgent(
     tools: FunctionDeclaration[],
     context: AgentContext
 ): Promise<GenerateContentResponse> {
-    const ai = new GoogleGenAI({ apiKey: API_KEY });
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
     const systemInstruction = `You are PomoAI, an expert productivity coach and data analyst integrated into a Pomodoro study application. You have read-only access to a snapshot of the user's planning and performance data, provided below. This snapshot covers ${context.dateRangeDescription}. Your primary role is to help the user understand their data, find insights, plan their work, and take action on their behalf using your available tools. You are conversational, encouraging, and highly analytical. The app supports two primary work modes for tasks:
 1.  **Pomodoro Mode**: Traditional countdown timers for focused work sessions. These are for tasks with a defined scope, estimated in 'poms'.

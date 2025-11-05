@@ -1224,8 +1224,9 @@ export const addPomodoroHistory = async (taskId: string | null, duration: number
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const ended_at = new Date().toISOString();
-    const date = ended_at.split('T')[0];
+    const endedAtDate = new Date();
+    const ended_at = endedAtDate.toISOString();
+    const date = getTodayDateString(endedAtDate); // Use local date
 
     const { error } = await supabase.from('pomodoro_history').insert([{
         user_id: user.id,
@@ -1240,13 +1241,16 @@ export const addPomodoroHistory = async (taskId: string | null, duration: number
         return;
     }
     
-    // Authoritatively update daily_logs
+    // Authoritatively update daily_logs based on user's local day
+    const startOfDayLocal = new Date(`${date}T00:00:00`);
+    const endOfDayLocal = new Date(`${date}T23:59:59.999`);
+
     const { data: todaysHistory, error: historyError } = await supabase
         .from('pomodoro_history')
         .select('duration_minutes')
         .eq('user_id', user.id)
-        .gte('ended_at', `${date}T00:00:00.000Z`)
-        .lte('ended_at', `${date}T23:59:59.999Z`);
+        .gte('ended_at', startOfDayLocal.toISOString())
+        .lte('ended_at', endOfDayLocal.toISOString());
 
     if (historyError) {
         console.error("Error fetching today's history for log update:", historyError);
