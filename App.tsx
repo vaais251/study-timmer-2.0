@@ -1,6 +1,8 @@
 
 
 
+
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
@@ -195,7 +197,6 @@ const App: React.FC = () => {
 
     // DERIVED STATE: Re-calculate daily logs whenever history or task completion status changes.
     const { dailyLog, historicalLogs } = useMemo(() => {
-        const completedTaskIds = new Set(tasks.filter(t => t.completed_at).map(t => t.id));
         const today = getTodayDateString();
         
         const fourteenDaysAgo = new Date();
@@ -216,17 +217,15 @@ const App: React.FC = () => {
             loopDate.setDate(loopDate.getDate() + 1);
         }
         
-        // Only sum history for completed tasks or tasks with no ID
+        // Sum up all pomodoro history entries. The previous logic was buggy.
         allPomodoroHistory.forEach(p => {
-            if (!p.task_id || completedTaskIds.has(p.task_id)) {
-                const localDate = new Date(p.ended_at);
-                const date = getTodayDateString(localDate);
-                
-                if (logsByDate.has(date)) {
-                    const log = logsByDate.get(date)!;
-                    log.completed_sessions += 1;
-                    log.total_focus_minutes += Number(p.duration_minutes) || 0;
-                }
+            const localDate = new Date(p.ended_at);
+            const date = getTodayDateString(localDate);
+            
+            if (logsByDate.has(date)) {
+                const log = logsByDate.get(date)!;
+                log.completed_sessions += 1;
+                log.total_focus_minutes += Number(p.duration_minutes) || 0;
             }
         });
 
@@ -234,7 +233,7 @@ const App: React.FC = () => {
         const newDailyLog = logsByDate.get(today) || { date: today, completed_sessions: 0, total_focus_minutes: 0 };
 
         return { dailyLog: newDailyLog, historicalLogs: newHistoricalLogs };
-    }, [allPomodoroHistory, tasks]);
+    }, [allPomodoroHistory]);
 
 
     useEffect(() => {
