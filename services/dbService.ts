@@ -1363,6 +1363,61 @@ export const getAllPomodoroHistory = async (): Promise<PomodoroHistory[]> => {
     return data || [];
 };
 
+export const deletePomodoroHistoryById = async (historyId: string): Promise<boolean> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return false;
+
+    // Get task_id before deleting to trigger recalculation later.
+    const { data: historyItem, error: fetchError } = await supabase
+        .from('pomodoro_history')
+        .select('task_id')
+        .eq('id', historyId)
+        .eq('user_id', user.id)
+        .single();
+    
+    if (fetchError) {
+        console.error("Error finding pomodoro history item to delete:", fetchError);
+        // If it doesn't exist, it might have been deleted already. Let's consider it a "success" from the user's POV.
+        return true; 
+    }
+    
+    if (!historyItem) {
+        // Not found, maybe already deleted.
+        return true;
+    }
+
+    const { error: deleteError } = await supabase
+        .from('pomodoro_history')
+        .delete()
+        .eq('id', historyId);
+
+    if (deleteError) {
+        console.error("Error deleting pomodoro history:", deleteError);
+        return false;
+    }
+    
+    // If the deleted history was associated with a task, we need to recalculate progress.
+    if (historyItem.task_id) {
+        const { data: task, error: taskError } = await supabase
+            .from('tasks')
+            .select('project_id, tags')
+            .eq('id', historyItem.task_id)
+            .single();
+
+        if (task) {
+            if (task.project_id) {
+                await recalculateProjectProgress(task.project_id);
+            }
+            if (task.tags && task.tags.length > 0) {
+                await recalculateProgressForAffectedTargets(task.tags, user.id);
+            }
+        }
+    }
+
+    return true;
+};
+
+
 export const getConsistencyLogs = async (days?: number, year?: number): Promise<DbDailyLog[]> => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return [];

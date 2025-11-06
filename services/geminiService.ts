@@ -1,4 +1,5 @@
 
+
 import { GoogleGenAI, GenerateContentResponse, FunctionDeclaration, Part, Type } from "@google/genai";
 import { Goal, Target, Project, Commitment, Task, AiMemory, PomodoroHistory } from '../types';
 
@@ -136,7 +137,7 @@ export interface AgentContext {
     commitments: Pick<Commitment, 'id' | 'text' | 'due_date'>[];
     tasks: Pick<Task, 'id' | 'text' | 'due_date' | 'completed_at' | 'project_id' | 'completed_poms' | 'total_poms' | 'comments' | 'priority' | 'tags'>[];
     dailyLogs: { date: string; total_focus_minutes: number; completed_sessions: number }[];
-    pomodoroHistory: Pick<PomodoroHistory, 'task_id' | 'ended_at' | 'duration_minutes'>[];
+    pomodoroHistory: Pick<PomodoroHistory, 'id' | 'task_id' | 'ended_at' | 'duration_minutes'>[];
     aiMemories: Pick<AiMemory, 'id' | 'type' | 'content' | 'tags' | 'created_at'>[];
     dateRangeDescription: string;
 }
@@ -173,6 +174,8 @@ You are fully capable of performing detailed time-of-day analysis. To answer que
 -   To determine when tasks are **completed**, analyze the \`completed_at\` timestamps in the \`tasks\` data. Extract the hour from each timestamp, group the tasks by hour of the day (e.g., 9 AM, 10 AM, etc.), and identify which hour has the most completed tasks.
 -   To determine when the user **focuses most**, analyze the \`ended_at\` timestamps in the \`pomodoro_history\` data. Aggregate the total \`duration_minutes\` for each hour of the day to find the most focused periods.
 Use this powerful analytical capability to provide insightful answers about the user's daily patterns.
+
+You are also capable of deleting specific Pomodoro history sessions if the user asks you to clean up their logs (e.g., remove a duplicate entry). This is a permanent and destructive action. You MUST always ask for confirmation from the user before using the 'deletePomodoroHistory' tool. Do not use this tool without explicit user consent for the specific session.
 
 Today's date is ${new Date().toISOString().split('T')[0]}.
 
@@ -288,7 +291,7 @@ ${context.dailyLogs.map(log => `- Date: ${log.date}, Focus Time: ${log.total_foc
 
 == POMODORO HISTORY IN RANGE ==
 This is the raw log of individual focus sessions. Use the \`ended_at\` timestamp for detailed time-of-day analysis.
-${context.pomodoroHistory.map(p => `- Ended: ${p.ended_at}, Duration: ${p.duration_minutes} min, TaskID: ${p.task_id || 'None'}`).join('\n') || 'No individual focus sessions recorded in this range.'}
+${context.pomodoroHistory.map(p => `- Ended: ${p.ended_at}, Duration: ${p.duration_minutes} min, TaskID: ${p.task_id || 'None'}, ID: ${p.id}`).join('\n') || 'No individual focus sessions recorded in this range.'}
 --- END OF CONTEXT ---
 
 Based on this detailed data and schema, answer the user's questions and execute commands with precision.`;

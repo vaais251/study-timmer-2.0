@@ -33,6 +33,7 @@ interface AICoachPageProps {
     setChatMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
     aiMemories: AiMemory[];
     onMemoryChange: () => Promise<void>;
+    onHistoryChange: () => Promise<void>;
 }
 
 // --- AI Function Declarations ---
@@ -147,6 +148,17 @@ const toolDeclarations: FunctionDeclaration[] = [
             },
             required: ['memoryId']
         }
+    },
+    {
+        name: 'deletePomodoroHistory',
+        description: "Deletes a specific Pomodoro session from the user's history log. This is a permanent action. You MUST ask the user for confirmation before using this tool.",
+        parameters: {
+            type: Type.OBJECT,
+            properties: {
+                historyId: { type: Type.STRING, description: "The ID of the pomodoro_history entry to delete. You MUST find this ID from the Pomodoro History context data." },
+            },
+            required: ['historyId']
+        }
     }
 ];
 
@@ -212,7 +224,7 @@ const AiMemoryManager: React.FC<{ memories: AiMemory[], onDelete: (id: string) =
 type FilterMode = 'all' | 'week' | 'month' | 'range';
 
 const AICoachPage: React.FC<AICoachPageProps> = (props) => {
-    const { goals, targets, projects, allCommitments, onAddTask, onAddProject, onAddTarget, onAddCommitment, onRescheduleItem, chatMessages, setChatMessages, aiMemories, onMemoryChange } = props;
+    const { goals, targets, projects, allCommitments, onAddTask, onAddProject, onAddTarget, onAddCommitment, onRescheduleItem, chatMessages, setChatMessages, aiMemories, onMemoryChange, onHistoryChange } = props;
     
     // Agent State
     const [userInput, setUserInput] = useState('');
@@ -457,7 +469,7 @@ const AICoachPage: React.FC<AICoachPageProps> = (props) => {
                 tags: t.tags,
             })),
             dailyLogs,
-            pomodoroHistory: contextHistory.map(p => ({ task_id: p.task_id, ended_at: p.ended_at, duration_minutes: p.duration_minutes })),
+            pomodoroHistory: contextHistory.map(p => ({ id: p.id, task_id: p.task_id, ended_at: p.ended_at, duration_minutes: p.duration_minutes })),
             aiMemories: aiMemories.map(m => ({ id: m.id, type: m.type, content: m.content, tags: m.tags, created_at: m.created_at })),
             dateRangeDescription,
         };
@@ -505,6 +517,26 @@ const AICoachPage: React.FC<AICoachPageProps> = (props) => {
                             functionResultPayload = { success: true, message: `Memory with ID ${args.memoryId as string} has been deleted.` };
                         } else {
                             functionResultPayload = { success: false, message: `Failed to delete memory with ID ${args.memoryId as string}.` };
+                        }
+                    } else if (name === 'deletePomodoroHistory') {
+                        const historyId = args.historyId as string;
+                        
+                        // Find the item in the context to show details in the confirmation.
+                        const historyItem = agentContext.pomodoroHistory.find(h => h.id === historyId);
+                        const confirmationMessage = historyItem
+                            ? `Are you sure you want to permanently delete this Pomodoro session?\n\nEnded at: ${new Date(historyItem.ended_at).toLocaleString()}\nDuration: ${historyItem.duration_minutes}m\n\nThis action cannot be undone.`
+                            : `Are you sure you want to permanently delete the Pomodoro session with ID ${historyId}? This action cannot be undone.`;
+
+                        if (window.confirm(confirmationMessage)) {
+                            const success = await dbService.deletePomodoroHistoryById(historyId);
+                            if (success) {
+                                await onHistoryChange();
+                                functionResultPayload = { success: true, message: `The Pomodoro session was successfully deleted.` };
+                            } else {
+                                functionResultPayload = { success: false, message: `Failed to delete the Pomodoro session. It might have been already deleted or an error occurred.` };
+                            }
+                        } else {
+                            functionResultPayload = { success: false, message: 'User cancelled the deletion.' };
                         }
                     } else {
                         functionResultPayload = { success: false, message: `Unknown function: ${name}` };

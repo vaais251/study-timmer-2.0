@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
@@ -1415,6 +1416,16 @@ const App: React.FC = () => {
         await refreshAiMemories();
         setToastNotification('🧠 AI memory updated!');
     };
+    
+    const handleHistoryChangeFromAI = async () => {
+        await Promise.all([
+            refreshHistoryAndLogs(),
+            refreshTasks(),
+            refreshProjects(),
+            refreshTargets(),
+        ]);
+        setToastNotification('🗓️ History data refreshed.');
+    };
 
     // Settings
     const handleSaveSettings = async (newSettings: Settings) => {
@@ -1487,6 +1498,7 @@ const App: React.FC = () => {
                     setChatMessages={setAiChatMessages}
                     aiMemories={aiMemories}
                     onMemoryChange={handleMemoryChangeFromAI}
+                    onHistoryChange={handleHistoryChangeFromAI}
                 />;
             case 'goals':
                 return <GoalsPage 
@@ -1507,6 +1519,7 @@ const App: React.FC = () => {
                     onAddCommitment={handleAddCommitment}
                     onUpdateCommitment={handleUpdateCommitment}
                     onDeleteCommitment={handleDeleteCommitment}
+                    // FIX: Corrected typo from onSetCommitmentCompletion to handleSetCommitmentCompletion
                     onSetCommitmentCompletion={handleSetCommitmentCompletion}
                     onMarkCommitmentBroken={handleMarkCommitmentBroken}
                     onSetPinnedItem={handleSetPinnedItem}
