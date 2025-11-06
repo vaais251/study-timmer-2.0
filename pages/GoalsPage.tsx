@@ -1,4 +1,5 @@
 
+
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Goal, Target, Project, Task, PomodoroHistory, ProjectUpdate, Commitment } from '../types';
 import Panel from '../components/common/Panel';
@@ -30,6 +31,22 @@ const isOlderThanOrEqualToTwoDays = (dateString: string): boolean => {
     
     return diffDays >= 2;
 };
+
+const isOverdueMoreThanTwoDays = (dateString: string): boolean => {
+    if (!dateString) return false;
+    const itemDate = new Date(dateString + 'T00:00:00Z'); // Treat date as UTC start of day
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0); // Get UTC start of today
+
+    if (itemDate >= today) return false; // Not overdue
+
+    const diffTime = today.getTime() - itemDate.getTime();
+    // Use floor to count full days passed
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    
+    return diffDays > 2; // More than 2 full days have passed
+};
+
 
 const getProjectDurationText = (project: Project): string => {
     const today = new Date();
@@ -165,11 +182,15 @@ const ProjectBurndownChart: React.FC<{
 
         const startDate = new Date((project.start_date || project.created_at.split('T')[0]) + 'T00:00:00');
         const deadline = new Date(project.deadline + 'T00:00:00');
+        
+        if (startDate > deadline) return null;
+
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
-        if (startDate > deadline) return null;
-
+        const completionDate = project.completed_at ? new Date(project.completed_at) : null;
+        if (completionDate) completionDate.setHours(0, 0, 0, 0);
+        
         const totalWork = project.completion_criteria_value;
         const totalDays = Math.max(1, Math.round((deadline.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1);
         const idealBurnPerDay = totalWork / (totalDays > 1 ? totalDays - 1 : 1);
@@ -178,7 +199,6 @@ const ProjectBurndownChart: React.FC<{
         
         const projectTasks = allTasks.filter(t => t.project_id === project.id);
         
-        // Pre-calculate daily completion amounts for efficiency
         const workCompletedByDate = new Map<string, number>();
         if (project.completion_criteria_type === 'task_count') {
             projectTasks.forEach(t => {
@@ -203,12 +223,17 @@ const ProjectBurndownChart: React.FC<{
             currentDate.setDate(startDate.getDate() + i);
             const dateString = currentDate.toISOString().split('T')[0];
             
-            // Calculate Ideal Line
             const idealRemaining = Math.max(0, totalWork - (i * idealBurnPerDay));
             
-            // Calculate Actual Line
-            let actualRemaining = null;
-            if (currentDate <= today) {
+            let actualRemaining;
+            
+            if (completionDate && currentDate >= completionDate) {
+                actualRemaining = 0;
+            } 
+            else if (!completionDate && currentDate > today) {
+                actualRemaining = null;
+            } 
+            else {
                 cumulativeCompletedWork += workCompletedByDate.get(dateString) || 0;
                 actualRemaining = Math.max(0, totalWork - cumulativeCompletedWork);
             }
@@ -279,10 +304,14 @@ const TargetBurndownChart: React.FC<{
 
         const startDate = new Date((target.start_date || target.created_at.split('T')[0]) + 'T00:00:00');
         const deadline = new Date(target.deadline + 'T00:00:00');
+
+        if (startDate > deadline) return null;
+
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
-        if (startDate > deadline) return null;
+        const completionDate = target.completed_at ? new Date(target.completed_at) : null;
+        if (completionDate) completionDate.setHours(0, 0, 0, 0);
 
         const totalWork = target.target_minutes;
         const totalDays = Math.max(1, Math.round((deadline.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1);
@@ -311,8 +340,15 @@ const TargetBurndownChart: React.FC<{
 
             const idealRemaining = Math.max(0, totalWork - (i * idealBurnPerDay));
             
-            let actualRemaining = null;
-            if (currentDate <= today) {
+            let actualRemaining;
+            
+            if (completionDate && currentDate >= completionDate) {
+                actualRemaining = 0;
+            } 
+            else if (!completionDate && currentDate > today) {
+                actualRemaining = null;
+            } 
+            else {
                 cumulativeCompletedWork += workCompletedByDate.get(dateString) || 0;
                 actualRemaining = Math.max(0, totalWork - cumulativeCompletedWork);
             }
@@ -1343,10 +1379,162 @@ interface GoalsPageProps {
     onMarkCommitmentBroken: (id: string) => void;
 }
 
+const DeadlineDonut: React.FC<{ item: Project | Target }> = ({ item }) => {
+    const { name, startDate, deadline, status } = useMemo(() => ({
+        name: 'name' in item ? item.name : item.text,
+        startDate: item.start_date || item.created_at.split('T')[0],
+        deadline: item.deadline,
+        status: item.status,
+    }), [item]);
+
+    const {
+        progress,
+        daysRemaining,
+        isComplete,
+        isDue,
+        isUpcoming,
+        totalDuration
+    } = useMemo(() => {
+        if (!deadline) return { progress: 0, daysRemaining: 0, isComplete: false, isDue: false, isUpcoming: false, totalDuration: 0 };
+
+        const today = new Date();
+        today.setUTCHours(0, 0, 0, 0);
+
+        const start = new Date(startDate + 'T00:00:00Z');
+        const end = new Date(deadline + 'T00:00:00Z');
+
+        if (start > end) { // Handle invalid date range
+             return { progress: 0, daysRemaining: 0, isComplete: false, isDue: true, isUpcoming: false, totalDuration: 0 };
+        }
+        
+        const totalDurationMs = end.getTime() - start.getTime();
+        const totalDurationDays = Math.max(1, Math.round(totalDurationMs / (1000 * 60 * 60 * 24)) + 1);
+
+        const isComplete = status === 'completed';
+        const isDue = !isComplete && today > end;
+        const isUpcoming = start > today;
+
+        let daysPassed = 0;
+        if (!isUpcoming) {
+            const passedMs = today.getTime() - start.getTime();
+            daysPassed = Math.round(passedMs / (1000 * 60 * 60 * 24));
+        }
+
+        let daysRemainingNum = totalDurationDays - daysPassed;
+        let progressPercent = 0;
+        if (totalDurationDays > 0) {
+            progressPercent = (daysPassed / totalDurationDays) * 100;
+        }
+
+        if (isComplete) {
+            progressPercent = 100;
+            daysRemainingNum = 0;
+        } else if (isDue) {
+            progressPercent = 100; // Full circle for due items
+        } else if (isUpcoming) {
+            progressPercent = 0;
+            daysRemainingNum = totalDurationDays;
+        }
+
+        return {
+            progress: Math.min(100, Math.max(0, progressPercent)),
+            daysRemaining: daysRemainingNum,
+            isComplete,
+            isDue,
+            isUpcoming,
+            totalDuration: totalDurationDays,
+        };
+    }, [startDate, deadline, status]);
+
+    if (!deadline) return null;
+    
+    const radius = 70;
+    const strokeWidth = 5;
+    const circumference = 2 * Math.PI * radius;
+    const offset = circumference - (progress / 100) * circumference;
+
+    const isUrgent = (daysRemaining < 2 && !isComplete && !isUpcoming) || isDue;
+    
+    const centerTextColor = isUrgent ? 'text-red-400' : 'text-white';
+    const progressColor = isUrgent ? "#ef4444" : "#22d3ee";
+    const trackColor = "rgba(255, 255, 255, 0.25)";
+
+    let centerText: React.ReactNode;
+    let centerLabel: string;
+
+    if (isComplete) {
+        centerText = <CheckIcon />;
+        centerLabel = "Done";
+    } else if (isDue) {
+        centerText = `+${Math.abs(Math.round(daysRemaining))}`;
+        centerLabel = "days overdue";
+    } else if (isUpcoming) {
+        centerText = Math.round(totalDuration);
+        centerLabel = "days total";
+    } else {
+        centerText = Math.round(daysRemaining);
+        centerLabel = "Days Left";
+    }
+    
+    const truncatedName = name.length > 20 ? name.substring(0, 17) + '...' : name;
+
+    const octagonR = radius + 10;
+    const octagonPoints = Array.from({ length: 8 }).map((_, i) => {
+        const angle = (i * 45) * (Math.PI / 180);
+        const x = 100 + octagonR * Math.cos(angle);
+        const y = 100 + octagonR * Math.sin(angle);
+        return `${x},${y}`;
+    }).join(' ');
+
+    return (
+        <div className="flex flex-col items-center justify-center text-center animate-fadeIn w-40">
+            <div className="relative w-40 h-40">
+                <svg width="160" height="160" viewBox="0 0 200 200">
+                    <polygon points={octagonPoints} stroke={trackColor} strokeWidth="1" fill="none" />
+                    <circle
+                        cx="100" cy="100" r={radius}
+                        stroke={trackColor}
+                        strokeWidth={strokeWidth}
+                        fill="none"
+                    />
+                    <circle
+                        cx="100" cy="100" r={radius}
+                        stroke={progressColor}
+                        strokeWidth={strokeWidth}
+                        fill="none"
+                        strokeLinecap="round"
+                        strokeDasharray={circumference}
+                        strokeDashoffset={offset}
+                        transform="rotate(-90 100 100)"
+                        style={{ transition: 'stroke-dashoffset 1s ease-out' }}
+                    />
+                    {Array.from({ length: 8 }).map((_, i) => {
+                        const angle = i * 45 * (Math.PI / 180);
+                        const r1 = radius - (strokeWidth / 2) - 3;
+                        const r2 = radius + (strokeWidth / 2) + 3;
+                        const p1 = { x: 100 + r1 * Math.cos(angle), y: 100 + r1 * Math.sin(angle) };
+                        const p2 = { x: 100 + r2 * Math.cos(angle), y: 100 + r2 * Math.sin(angle) };
+                        return <line key={i} x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke={trackColor} strokeWidth="1" />;
+                    })}
+                    <circle cx="100" cy="100" r={58} stroke={trackColor} strokeWidth="1" fill="none" />
+                </svg>
+                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                    <div className={`text-4xl font-bold ${centerTextColor}`}>
+                        {centerText}
+                    </div>
+                    <div className="text-sm text-slate-400 -mt-1">{centerLabel}</div>
+                </div>
+            </div>
+            <div className="mt-1 text-xs text-slate-300 w-full truncate px-1" title={name}>{truncatedName}</div>
+        </div>
+    );
+};
+
+
 const GoalsPage: React.FC<GoalsPageProps> = (props) => {
     const { goals, targets, projects, commitments, onAddGoal, onUpdateGoal, onDeleteGoal, onSetGoalCompletion, onAddTarget, onUpdateTarget, onDeleteTarget, onAddProject, onUpdateProject, onDeleteProject, onAddCommitment, onUpdateCommitment, onDeleteCommitment, onSetCommitmentCompletion, onMarkCommitmentBroken } = props;
 
-    const [activeTab, setActiveTab] = useState<'overview' | 'projects' | 'targets'>('overview');
+    const [activeTab, setActiveTab] = useState<'deadline' | 'overview' | 'projects' | 'targets'>('deadline');
 
     const [newGoal, setNewGoal] = useState('');
     const [newTarget, setNewTarget] = useState('');
@@ -1499,6 +1687,18 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
         return { visibleGoals: visible, hiddenGoalsCount: goals.length - visible.length };
     }, [goals, showArchivedGoals, fiveDaysAgo]);
 
+    const projectDeadlines = useMemo(() => {
+        return projects
+            .filter(p => (p.status === 'active' || p.status === 'due') && p.deadline && !isOverdueMoreThanTwoDays(p.deadline))
+            .sort((a, b) => a.deadline!.localeCompare(b.deadline!));
+    }, [projects]);
+
+    const targetDeadlines = useMemo(() => {
+        return targets
+            .filter(t => (t.status === 'active' || t.status === 'incomplete') && t.deadline)
+            .sort((a, b) => a.deadline!.localeCompare(b.deadline!));
+    }, [targets]);
+    
     const upcomingProjects = useMemo(() => {
         return projects
             .filter(p => p.start_date && p.start_date > todayString && p.status !== 'completed')
@@ -1632,17 +1832,6 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
             hiddenCompletedCount: allCompleted.length - visibleCompleted.length,
         };
     }, [targets, targetDateRange, targetSortBy, todayString]);
-
-    const upcomingDeadlines = useMemo(() => {
-        const tomorrow = new Date();
-        tomorrow.setDate(tomorrow.getDate() + 1);
-        const tomorrowString = tomorrow.toISOString().split('T')[0];
-
-        const projectsDue = projects.filter(p => p.status === 'active' && p.deadline === tomorrowString);
-        const targetsDue = targets.filter(t => t.status === 'active' && t.deadline === tomorrowString);
-
-        return [...projectsDue, ...targetsDue];
-    }, [projects, targets]);
     
     const handleClearTargetFilter = () => {
         setTargetDateRange({ start: '', end: '' });
@@ -1727,6 +1916,7 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
     };
     
     const tabConfig = {
+        deadline: { icon: <RescheduleIcon />, label: "Deadlines" },
         overview: { icon: <StarIcon />, label: "Overview" },
         projects: { icon: <GoalsIcon />, label: "Projects" },
         targets: { icon: <CheckIcon />, label: "Targets" },
@@ -1805,17 +1995,6 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
 
     return (
         <div className="space-y-6">
-             {upcomingDeadlines.length > 0 && (
-                <div className="bg-amber-500/30 border border-amber-500 text-amber-200 p-4 rounded-2xl animate-pulse-slow">
-                    <h3 className="font-bold text-lg text-center mb-2">🔥 Heads Up! Due Tomorrow:</h3>
-                    <ul className="list-disc list-inside text-sm text-center">
-                        {upcomingDeadlines.map(item => (
-                            <li key={item.id}>{'name' in item ? `Project: ${item.name}` : `Target: ${item.text}`}</li>
-                        ))}
-                    </ul>
-                </div>
-            )}
-            
             <div className="flex justify-center gap-1 sm:gap-2 bg-slate-800/50 p-1 rounded-full max-w-xl mx-auto">
                 {(Object.keys(tabConfig) as Array<keyof typeof tabConfig>).map(key => (
                     <button
@@ -1834,6 +2013,40 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
             </div>
 
             <div key={activeTab}>
+                 {activeTab === 'deadline' && (
+                    <div className="animate-fadeIn">
+                        <Panel title="Deadline Tracker">
+                            {(projectDeadlines.length > 0 || targetDeadlines.length > 0) ? (
+                                <div className="space-y-8">
+                                    {projectDeadlines.length > 0 && (
+                                        <div>
+                                            <h3 className="text-lg font-bold text-white mb-2 text-center">Project Deadlines</h3>
+                                            <p className="text-white/70 text-center text-xs mb-4">Time-sensitive initiatives. Projects overdue by more than 2 days are hidden.</p>
+                                            <div className="flex flex-wrap justify-center gap-x-8 gap-y-4">
+                                                {projectDeadlines.map(item => (
+                                                    <DeadlineDonut key={item.id} item={item} />
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                    {targetDeadlines.length > 0 && (
+                                        <div>
+                                            <h3 className="text-lg font-bold text-white mb-2 text-center mt-6">Target Deadlines</h3>
+                                            <p className="text-white/70 text-center text-xs mb-4">Specific, measurable outcomes you're aiming for.</p>
+                                            <div className="flex flex-wrap justify-center gap-x-8 gap-y-4">
+                                                {targetDeadlines.map(item => (
+                                                    <DeadlineDonut key={item.id} item={item} />
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
+                                <p className="text-center text-white/60 p-4">No active projects or targets with deadlines. Set a deadline to see your progress here!</p>
+                            )}
+                        </Panel>
+                    </div>
+                )}
                 {activeTab === 'overview' && (
                     <div className="space-y-6 animate-fadeIn">
                         {/* Core Goals */}
