@@ -609,6 +609,7 @@ export const addProject = async (
             progress_value: 0,
             priority,
             active_days: activeDays,
+            is_pinned: false,
         })
         .select()
         .single();
@@ -862,6 +863,7 @@ export const addTarget = async (
         tags: tags,
         target_minutes: targetMinutes,
         progress_minutes: 0,
+        is_pinned: false,
     });
     if (error) {
         console.error("Error adding target:", JSON.stringify(error, null, 2));
@@ -1217,6 +1219,48 @@ export const getHistoricalTargets = async (startDate: string, endDate:string): P
     }
     return data || [];
 };
+
+// --- Spotlight Pinning ---
+export const setPinnedItem = async (itemId: string, itemType: 'project' | 'target'): Promise<boolean> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return false;
+
+    // Unpin all other items first.
+    const { error: unpinProjectsError } = await supabase.from('projects').update({ is_pinned: false }).eq('user_id', user.id).eq('is_pinned', true);
+    const { error: unpinTargetsError } = await supabase.from('targets').update({ is_pinned: false }).eq('user_id', user.id).eq('is_pinned', true);
+
+    if (unpinProjectsError || unpinTargetsError) {
+        console.error("Error clearing existing pins:", JSON.stringify(unpinProjectsError || unpinTargetsError, null, 2));
+        return false;
+    }
+
+    // Pin the new item
+    const tableName = itemType === 'project' ? 'projects' : 'targets';
+    const { error: pinError } = await supabase.from(tableName).update({ is_pinned: true }).eq('id', itemId);
+
+    if (pinError) {
+        console.error(`Error pinning ${itemType}:`, JSON.stringify(pinError, null, 2));
+        return false;
+    }
+
+    return true;
+};
+
+export const clearAllPins = async (): Promise<boolean> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return false;
+    
+    const { error: unpinProjectsError } = await supabase.from('projects').update({ is_pinned: false }).eq('user_id', user.id).eq('is_pinned', true);
+    const { error: unpinTargetsError } = await supabase.from('targets').update({ is_pinned: false }).eq('user_id', user.id).eq('is_pinned', true);
+
+    if (unpinProjectsError || unpinTargetsError) {
+        console.error("Error clearing all pins:", JSON.stringify(unpinProjectsError || unpinTargetsError, null, 2));
+        return false;
+    }
+    
+    return true;
+};
+
 
 // --- Pomodoro History ---
 

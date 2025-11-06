@@ -19,6 +19,7 @@ export interface Project {
     progress_value: number; // stores completed tasks or minutes
     priority: number | null;
     active_days: number[] | null;
+    is_pinned: boolean;
 }
 
 // Corresponds to the `project_updates` table
@@ -68,6 +69,7 @@ export interface Target {
     tags: string[] | null;
     target_minutes: number | null;
     progress_minutes: number;
+    is_pinned: boolean;
 }
 
 // Corresponds to the `tasks` table

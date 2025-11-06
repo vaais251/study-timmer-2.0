@@ -1,8 +1,7 @@
-
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Goal, Target, Project, Task, PomodoroHistory, ProjectUpdate, Commitment } from '../types';
 import Panel from '../components/common/Panel';
-import { TrashIcon, EditIcon, StarIcon, LockIcon, CheckIcon, TargetIcon as GoalsIcon, RescheduleIcon, CalendarIcon } from '../components/common/Icons';
+import { TrashIcon, EditIcon, StarIcon, LockIcon, CheckIcon, TargetIcon as GoalsIcon, RescheduleIcon, CalendarIcon, FilledStarIcon } from '../components/common/Icons';
 import * as dbService from '../services/dbService';
 import Spinner from '../components/common/Spinner';
 import { getTodayDateString, getMonthStartDateString } from '../utils/date';
@@ -657,9 +656,10 @@ interface ProjectItemProps {
     onDeleteProject: (id: string) => void;
     isSelected: boolean;
     onSelect: () => void;
+    onSetPinnedItem: (id: string, itemType: 'project' | 'target') => void;
 }
 
-const ProjectItem: React.FC<ProjectItemProps> = ({ project, tasks, onUpdateProject, onDeleteProject, isSelected, onSelect }) => {
+const ProjectItem: React.FC<ProjectItemProps> = ({ project, tasks, onUpdateProject, onDeleteProject, isSelected, onSelect, onSetPinnedItem }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [editName, setEditName] = useState(project.name);
     const [editDescription, setEditDescription] = useState(project.description || '');
@@ -834,6 +834,9 @@ const ProjectItem: React.FC<ProjectItemProps> = ({ project, tasks, onUpdateProje
                     {activeDaysString && <MetadataPill icon={<span>📅</span>} text={activeDaysString} />}
                 </div>
                 <div className="flex items-center gap-1">
+                    <button onClick={(e) => { e.stopPropagation(); onSetPinnedItem(project.id, 'project'); }} className="p-2 rounded-full text-yellow-400 hover:bg-yellow-500/20 transition" title="Pin to Spotlight">
+                        {project.is_pinned ? <FilledStarIcon className="w-5 h-5" /> : <StarIcon className="w-5 h-5" />}
+                    </button>
                     <button onClick={() => setIsLogVisible(v => !v)} className="p-2 rounded-full text-slate-300 hover:bg-slate-700/50 transition" title="Toggle Activity Log">{isLogVisible ? '▼' : '►'}</button>
                     <button onClick={() => setIsEditing(true)} disabled={!isEditable} className="p-2 rounded-full text-sky-300 hover:bg-sky-500/20 transition disabled:text-sky-300/30 disabled:cursor-not-allowed" title={!isEditable ? "Editing is disabled for completed or old projects" : "Edit Project"}><EditIcon /></button>
                     <button onClick={() => {
@@ -866,13 +869,16 @@ const MetadataPill: React.FC<{ icon: React.ReactNode, text: string, className?: 
     );
 };
 
-const TargetItem: React.FC<{
+interface TargetItemProps {
     target: Target;
     onUpdateTarget: (id: string, updates: Partial<Target>) => void;
     onDeleteTarget: (id: string) => void;
     isSelected: boolean;
     onSelect: () => void;
-}> = ({ target, onUpdateTarget, onDeleteTarget, isSelected, onSelect }) => {
+    onSetPinnedItem: (id: string, itemType: 'project' | 'target') => void;
+}
+
+const TargetItem: React.FC<TargetItemProps> = ({ target, onUpdateTarget, onDeleteTarget, isSelected, onSelect, onSetPinnedItem }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [editText, setEditText] = useState(target.text);
     const [editDeadline, setEditDeadline] = useState(target.deadline);
@@ -1026,6 +1032,9 @@ const TargetItem: React.FC<{
             </div>
              <div className="bg-black/20 px-4 py-1.5 flex justify-end items-center text-xs rounded-b-lg">
                 <div className="flex items-center gap-1">
+                    <button onClick={(e) => { e.stopPropagation(); onSetPinnedItem(target.id, 'target'); }} className="p-2 rounded-full text-yellow-400 hover:bg-yellow-500/20 transition" title="Pin to Spotlight">
+                        {target.is_pinned ? <FilledStarIcon className="w-5 h-5" /> : <StarIcon className="w-5 h-5" />}
+                    </button>
                     {isEditable && <button onClick={(e) => { e.stopPropagation(); setIsEditing(true); }} className="p-2 rounded-full text-sky-300 hover:bg-sky-500/20 transition" title="Edit Target"><EditIcon /></button>}
                     <button onClick={(e) => { e.stopPropagation(); onDeleteTarget(target.id); }} className="p-2 rounded-full text-red-400 hover:bg-red-500/20 transition" title="Delete Target"><TrashIcon /></button>
                 </div>
@@ -1390,10 +1399,12 @@ interface GoalsPageProps {
     onDeleteCommitment: (id: string) => void;
     onSetCommitmentCompletion: (id: string, isComplete: boolean) => void;
     onMarkCommitmentBroken: (id: string) => void;
+    onSetPinnedItem: (itemId: string, itemType: 'project' | 'target') => void;
+    onClearPins: () => void;
 }
 
 const GoalsPage: React.FC<GoalsPageProps> = (props) => {
-    const { goals, targets, projects, commitments, onAddGoal, onUpdateGoal, onDeleteGoal, onSetGoalCompletion, onAddTarget, onUpdateTarget, onDeleteTarget, onAddProject, onUpdateProject, onDeleteProject, onAddCommitment, onUpdateCommitment, onDeleteCommitment, onSetCommitmentCompletion, onMarkCommitmentBroken } = props;
+    const { goals, targets, projects, commitments, onAddGoal, onUpdateGoal, onDeleteGoal, onSetGoalCompletion, onAddTarget, onUpdateTarget, onDeleteTarget, onAddProject, onUpdateProject, onDeleteProject, onAddCommitment, onUpdateCommitment, onDeleteCommitment, onSetCommitmentCompletion, onMarkCommitmentBroken, onSetPinnedItem, onClearPins } = props;
 
     const [activeTab, setActiveTab] = useState<'projects' | 'targets' | 'overview' | 'deadline'>('projects');
 
@@ -1829,6 +1840,7 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
                                             onDeleteProject={onDeleteProject} 
                                             isSelected={project.id === selectedProjectId}
                                             onSelect={() => setSelectedProjectId(prev => prev === project.id ? null : project.id)}
+                                            onSetPinnedItem={onSetPinnedItem}
                                         />
                                     </li>
                                 ))}
@@ -1848,6 +1860,7 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
                                             onDeleteProject={onDeleteProject} 
                                             isSelected={project.id === selectedProjectId}
                                             onSelect={() => setSelectedProjectId(prev => prev === project.id ? null : project.id)}
+                                            onSetPinnedItem={onSetPinnedItem}
                                         />
                                     </li>
                                 ))}
@@ -1874,6 +1887,7 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
                             onDeleteProject={onDeleteProject} 
                             isSelected={project.id === selectedProjectId}
                             onSelect={() => setSelectedProjectId(prev => prev === project.id ? null : project.id)}
+                            onSetPinnedItem={onSetPinnedItem}
                         />
                     </li>
                 ))}
@@ -1882,37 +1896,17 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
         );
     };
 
-    const spotlightProject = useMemo(() => {
-        const active = projects.filter(p => p.status === 'active');
-        if (active.length === 0) return null;
-    
-        return active.sort((a, b) => {
-            const priorityA = a.priority ?? 5;
-            const priorityB = b.priority ?? 5;
-            if (priorityA !== priorityB) return priorityA - priorityB;
-    
-            if (a.deadline && b.deadline) return new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
-            if (a.deadline) return -1;
-            if (b.deadline) return 1;
-    
-            return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-        })[0];
-    }, [projects]);
-    
-    const spotlightTarget = useMemo(() => {
-        const active = targets.filter(t => t.status === 'active');
-        if (active.length === 0) return null;
-
-        return active.sort((a,b) => {
-            const priorityA = a.priority ?? 5;
-            const priorityB = b.priority ?? 5;
-            if (priorityA !== priorityB) return priorityA - priorityB;
-
-            if (a.deadline && b.deadline) return new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
-            
-            return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-        })[0];
-    }, [targets]);
+    const pinnedItem = useMemo(() => {
+        const pinnedProject = projects.find(p => p.is_pinned);
+        if (pinnedProject) {
+            return { ...pinnedProject, itemType: 'project' as const };
+        }
+        const pinnedTarget = targets.find(t => t.is_pinned);
+        if (pinnedTarget) {
+            return { ...pinnedTarget, itemType: 'target' as const };
+        }
+        return null;
+    }, [projects, targets]);
     
     const spotlightGoal = useMemo(() => {
         return goals.find(g => !g.completed_at);
@@ -1920,6 +1914,45 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
 
     return (
         <div className="space-y-6">
+            <Panel title="Spotlight">
+                {pinnedItem ? (
+                    <div>
+                        {pinnedItem.itemType === 'project' ? (
+                            <ProjectItem 
+                                project={pinnedItem} 
+                                tasks={allTasks}
+                                onUpdateProject={onUpdateProject} 
+                                onDeleteProject={onDeleteProject} 
+                                isSelected={pinnedItem.id === selectedProjectId}
+                                onSelect={() => setSelectedProjectId(prev => prev === pinnedItem.id ? null : pinnedItem.id)}
+                                onSetPinnedItem={onSetPinnedItem}
+                            />
+                        ) : (
+                            <ul>
+                                <TargetItem 
+                                    target={pinnedItem}
+                                    onUpdateTarget={onUpdateTarget}
+                                    onDeleteTarget={onDeleteTarget}
+                                    isSelected={pinnedItem.id === selectedTargetId}
+                                    onSelect={() => setSelectedTargetId(prev => prev === pinnedItem.id ? null : pinnedItem.id)}
+                                    onSetPinnedItem={onSetPinnedItem}
+                                />
+                            </ul>
+                        )}
+                        <div className="text-center mt-4">
+                            <button 
+                                onClick={onClearPins}
+                                className="text-xs text-slate-400 hover:text-white font-semibold px-3 py-1 rounded-full hover:bg-slate-700/50 transition"
+                            >
+                                Clear Spotlight
+                            </button>
+                        </div>
+                    </div>
+                ) : (
+                    <p className="text-center text-slate-400 p-4">Pin a project or target to feature it in the spotlight.</p>
+                )}
+            </Panel>
+
             <div className="flex justify-center gap-1 sm:gap-2 bg-slate-800/50 p-1 rounded-full max-w-xl mx-auto">
                 {(Object.keys(tabConfig) as Array<keyof typeof tabConfig>).map(key => (
                     <button
@@ -1962,7 +1995,7 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
                     <div className="space-y-6 animate-fadeIn">
                         {spotlightGoal && (
                              <div className="bg-gradient-to-br from-slate-800 to-slate-900 border border-purple-400/50 rounded-xl p-4 shadow-2xl">
-                                <h3 className="text-sm font-bold text-purple-300 uppercase tracking-wider mb-2 text-center">Goal Spotlight</h3>
+                                <h3 className="text-sm font-bold text-purple-300 uppercase tracking-wider mb-2 text-center">Top Goal</h3>
                                  <GoalItem 
                                      goal={spotlightGoal} 
                                      onUpdateGoal={onUpdateGoal} 
@@ -2020,19 +2053,7 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
                 )}
                 {activeTab === 'projects' && (
                     <div className="space-y-6 animate-fadeIn">
-                        {spotlightProject && (
-                            <div className="bg-gradient-to-br from-slate-800 to-slate-900 border border-cyan-400/50 rounded-xl p-4 shadow-2xl">
-                                <h3 className="text-sm font-bold text-cyan-300 uppercase tracking-wider mb-2 text-center">Project Spotlight</h3>
-                                <ProjectItem
-                                    project={spotlightProject}
-                                    tasks={allTasks}
-                                    onUpdateProject={onUpdateProject}
-                                    onDeleteProject={onDeleteProject}
-                                    isSelected={spotlightProject.id === selectedProjectId}
-                                    onSelect={() => setSelectedProjectId(prev => prev === spotlightProject.id ? null : spotlightProject.id)}
-                                />
-                            </div>
-                        )}
+                        
                         <details className="group bg-slate-800/50 rounded-xl border border-slate-700/80 transition-[max-height] duration-500 overflow-hidden">
                             <summary className="p-4 font-bold text-lg text-white cursor-pointer list-none flex justify-between items-center hover:bg-slate-700/20">
                                 ✨ Add New Project
@@ -2105,7 +2126,7 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
                                         Upcoming Projects ({upcomingProjects.length})
                                     </summary>
                                     <ul className="space-y-3 pt-2">
-                                        {upcomingProjects.map(p => <li key={p.id}><ProjectItem project={p} tasks={allTasks} onUpdateProject={onUpdateProject} onDeleteProject={onDeleteProject} isSelected={p.id === selectedProjectId} onSelect={() => setSelectedProjectId(prev => prev === p.id ? null : p.id)} /></li>)}
+                                        {upcomingProjects.map(p => <li key={p.id}><ProjectItem project={p} tasks={allTasks} onUpdateProject={onUpdateProject} onDeleteProject={onDeleteProject} isSelected={p.id === selectedProjectId} onSelect={() => setSelectedProjectId(prev => prev === p.id ? null : p.id)} onSetPinnedItem={onSetPinnedItem} /></li>)}
                                     </ul>
                                 </details>
                             )}
@@ -2121,18 +2142,7 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
                 )}
                 {activeTab === 'targets' && (
                      <div className="space-y-6 animate-fadeIn">
-                        {spotlightTarget && (
-                            <div className="bg-gradient-to-br from-slate-800 to-slate-900 border border-cyan-400/50 rounded-xl p-4 shadow-2xl">
-                                <h3 className="text-sm font-bold text-cyan-300 uppercase tracking-wider mb-2 text-center">Target Spotlight</h3>
-                                <TargetItem 
-                                    target={spotlightTarget} 
-                                    onUpdateTarget={onUpdateTarget} 
-                                    onDeleteTarget={onDeleteTarget} 
-                                    isSelected={spotlightTarget.id === selectedTargetId}
-                                    onSelect={() => setSelectedTargetId(prev => prev === spotlightTarget.id ? null : spotlightTarget.id)}
-                                />
-                            </div>
-                        )}
+                        
                         <details className="group bg-slate-800/50 rounded-xl border border-slate-700/80 transition-[max-height] duration-500 overflow-hidden">
                              <summary className="p-4 font-bold text-lg text-white cursor-pointer list-none flex justify-between items-center hover:bg-slate-700/20">
                                 ✨ Add New Target
@@ -2196,9 +2206,9 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
                             <TargetFilterControls />
                             
                             <ul className="space-y-2 max-h-96 overflow-y-auto pr-2">
-                                {targetView === 'pending' && pendingTargets.map(t => <TargetItem key={t.id} target={t} onUpdateTarget={onUpdateTarget} onDeleteTarget={onDeleteTarget} isSelected={t.id === selectedTargetId} onSelect={() => setSelectedTargetId(prev => prev === t.id ? null : t.id)} />)}
-                                {targetView === 'incomplete' && incompleteTargets.map(t => <TargetItem key={t.id} target={t} onUpdateTarget={onUpdateTarget} onDeleteTarget={onDeleteTarget} isSelected={t.id === selectedTargetId} onSelect={() => setSelectedTargetId(prev => prev === t.id ? null : t.id)} />)}
-                                {targetView === 'completed' && completedTargets.map(t => <TargetItem key={t.id} target={t} onUpdateTarget={onUpdateTarget} onDeleteTarget={onDeleteTarget} isSelected={t.id === selectedTargetId} onSelect={() => setSelectedTargetId(prev => prev === t.id ? null : t.id)} />)}
+                                {targetView === 'pending' && pendingTargets.map(t => <TargetItem key={t.id} target={t} onUpdateTarget={onUpdateTarget} onDeleteTarget={onDeleteTarget} isSelected={t.id === selectedTargetId} onSelect={() => setSelectedTargetId(prev => prev === t.id ? null : t.id)} onSetPinnedItem={onSetPinnedItem} />)}
+                                {targetView === 'incomplete' && incompleteTargets.map(t => <TargetItem key={t.id} target={t} onUpdateTarget={onUpdateTarget} onDeleteTarget={onDeleteTarget} isSelected={t.id === selectedTargetId} onSelect={() => setSelectedTargetId(prev => prev === t.id ? null : t.id)} onSetPinnedItem={onSetPinnedItem} />)}
+                                {targetView === 'completed' && completedTargets.map(t => <TargetItem key={t.id} target={t} onUpdateTarget={onUpdateTarget} onDeleteTarget={onDeleteTarget} isSelected={t.id === selectedTargetId} onSelect={() => setSelectedTargetId(prev => prev === t.id ? null : t.id)} onSetPinnedItem={onSetPinnedItem} />)}
                             </ul>
 
                             {targetView === 'pending' && upcomingTargets.length > 0 && (
@@ -2207,7 +2217,7 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
                                         Upcoming Targets ({upcomingTargets.length})
                                     </summary>
                                     <ul className="space-y-2 pt-2">
-                                        {upcomingTargets.map(t => <TargetItem key={t.id} target={t} onUpdateTarget={onUpdateTarget} onDeleteTarget={onDeleteTarget} isSelected={t.id === selectedTargetId} onSelect={() => setSelectedTargetId(prev => prev === t.id ? null : t.id)} />)}
+                                        {upcomingTargets.map(t => <TargetItem key={t.id} target={t} onUpdateTarget={onUpdateTarget} onDeleteTarget={onDeleteTarget} isSelected={t.id === selectedTargetId} onSelect={() => setSelectedTargetId(prev => prev === t.id ? null : t.id)} onSetPinnedItem={onSetPinnedItem} />)}
                                     </ul>
                                 </details>
                             )}

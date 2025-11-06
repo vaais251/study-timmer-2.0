@@ -1,10 +1,3 @@
-
-
-
-
-
-
-
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
@@ -1325,6 +1318,27 @@ const App: React.FC = () => {
         await refreshTargets();
     };
 
+    // --- Spotlight/Pinning Handlers ---
+    const handleSetPinnedItem = async (itemId: string, itemType: 'project' | 'target') => {
+        const success = await dbService.setPinnedItem(itemId, itemType);
+        if (success) {
+            await Promise.all([refreshProjects(), refreshTargets()]);
+            setToastNotification('Item pinned to spotlight!');
+        } else {
+            setToastNotification('Error pinning item.');
+        }
+    };
+
+    const handleClearPins = async () => {
+        const success = await dbService.clearAllPins();
+        if (success) {
+            await Promise.all([refreshProjects(), refreshTargets()]);
+            setToastNotification('Spotlight cleared!');
+        } else {
+            setToastNotification('Error clearing pins.');
+        }
+    };
+
     // --- Commitment Handlers ---
     const handleAddCommitment = async (text: string, dueDate: string | null) => {
         await dbService.addCommitment(text, dueDate);
@@ -1493,6 +1507,8 @@ const App: React.FC = () => {
                     onDeleteCommitment={handleDeleteCommitment}
                     onSetCommitmentCompletion={handleSetCommitmentCompletion}
                     onMarkCommitmentBroken={handleMarkCommitmentBroken}
+                    onSetPinnedItem={handleSetPinnedItem}
+                    onClearPins={handleClearPins}
                 />;
             case 'settings':
                 return <SettingsPage 
