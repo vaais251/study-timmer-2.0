@@ -1,6 +1,4 @@
 
-
-
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Goal, Target, Project, Task, PomodoroHistory, ProjectUpdate, Commitment } from '../types';
 import Panel from '../components/common/Panel';
@@ -10,7 +8,7 @@ import Spinner from '../components/common/Spinner';
 import { getTodayDateString, getMonthStartDateString } from '../utils/date';
 import PrioritySelector from '../components/common/PrioritySelector';
 import ExplanationTooltip from '../components/common/ExplanationTooltip';
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, PieChart, Pie, Cell, Legend } from 'recharts';
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, PieChart, Pie, Cell, Legend, LineChart, Line } from 'recharts';
 
 
 const getDaysAgo = (days: number): string => {
@@ -154,6 +152,219 @@ const ProjectDailyFocusChart: React.FC<{
         </div>
     );
 };
+
+const ProjectBurndownChart: React.FC<{
+    project: Project | undefined;
+    allTasks: Task[];
+    allHistory: PomodoroHistory[];
+}> = ({ project, allTasks, allHistory }) => {
+    const chartData = useMemo(() => {
+        if (!project || !project.deadline || (project.completion_criteria_type !== 'task_count' && project.completion_criteria_type !== 'duration_minutes') || !project.completion_criteria_value) {
+            return null;
+        }
+
+        const startDate = new Date((project.start_date || project.created_at) + 'T00:00:00');
+        const deadline = new Date(project.deadline + 'T00:00:00');
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        if (startDate > deadline) return null;
+
+        const totalWork = project.completion_criteria_value;
+        const totalDays = Math.max(1, Math.round((deadline.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1);
+        const idealBurnPerDay = totalWork / (totalDays > 1 ? totalDays - 1 : 1);
+
+        const data: any[] = [];
+        
+        const projectTasks = allTasks.filter(t => t.project_id === project.id);
+        
+        // Pre-calculate daily completion amounts for efficiency
+        const workCompletedByDate = new Map<string, number>();
+        if (project.completion_criteria_type === 'task_count') {
+            projectTasks.forEach(t => {
+                if (t.completed_at) {
+                    const dateStr = t.completed_at.split('T')[0];
+                    workCompletedByDate.set(dateStr, (workCompletedByDate.get(dateStr) || 0) + 1);
+                }
+            });
+        } else { // duration_minutes
+            const projectTaskIds = new Set(projectTasks.map(t => t.id));
+            const projectHistory = allHistory.filter(h => h.task_id && projectTaskIds.has(h.task_id));
+            projectHistory.forEach(h => {
+                const dateStr = h.ended_at.split('T')[0];
+                workCompletedByDate.set(dateStr, (workCompletedByDate.get(dateStr) || 0) + (Number(h.duration_minutes) || 0));
+            });
+        }
+
+        let cumulativeCompletedWork = 0;
+
+        for (let i = 0; i < totalDays; i++) {
+            const currentDate = new Date(startDate);
+            currentDate.setDate(startDate.getDate() + i);
+            const dateString = currentDate.toISOString().split('T')[0];
+            
+            // Calculate Ideal Line
+            const idealRemaining = Math.max(0, totalWork - (i * idealBurnPerDay));
+            
+            // Calculate Actual Line
+            let actualRemaining = null;
+            if (currentDate <= today) {
+                cumulativeCompletedWork += workCompletedByDate.get(dateString) || 0;
+                actualRemaining = Math.max(0, totalWork - cumulativeCompletedWork);
+            }
+
+            data.push({
+                date: new Date(dateString + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+                ideal: idealRemaining,
+                actual: actualRemaining,
+            });
+        }
+        return data;
+    }, [project, allTasks, allHistory]);
+
+    if (!project || (project.completion_criteria_type !== 'task_count' && project.completion_criteria_type !== 'duration_minutes')) {
+        return null; // Don't show for manual projects
+    }
+    
+    if (!chartData) {
+        return (
+            <div className="mt-8 pt-6 border-t border-slate-700">
+                <h3 className="text-lg font-bold text-white text-center mb-4">Project Burndown</h3>
+                <div className="p-4 text-center text-sm text-white/60 bg-black/20 rounded-lg h-64 flex items-center justify-center">
+                    <p>A burndown chart requires a deadline to be set for the project.</p>
+                </div>
+            </div>
+        );
+    }
+
+    const yAxisLabel = project.completion_criteria_type === 'task_count' ? 'Tasks Remaining' : 'Minutes Remaining';
+
+    return (
+        <div className="mt-8 pt-6 border-t border-slate-700 animate-fadeIn">
+            <h3 className="text-lg font-bold text-white text-center mb-4">Project Burndown</h3>
+            <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                    <LineChart
+                        data={chartData}
+                        margin={{ top: 5, right: 20, left: -10, bottom: 5 }}
+                    >
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                        <XAxis dataKey="date" stroke="rgba(255,255,255,0.7)" tick={{ fontSize: 10 }} />
+                        <YAxis stroke="rgba(255,255,255,0.7)" allowDecimals={false} label={{ value: yAxisLabel, angle: -90, position: 'insideLeft', fill: 'rgba(255,255,255,0.7)', dy: 40 }} />
+                        <Tooltip
+                            contentStyle={{ background: 'rgba(30,41,59,0.9)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }}
+                            itemStyle={{ color: 'white' }}
+                            labelStyle={{ color: 'white', fontWeight: 'bold' }}
+                            formatter={(value: number, name: string) => [value !== null ? Math.round(value) : 'N/A', name.charAt(0).toUpperCase() + name.slice(1)]}
+                        />
+                        <Legend />
+                        <Line type="monotone" name="Ideal" dataKey="ideal" stroke="#a78bfa" strokeDasharray="5 5" dot={false} activeDot={{ r: 6 }} />
+                        <Line type="monotone" name="Actual" dataKey="actual" stroke="#34d399" strokeWidth={2} dot={{ r: 2 }} activeDot={{ r: 8 }} connectNulls={false} />
+                    </LineChart>
+                </ResponsiveContainer>
+            </div>
+        </div>
+    );
+};
+
+const TargetBurndownChart: React.FC<{
+    target: Target | undefined;
+    allTasks: Task[];
+    allHistory: PomodoroHistory[];
+}> = ({ target, allTasks, allHistory }) => {
+     const chartData = useMemo(() => {
+        if (!target || !target.deadline || target.completion_mode !== 'focus_minutes' || !target.target_minutes) {
+            return null;
+        }
+
+        const startDate = new Date((target.start_date || target.created_at) + 'T00:00:00');
+        const deadline = new Date(target.deadline + 'T00:00:00');
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        if (startDate > deadline) return null;
+
+        const totalWork = target.target_minutes;
+        const totalDays = Math.max(1, Math.round((deadline.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1);
+        const idealBurnPerDay = totalWork / (totalDays > 1 ? totalDays - 1 : 1);
+
+        const data: any[] = [];
+
+        const targetTags = new Set(target.tags?.map(t => t.toLowerCase()));
+        const relevantTaskIds = new Set(
+            allTasks.filter(t => t.tags?.some(tag => targetTags.has(tag.toLowerCase()))).map(t => t.id)
+        );
+        
+        const workCompletedByDate = new Map<string, number>();
+        const relevantHistory = allHistory.filter(h => h.task_id && relevantTaskIds.has(h.task_id));
+        relevantHistory.forEach(h => {
+            const dateStr = h.ended_at.split('T')[0];
+            workCompletedByDate.set(dateStr, (workCompletedByDate.get(dateStr) || 0) + (Number(h.duration_minutes) || 0));
+        });
+
+        let cumulativeCompletedWork = 0;
+
+        for (let i = 0; i < totalDays; i++) {
+            const currentDate = new Date(startDate);
+            currentDate.setDate(startDate.getDate() + i);
+            const dateString = currentDate.toISOString().split('T')[0];
+
+            const idealRemaining = Math.max(0, totalWork - (i * idealBurnPerDay));
+            
+            let actualRemaining = null;
+            if (currentDate <= today) {
+                cumulativeCompletedWork += workCompletedByDate.get(dateString) || 0;
+                actualRemaining = Math.max(0, totalWork - cumulativeCompletedWork);
+            }
+
+            data.push({
+                date: new Date(dateString + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+                ideal: idealRemaining,
+                actual: actualRemaining,
+            });
+        }
+        return data;
+    }, [target, allTasks, allHistory]);
+
+    if (target?.completion_mode !== 'focus_minutes') {
+        return null; // Don't render for manual targets
+    }
+
+    if (!chartData) {
+        return (
+            <div className="mt-8 pt-6 border-t border-slate-700">
+                <h3 className="text-lg font-bold text-white text-center mb-4">Target Burndown</h3>
+                <div className="p-4 text-center text-sm text-white/60 bg-black/20 rounded-lg h-64 flex items-center justify-center">
+                    <p>A burndown chart requires a deadline to be set for the target.</p>
+                </div>
+            </div>
+        );
+    }
+    
+    return (
+         <div className="mt-8 pt-6 border-t border-slate-700 animate-fadeIn">
+            <h3 className="text-lg font-bold text-white text-center mb-4">Target Burndown</h3>
+            <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={chartData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                        <XAxis dataKey="date" stroke="rgba(255,255,255,0.7)" tick={{ fontSize: 10 }} />
+                        <YAxis stroke="rgba(255,255,255,0.7)" allowDecimals={false} label={{ value: 'Minutes Remaining', angle: -90, position: 'insideLeft', fill: 'rgba(255,255,255,0.7)', dy: 40 }} />
+                        <Tooltip
+                            contentStyle={{ background: 'rgba(30,41,59,0.9)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }}
+                            itemStyle={{ color: 'white' }}
+                            labelStyle={{ color: 'white', fontWeight: 'bold' }}
+                            formatter={(value: number, name: string) => [value !== null ? Math.round(value) : 'N/A', name.charAt(0).toUpperCase() + name.slice(1)]}
+                        />
+                        <Legend />
+                        <Line type="monotone" name="Ideal" dataKey="ideal" stroke="#a78bfa" strokeDasharray="5 5" dot={false} activeDot={{ r: 6 }} />
+                        <Line type="monotone" name="Actual" dataKey="actual" stroke="#34d399" strokeWidth={2} dot={{ r: 2 }} activeDot={{ r: 8 }} connectNulls={false} />
+                    </LineChart>
+                </ResponsiveContainer>
+            </div>
+        </div>
+    )
+}
 
 
 const ActivityLog: React.FC<{ projectId: string, tasks: Task[] }> = ({ projectId, tasks }) => {
@@ -542,7 +753,9 @@ const TargetItem: React.FC<{
     target: Target;
     onUpdateTarget: (id: string, updates: Partial<Target>) => void;
     onDeleteTarget: (id: string) => void;
-}> = ({ target, onUpdateTarget, onDeleteTarget }) => {
+    isSelected: boolean;
+    onSelect: () => void;
+}> = ({ target, onUpdateTarget, onDeleteTarget, isSelected, onSelect }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [editText, setEditText] = useState(target.text);
     const [editDeadline, setEditDeadline] = useState(target.deadline);
@@ -651,14 +864,17 @@ const TargetItem: React.FC<{
     const progressText = isTimeBased ? `${target.progress_minutes || 0} / ${target.target_minutes || 0} min` : '';
 
     return (
-        <li className={`p-3 rounded-lg transition-all ${bgColor} ${priorityClass}`}>
-            <div className="flex items-start justify-between gap-3">
+        <li className={`p-3 rounded-lg transition-all ${bgColor} ${priorityClass} ${isSelected ? 'ring-2 ring-cyan-400' : 'hover:bg-white/20'}`}>
+            <div className="flex items-start justify-between gap-3 cursor-pointer" onClick={onSelect}>
                 <div className="flex items-start gap-3 flex-grow min-w-0">
                     {!isTimeBased && (
                         <input 
                             type="checkbox" 
                             checked={isCompleted} 
-                            onChange={(e) => onUpdateTarget(target.id, { completed_at: e.target.checked ? new Date().toISOString() : null })} 
+                            onChange={(e) => {
+                                e.stopPropagation();
+                                onUpdateTarget(target.id, { completed_at: e.target.checked ? new Date().toISOString() : null })
+                            }} 
                             disabled={isCompleted || isOld}
                             className="h-5 w-5 rounded bg-white/20 border-white/30 text-green-400 focus:ring-green-400 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0 mt-0.5" 
                         />
@@ -671,13 +887,13 @@ const TargetItem: React.FC<{
                     </div>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
-                    {!isCompleted && !isOld && <button onClick={() => setIsEditing(true)} className="p-1 text-sky-300 hover:text-sky-200 transition" title="Edit Target"><EditIcon /></button>}
+                    {!isCompleted && !isOld && <button onClick={(e) => { e.stopPropagation(); setIsEditing(true); }} className="p-1 text-sky-300 hover:text-sky-200 transition" title="Edit Target"><EditIcon /></button>}
                     <span className={`text-xs bg-black/20 px-2 py-1 rounded-full ${isIncomplete ? 'text-red-300' : ''}`}>{new Date(target.deadline + 'T00:00:00').toLocaleDateString()}</span>
-                    <button onClick={() => onDeleteTarget(target.id)} className="p-1 text-red-400 hover:text-red-300 transition" title="Delete Target"><TrashIcon /></button>
+                    <button onClick={(e) => { e.stopPropagation(); onDeleteTarget(target.id); }} className="p-1 text-red-400 hover:text-red-300 transition" title="Delete Target"><TrashIcon /></button>
                 </div>
             </div>
             {isTimeBased && !isCompleted && (
-                 <div className="mt-2 pl-2">
+                 <div className="mt-2 pl-2 cursor-pointer" onClick={onSelect}>
                     <div className="flex justify-between items-center mb-1 text-xs text-white/80">
                         <span>Progress</span>
                         <span>{progressText}</span>
@@ -1130,7 +1346,7 @@ interface GoalsPageProps {
 const GoalsPage: React.FC<GoalsPageProps> = (props) => {
     const { goals, targets, projects, commitments, onAddGoal, onUpdateGoal, onDeleteGoal, onSetGoalCompletion, onAddTarget, onUpdateTarget, onDeleteTarget, onAddProject, onUpdateProject, onDeleteProject, onAddCommitment, onUpdateCommitment, onDeleteCommitment, onSetCommitmentCompletion, onMarkCommitmentBroken } = props;
 
-    const [activeTab, setActiveTab] = useState<'overview' | 'projects' | 'commitments'>('overview');
+    const [activeTab, setActiveTab] = useState<'overview' | 'projects' | 'targets'>('overview');
 
     const [newGoal, setNewGoal] = useState('');
     const [newTarget, setNewTarget] = useState('');
@@ -1149,6 +1365,7 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
     const [targetDateRange, setTargetDateRange] = useState<{ start: string; end: string }>({ start: '', end: '' });
     const [showTargetDateFilter, setShowTargetDateFilter] = useState(false);
     const [targetSortBy, setTargetSortBy] = useState<'default' | 'priority'>('default');
+    const [selectedTargetId, setSelectedTargetId] = useState<string | null>(null);
     
     // Project form state
     const [newProjectName, setNewProjectName] = useState('');
@@ -1160,7 +1377,7 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
     const [criteriaType, setCriteriaType] = useState<Project['completion_criteria_type']>('manual');
     const [criteriaValue, setCriteriaValue] = useState('');
     
-    // Data for stats dashboard
+    // Data for charts
     const [allTasks, setAllTasks] = useState<Task[]>([]);
     const [allHistory, setAllHistory] = useState<PomodoroHistory[]>([]);
     const [isLoadingStats, setIsLoadingStats] = useState(true);
@@ -1263,9 +1480,9 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
         );
     };
     
-    const oneMonthAgo = useMemo(() => {
+    const fiveDaysAgo = useMemo(() => {
         const d = new Date();
-        d.setMonth(d.getMonth() - 1);
+        d.setDate(d.getDate() - 5);
         return d;
     }, []);
 
@@ -1276,11 +1493,11 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
         
         const visible = goals.filter(g => {
             if (!g.completed_at) return true;
-            return new Date(g.completed_at) > oneMonthAgo;
+            return new Date(g.completed_at) > fiveDaysAgo;
         });
 
         return { visibleGoals: visible, hiddenGoalsCount: goals.length - visible.length };
-    }, [goals, showArchivedGoals, oneMonthAgo]);
+    }, [goals, showArchivedGoals, fiveDaysAgo]);
 
     const upcomingProjects = useMemo(() => {
         return projects
@@ -1512,7 +1729,7 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
     const tabConfig = {
         overview: { icon: <StarIcon />, label: "Overview" },
         projects: { icon: <GoalsIcon />, label: "Projects" },
-        commitments: { icon: <LockIcon />, label: "Commitments" },
+        targets: { icon: <CheckIcon />, label: "Targets" },
     };
 
     const renderProjectsList = () => {
@@ -1652,112 +1869,15 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
                                 {goals.length === 0 && <p className="text-center text-white/60 p-4 col-span-1 lg:col-span-2">Set your first high-level goal to get started!</p>}
                             </ul>
                         </Panel>
-                        {/* Key Targets */}
-                         <Panel title="Key Targets">
-                             <div className="text-center mb-4 flex justify-center items-center gap-2 -mt-4">
-                                <p className="text-white/80 text-sm">Specific, measurable outcomes with a deadline to keep you on track.</p>
-                                <ExplanationTooltip 
-                                    title="Goals vs. Targets"
-                                    content="A <strong>Target</strong> is a specific, measurable, and time-bound milestone (e.g., 'Finish Chapter 3 by Friday').<br/><br/>A <strong>Goal</strong> is a high-level, long-term ambition (e.g., 'Write a book').<br/><br/>Targets are the concrete steps to achieve your Goals."
-                                />
-                            </div>
-                            <div className="bg-black/20 p-3 rounded-lg mb-4 space-y-3">
-                                <input type="text" value={newTarget} onChange={(e) => setNewTarget(e.target.value)} placeholder="Define a clear target..." className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50"/>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                    <div>
-                                        <label className="text-xs text-white/70 mb-1">Start Date (Optional)</label>
-                                        <input type="date" value={newTargetStartDate} onChange={(e) => setNewTargetStartDate(e.target.value)} className="bg-white/20 border border-white/30 rounded-lg p-3 text-white/80 w-full text-center" style={{colorScheme: 'dark'}} />
-                                    </div>
-                                    <div>
-                                        <label className="text-xs text-white/70 mb-1">Deadline *</label>
-                                        <input type="date" value={newDeadline} onChange={(e) => setNewDeadline(e.target.value)} className="bg-white/20 border border-white/30 rounded-lg p-3 text-white/80 w-full text-center" style={{colorScheme: 'dark'}} />
-                                    </div>
-                                </div>
-                                 <div>
-                                    <label className="text-xs text-white/70 mb-1 flex items-center gap-1.5">
-                                        Completion Mode
-                                        <ExplanationTooltip title="Completion Mode" content="<strong>Manual:</strong> You check off the target yourself.<br/><strong>Focus Minutes:</strong> Automatically tracks progress based on time spent on tasks with matching tags." />
-                                    </label>
-                                    <select value={newCompletionMode} onChange={e => setNewCompletionMode(e.target.value as Target['completion_mode'])} className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white focus:outline-none focus:bg-white/30 focus:border-white/50">
-                                        <option value="manual" className="bg-gray-800">Manual</option>
-                                        <option value="focus_minutes" className="bg-gray-800">Focus Minutes (Auto)</option>
-                                    </select>
-                                </div>
-
-                                {newCompletionMode === 'focus_minutes' && (
-                                    <div className="space-y-2 p-2 bg-black/20 rounded-lg animate-fadeIn">
-                                        <input type="text" value={newTags} onChange={e => setNewTags(e.target.value)} placeholder="Tags to track (e.g., coding, research)" className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50"/>
-                                        <input type="number" value={newTargetMinutes} onChange={e => setNewTargetMinutes(e.target.value)} placeholder="Target duration in minutes" className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50"/>
-                                    </div>
-                                )}
-                                <div className="flex flex-col sm:flex-row gap-3 justify-between items-center pt-1">
-                                    <PrioritySelector priority={newTargetPriority} setPriority={setNewTargetPriority} />
-                                    <button onClick={handleAddTarget} className="w-full sm:w-auto p-3 rounded-lg font-bold text-white transition hover:scale-105 bg-gradient-to-br from-blue-500 to-sky-600">Add Target</button>
-                                </div>
-                            </div>
-
-                            {upcomingTargets.length > 0 && (
-                                <div className="mb-6">
-                                    <h3 className="text-lg font-bold text-white mb-2 text-center">Upcoming Targets</h3>
-                                    <ul className="space-y-2 max-h-64 overflow-y-auto pr-2">
-                                        {upcomingTargets.map(target => <TargetItem key={target.id} target={target} onUpdateTarget={onUpdateTarget} onDeleteTarget={onDeleteTarget} />)}
-                                    </ul>
-                                </div>
-                            )}
-                            
-                            <div className="flex justify-center gap-2 mb-4 bg-black/20 p-1 rounded-full">
-                                <button onClick={() => setTargetView('pending')} className={`flex-1 p-2 text-sm rounded-full font-bold transition-colors ${targetView === 'pending' ? 'bg-white/20 text-white' : 'text-white/60 hover:bg-white/10'}`}>
-                                    Pending ({pendingTargets.length})
-                                </button>
-                                <button onClick={() => setTargetView('incomplete')} className={`flex-1 p-2 text-sm rounded-full font-bold transition-colors ${targetView === 'incomplete' ? 'bg-white/20 text-white' : 'text-white/60 hover:bg-white/10'}`}>
-                                    Incomplete ({targets.filter(t => t.status === 'incomplete').length})
-                                </button>
-                                <button onClick={() => setTargetView('completed')} className={`flex-1 p-2 text-sm rounded-full font-bold transition-colors ${targetView === 'completed' ? 'bg-white/20 text-white' : 'text-white/60 hover:bg-white/10'}`}>
-                                    Completed ({targets.filter(t => t.status === 'completed').length})
-                                </button>
-                            </div>
-
-                            <TargetFilterControls />
-
-                            <div className="flex justify-end mb-2 -mt-2">
-                                <button
-                                    onClick={() => setTargetSortBy(s => s === 'default' ? 'priority' : 'default')}
-                                    className="text-xs text-cyan-300 hover:text-cyan-200 font-semibold px-3 py-1 rounded-full hover:bg-white/10 transition"
-                                    aria-label={`Sort targets by ${targetSortBy === 'default' ? 'priority' : 'date'}`}
-                                >
-                                    Sort by: {targetSortBy === 'default' ? 'Default' : 'Priority'}
-                                </button>
-                            </div>
-                            
-                            {targetView === 'pending' && (
-                                <ul className="space-y-2 max-h-64 overflow-y-auto pr-2">
-                                    {pendingTargets.map(target => (
-                                        <TargetItem key={target.id} target={target} onUpdateTarget={onUpdateTarget} onDeleteTarget={onDeleteTarget} />
-                                    ))}
-                                    {pendingTargets.length === 0 && <p className="text-center text-white/60 p-4">No pending targets. Great job, or add a new one!</p>}
-                                </ul>
-                            )}
-                            {targetView === 'incomplete' && (
-                                <ul className="space-y-2 max-h-64 overflow-y-auto pr-2">
-                                    {incompleteTargets.map(target => (
-                                        <TargetItem key={target.id} target={target} onUpdateTarget={onUpdateTarget} onDeleteTarget={onDeleteTarget} />
-                                    ))}
-                                    {incompleteTargets.length === 0 && <p className="text-center text-white/60 p-4">
-                                        {targetDateRange.start && targetDateRange.end ? 'No incomplete targets in this date range.' : 'No incomplete targets in the last 30 days.'}
-                                    </p>}
-                                </ul>
-                            )}
-                            {targetView === 'completed' && (
-                                <ul className="space-y-2 max-h-64 overflow-y-auto pr-2">
-                                    {completedTargets.map(target => (
-                                        <TargetItem key={target.id} target={target} onUpdateTarget={onUpdateTarget} onDeleteTarget={onDeleteTarget} />
-                                    ))}
-                                    {completedTargets.length === 0 && <p className="text-center text-white/60 p-4">
-                                        {targetDateRange.start && targetDateRange.end ? 'No completed targets in this date range.' : 'No targets completed in the last 30 days.'}
-                                    </p>}
-                                </ul>
-                            )}
-                        </Panel>
+                        {/* Commitments */}
+                        <CommitmentsPanel 
+                            commitments={commitments}
+                            onAdd={onAddCommitment}
+                            onUpdate={onUpdateCommitment}
+                            onDelete={onDeleteCommitment}
+                            onSetCompletion={onSetCommitmentCompletion}
+                            onMarkAsBroken={onMarkCommitmentBroken}
+                        />
                     </div>
                 )}
                 
@@ -1841,12 +1961,19 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
                             {renderProjectsList()}
 
                              {selectedProjectId && !isLoadingStats && (
-                                <ProjectDailyFocusChart
-                                    projectId={selectedProjectId}
-                                    projectName={projects.find(p => p.id === selectedProjectId)?.name || null}
-                                    allTasks={allTasks}
-                                    allHistory={allHistory}
-                                />
+                                <>
+                                    <ProjectDailyFocusChart
+                                        projectId={selectedProjectId}
+                                        projectName={projects.find(p => p.id === selectedProjectId)?.name || null}
+                                        allTasks={allTasks}
+                                        allHistory={allHistory}
+                                    />
+                                    <ProjectBurndownChart
+                                        project={projects.find(p => p.id === selectedProjectId)}
+                                        allTasks={allTasks}
+                                        allHistory={allHistory}
+                                    />
+                                </>
                             )}
                         </Panel>
 
@@ -1871,17 +1998,121 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
                         )}
                     </div>
                 )}
+                
+                {activeTab === 'targets' && (
+                    <div className="space-y-6 animate-fadeIn">
+                        <Panel title="Key Targets">
+                             <div className="text-center mb-4 flex justify-center items-center gap-2 -mt-4">
+                                <p className="text-white/80 text-sm">Specific, measurable outcomes with a deadline to keep you on track.</p>
+                                <ExplanationTooltip 
+                                    title="Goals vs. Targets"
+                                    content="A <strong>Target</strong> is a specific, measurable, and time-bound milestone (e.g., 'Finish Chapter 3 by Friday').<br/><br/>A <strong>Goal</strong> is a high-level, long-term ambition (e.g., 'Write a book').<br/><br/>Targets are the concrete steps to achieve your Goals."
+                                />
+                            </div>
+                            <div className="bg-black/20 p-3 rounded-lg mb-4 space-y-3">
+                                <input type="text" value={newTarget} onChange={(e) => setNewTarget(e.target.value)} placeholder="Define a clear target..." className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50"/>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                    <div>
+                                        <label className="text-xs text-white/70 mb-1">Start Date (Optional)</label>
+                                        <input type="date" value={newTargetStartDate} onChange={(e) => setNewTargetStartDate(e.target.value)} className="bg-white/20 border border-white/30 rounded-lg p-3 text-white/80 w-full text-center" style={{colorScheme: 'dark'}} />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs text-white/70 mb-1">Deadline *</label>
+                                        <input type="date" value={newDeadline} onChange={(e) => setNewDeadline(e.target.value)} className="bg-white/20 border border-white/30 rounded-lg p-3 text-white/80 w-full text-center" style={{colorScheme: 'dark'}} />
+                                    </div>
+                                </div>
+                                 <div>
+                                    <label className="text-xs text-white/70 mb-1 flex items-center gap-1.5">
+                                        Completion Mode
+                                        <ExplanationTooltip title="Completion Mode" content="<strong>Manual:</strong> You check off the target yourself.<br/><strong>Focus Minutes:</strong> Automatically tracks progress based on time spent on tasks with matching tags." />
+                                    </label>
+                                    <select value={newCompletionMode} onChange={e => setNewCompletionMode(e.target.value as Target['completion_mode'])} className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white focus:outline-none focus:bg-white/30 focus:border-white/50">
+                                        <option value="manual" className="bg-gray-800">Manual</option>
+                                        <option value="focus_minutes" className="bg-gray-800">Focus Minutes (Auto)</option>
+                                    </select>
+                                </div>
 
-                {activeTab === 'commitments' && (
-                     <div className="animate-fadeIn">
-                        <CommitmentsPanel 
-                            commitments={commitments}
-                            onAdd={onAddCommitment}
-                            onUpdate={onUpdateCommitment}
-                            onDelete={onDeleteCommitment}
-                            onSetCompletion={onSetCommitmentCompletion}
-                            onMarkAsBroken={onMarkCommitmentBroken}
-                        />
+                                {newCompletionMode === 'focus_minutes' && (
+                                    <div className="space-y-2 p-2 bg-black/20 rounded-lg animate-fadeIn">
+                                        <input type="text" value={newTags} onChange={e => setNewTags(e.target.value)} placeholder="Tags to track (e.g., coding, research)" className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50"/>
+                                        <input type="number" value={newTargetMinutes} onChange={e => setNewTargetMinutes(e.target.value)} placeholder="Target duration in minutes" className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50"/>
+                                    </div>
+                                )}
+                                <div className="flex flex-col sm:flex-row gap-3 justify-between items-center pt-1">
+                                    <PrioritySelector priority={newTargetPriority} setPriority={setNewTargetPriority} />
+                                    <button onClick={handleAddTarget} className="w-full sm:w-auto p-3 rounded-lg font-bold text-white transition hover:scale-105 bg-gradient-to-br from-blue-500 to-sky-600">Add Target</button>
+                                </div>
+                            </div>
+
+                            {upcomingTargets.length > 0 && (
+                                <div className="mb-6">
+                                    <h3 className="text-lg font-bold text-white mb-2 text-center">Upcoming Targets</h3>
+                                    <ul className="space-y-2 max-h-64 overflow-y-auto pr-2">
+                                        {upcomingTargets.map(target => <TargetItem key={target.id} target={target} onUpdateTarget={onUpdateTarget} onDeleteTarget={onDeleteTarget} isSelected={target.id === selectedTargetId} onSelect={() => setSelectedTargetId(prev => prev === target.id ? null : target.id)} />)}
+                                    </ul>
+                                </div>
+                            )}
+                            
+                            <div className="flex justify-center gap-2 mb-4 bg-black/20 p-1 rounded-full">
+                                <button onClick={() => setTargetView('pending')} className={`flex-1 p-2 text-sm rounded-full font-bold transition-colors ${targetView === 'pending' ? 'bg-white/20 text-white' : 'text-white/60 hover:bg-white/10'}`}>
+                                    Pending ({pendingTargets.length})
+                                </button>
+                                <button onClick={() => setTargetView('incomplete')} className={`flex-1 p-2 text-sm rounded-full font-bold transition-colors ${targetView === 'incomplete' ? 'bg-white/20 text-white' : 'text-white/60 hover:bg-white/10'}`}>
+                                    Incomplete ({targets.filter(t => t.status === 'incomplete').length})
+                                </button>
+                                <button onClick={() => setTargetView('completed')} className={`flex-1 p-2 text-sm rounded-full font-bold transition-colors ${targetView === 'completed' ? 'bg-white/20 text-white' : 'text-white/60 hover:bg-white/10'}`}>
+                                    Completed ({targets.filter(t => t.status === 'completed').length})
+                                </button>
+                            </div>
+
+                            <TargetFilterControls />
+
+                            <div className="flex justify-end mb-2 -mt-2">
+                                <button
+                                    onClick={() => setTargetSortBy(s => s === 'default' ? 'priority' : 'default')}
+                                    className="text-xs text-cyan-300 hover:text-cyan-200 font-semibold px-3 py-1 rounded-full hover:bg-white/10 transition"
+                                    aria-label={`Sort targets by ${targetSortBy === 'default' ? 'priority' : 'date'}`}
+                                >
+                                    Sort by: {targetSortBy === 'default' ? 'Default' : 'Priority'}
+                                </button>
+                            </div>
+                            
+                            {targetView === 'pending' && (
+                                <ul className="space-y-2 max-h-64 overflow-y-auto pr-2">
+                                    {pendingTargets.map(target => (
+                                        <TargetItem key={target.id} target={target} onUpdateTarget={onUpdateTarget} onDeleteTarget={onDeleteTarget} isSelected={target.id === selectedTargetId} onSelect={() => setSelectedTargetId(prev => prev === target.id ? null : target.id)} />
+                                    ))}
+                                    {pendingTargets.length === 0 && <p className="text-center text-white/60 p-4">No pending targets. Great job, or add a new one!</p>}
+                                </ul>
+                            )}
+                            {targetView === 'incomplete' && (
+                                <ul className="space-y-2 max-h-64 overflow-y-auto pr-2">
+                                    {incompleteTargets.map(target => (
+                                        <TargetItem key={target.id} target={target} onUpdateTarget={onUpdateTarget} onDeleteTarget={onDeleteTarget} isSelected={target.id === selectedTargetId} onSelect={() => setSelectedTargetId(prev => prev === target.id ? null : target.id)} />
+                                    ))}
+                                    {incompleteTargets.length === 0 && <p className="text-center text-white/60 p-4">
+                                        {targetDateRange.start && targetDateRange.end ? 'No incomplete targets in this date range.' : 'No incomplete targets in the last 30 days.'}
+                                    </p>}
+                                </ul>
+                            )}
+                            {targetView === 'completed' && (
+                                <ul className="space-y-2 max-h-64 overflow-y-auto pr-2">
+                                    {completedTargets.map(target => (
+                                        <TargetItem key={target.id} target={target} onUpdateTarget={onUpdateTarget} onDeleteTarget={onDeleteTarget} isSelected={target.id === selectedTargetId} onSelect={() => setSelectedTargetId(prev => prev === target.id ? null : target.id)} />
+                                    ))}
+                                    {completedTargets.length === 0 && <p className="text-center text-white/60 p-4">
+                                        {targetDateRange.start && targetDateRange.end ? 'No completed targets in this date range.' : 'No targets completed in the last 30 days.'}
+                                    </p>}
+                                </ul>
+                            )}
+                             {selectedTargetId && !isLoadingStats && (
+                                <TargetBurndownChart
+                                    target={targets.find(t => t.id === selectedTargetId)}
+                                    allTasks={allTasks}
+                                    allHistory={allHistory}
+                                />
+                             )}
+                        </Panel>
                     </div>
                 )}
             </div>
