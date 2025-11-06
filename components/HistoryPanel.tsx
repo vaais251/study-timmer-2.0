@@ -781,7 +781,7 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
         P4: true,
     });
     
-    const [visibleCompletionRates, setVisibleCompletionRates] = useState({
+    const [visiblePomCountPriorities, setVisiblePomCountPriorities] = useState({
         P1: true,
         P2: true,
         P3: true,
@@ -850,10 +850,10 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
         }
     };
     
-    const handleCompletionRateLegendClick = (o: any) => {
+    const handlePomCountPriorityLegendClick = (o: any) => {
         const { dataKey } = o;
-        if (dataKey in visibleCompletionRates) {
-            setVisibleCompletionRates(prev => ({ ...prev, [dataKey as keyof typeof prev]: !prev[dataKey as keyof typeof prev] }));
+        if (dataKey in visiblePomCountPriorities) {
+            setVisiblePomCountPriorities(prev => ({ ...prev, [dataKey as keyof typeof prev]: !prev[dataKey as keyof typeof prev] }));
         }
     };
 
@@ -1350,34 +1350,28 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
 
     }, [allTasks, pomodoroHistory, historyRange]);
     
-    const taskCompletionByPriorityData = useMemo(() => {
+    const dailyPomCountByPriorityData = useMemo(() => {
         const dataByDate = new Map<string, {
             date: string;
-            P1_total: number; P1_completed: number;
-            P2_total: number; P2_completed: number;
-            P3_total: number; P3_completed: number;
-            P4_total: number; P4_completed: number;
+            P1: number; P2: number; P3: number; P4: number;
         }>();
     
         if (historyRange.start && historyRange.end) {
             let currentDate = new Date(historyRange.start + 'T00:00:00');
-            let endDate = new Date(historyRange.end + 'T00:00:00');
+            let endDateForChart = new Date(historyRange.end + 'T00:00:00');
             const today = new Date();
             today.setHours(0, 0, 0, 0);
-            if (endDate >= today) {
+            if (endDateForChart >= today) {
                 const yesterday = new Date();
                 yesterday.setDate(yesterday.getDate() - 1);
                 yesterday.setHours(0, 0, 0, 0);
-                endDate = yesterday;
+                endDateForChart = yesterday;
             }
-            while(currentDate <= endDate) {
+            while(currentDate <= endDateForChart) {
                 const dateString = getTodayDateString(currentDate);
                 dataByDate.set(dateString, {
                     date: new Date(dateString + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-                    P1_total: 0, P1_completed: 0,
-                    P2_total: 0, P2_completed: 0,
-                    P3_total: 0, P3_completed: 0,
-                    P4_total: 0, P4_completed: 0,
+                    P1: 0, P2: 0, P3: 0, P4: 0,
                 });
                 currentDate.setDate(currentDate.getDate() + 1);
             }
@@ -1386,34 +1380,40 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
         tasks.forEach(task => {
             const dateStr = task.due_date;
             const dayData = dataByDate.get(dateStr);
-            if (dayData) {
+            if (dayData && task.completed_poms > 0) { // Only count completed poms
                 const priority = task.priority ?? 3;
-                const isCompleted = !!task.completed_at;
-    
-                if (priority === 1) {
-                    dayData.P1_total++;
-                    if (isCompleted) dayData.P1_completed++;
-                } else if (priority === 2) {
-                    dayData.P2_total++;
-                    if (isCompleted) dayData.P2_completed++;
-                } else if (priority === 3) {
-                    dayData.P3_total++;
-                    if (isCompleted) dayData.P3_completed++;
-                } else if (priority === 4) {
-                    dayData.P4_total++;
-                    if (isCompleted) dayData.P4_completed++;
+                const priorityKey = `P${priority}` as 'P1' | 'P2' | 'P3' | 'P4';
+                if (dayData.hasOwnProperty(priorityKey)) {
+                    dayData[priorityKey] += task.completed_poms;
                 }
             }
         });
     
-        return Array.from(dataByDate.values()).map(dayData => ({
-            date: dayData.date,
-            P1: dayData.P1_total > 0 ? (dayData.P1_completed / dayData.P1_total) * 100 : 0,
-            P2: dayData.P2_total > 0 ? (dayData.P2_completed / dayData.P2_total) * 100 : 0,
-            P3: dayData.P3_total > 0 ? (dayData.P3_completed / dayData.P3_total) * 100 : 0,
-            P4: dayData.P4_total > 0 ? (dayData.P4_completed / dayData.P4_total) * 100 : 0,
-        }));
+        return Array.from(dataByDate.values());
     }, [tasks, historyRange]);
+
+    const totalPomsByPriorityData = useMemo(() => {
+        const priorityMap = new Map<string, number>();
+        priorityMap.set('P1', 0);
+        priorityMap.set('P2', 0);
+        priorityMap.set('P3', 0);
+        priorityMap.set('P4', 0);
+
+        tasks.forEach(task => {
+            // Only count completed poms for non-stopwatch tasks
+            if (task.completed_poms > 0 && task.total_poms > 0) {
+                const priority = task.priority ?? 3; // Default to P3
+                const priorityKey = `P${priority}`;
+                if (priorityMap.has(priorityKey)) {
+                    priorityMap.set(priorityKey, priorityMap.get(priorityKey)! + task.completed_poms);
+                }
+            }
+        });
+
+        return Array.from(priorityMap.entries())
+            .map(([name, poms]) => ({ name, poms }))
+            .sort((a, b) => parseInt(a.name.substring(1)) - parseInt(b.name.substring(1))); // Sort by P1, P2, P3, P4
+    }, [tasks]);
 
     const COLORS_TASKS = ['#34D399', '#F87171'];
     const COLORS_PROJECTS = ['#34D399', '#60A5FA', '#F87171']; // Completed, Active, Due
@@ -1508,7 +1508,8 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
             case 'priorities':
                 title = `AI Summary for Priority Analysis (${historyRange.start} to ${historyRange.end})`;
                 dataForTab.priorityFocusDistribution = priorityFocusData;
-                dataForTab.taskCompletionRateByPriority = taskCompletionByPriorityData;
+                dataForTab.dailyPomodorosByPriority = dailyPomCountByPriorityData;
+                dataForTab.totalPomsByPriority = totalPomsByPriorityData;
                 break;
             case 'focus':
                 title = `AI Summary for Focus Quality Analysis (${historyRange.start} to ${historyRange.end})`;
@@ -1522,7 +1523,7 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
         const fetcher = () => getTabSummary(activeTab, dataForTab);
         setSummaryModalState({ isOpen: true, title, fetcher });
 
-    }, [activeTab, historyRange, aggregatedData, consistencyLogs, categoryPriorityDistributionData, categoryCompletionStatusData, pieChartData, priorityFocusData, taskCompletionByPriorityData, avgDailyFocusByCategory, pomodoroHistory, allTasks]);
+    }, [activeTab, historyRange, aggregatedData, consistencyLogs, categoryPriorityDistributionData, categoryCompletionStatusData, pieChartData, priorityFocusData, dailyPomCountByPriorityData, totalPomsByPriorityData, avgDailyFocusByCategory, pomodoroHistory, allTasks]);
 
     const handleCloseSummaryModal = () => {
         setSummaryModalState({ isOpen: false, title: '', fetcher: null });
@@ -1615,27 +1616,56 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
         </ResponsiveContainer>
     );
 
-    const completionRateChartElement = (
+    const dailyPomCountByPriorityChartElement = (
         <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={taskCompletionByPriorityData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+            <LineChart data={dailyPomCountByPriorityData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.2)" />
                 <XAxis dataKey="date" stroke="rgba(255,255,255,0.7)" tick={{ fontSize: 10 }} />
-                <YAxis stroke="rgba(255,255,255,0.7)" unit="%" domain={[0, 100]} />
+                <YAxis stroke="rgba(255,255,255,0.7)" unit=" poms" allowDecimals={false} />
                 <Tooltip
                     contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }}
                     itemStyle={{ color: 'white' }}
                     labelStyle={{ color: 'white', fontWeight: 'bold' }}
-                    formatter={(value: number) => [`${value.toFixed(1)}%`, 'Completion']}
+                    formatter={(value: number) => [`${value} poms`, 'Completed']}
                 />
-                <Legend wrapperStyle={{fontSize: "12px", cursor: 'pointer'}} onClick={handleCompletionRateLegendClick} />
-                <Line type="monotone" dataKey="P1" name="P1 (Highest)" stroke="#F87171" activeDot={{ r: 8 }} hide={!visibleCompletionRates.P1} />
-                <Line type="monotone" dataKey="P2" name="P2 (High)" stroke="#F59E0B" activeDot={{ r: 8 }} hide={!visibleCompletionRates.P2} />
-                <Line type="monotone" dataKey="P3" name="P3 (Medium)" stroke="#38BDF8" activeDot={{ r: 8 }} hide={!visibleCompletionRates.P3} />
-                <Line type="monotone" dataKey="P4" name="P4 (Low)" stroke="#64748B" activeDot={{ r: 8 }} hide={!visibleCompletionRates.P4} />
+                <Legend wrapperStyle={{fontSize: "12px", cursor: 'pointer'}} onClick={handlePomCountPriorityLegendClick} />
+                <Line type="monotone" dataKey="P1" name="P1 (Highest)" stroke="#F87171" activeDot={{ r: 8 }} hide={!visiblePomCountPriorities.P1} />
+                <Line type="monotone" dataKey="P2" name="P2 (High)" stroke="#F59E0B" activeDot={{ r: 8 }} hide={!visiblePomCountPriorities.P2} />
+                <Line type="monotone" dataKey="P3" name="P3 (Medium)" stroke="#38BDF8" activeDot={{ r: 8 }} hide={!visiblePomCountPriorities.P3} />
+                <Line type="monotone" dataKey="P4" name="P4 (Low)" stroke="#64748B" activeDot={{ r: 8 }} hide={!visiblePomCountPriorities.P4} />
             </LineChart>
         </ResponsiveContainer>
     );
     
+    const totalPomsByPriorityChartElement = (() => {
+        const priorityColors: { [key: string]: string } = {
+            P1: '#F87171', // red
+            P2: '#F59E0B', // amber
+            P3: '#38BDF8', // sky
+            P4: '#64748B', // slate
+        };
+        return (
+            <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={totalPomsByPriorityData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.2)" />
+                    <XAxis dataKey="name" stroke="rgba(255,255,255,0.7)" />
+                    <YAxis stroke="rgba(255,255,255,0.7)" allowDecimals={false} label={{ value: 'Completed Poms', angle: -90, position: 'insideLeft', fill: 'rgba(255,255,255,0.7)' }} />
+                    <Tooltip
+                        contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }}
+                        itemStyle={{ color: 'white' }}
+                        labelStyle={{ color: 'white', fontWeight: 'bold' }}
+                        formatter={(value: number) => [`${value} poms`, 'Completed']}
+                    />
+                    <Bar dataKey="poms" name="Completed Pomodoros">
+                        {totalPomsByPriorityData.map((entry) => (
+                            <Cell key={`cell-${entry.name}`} fill={priorityColors[entry.name as keyof typeof priorityColors] || '#8884d8'} />
+                        ))}
+                    </Bar>
+                </BarChart>
+            </ResponsiveContainer>
+        );
+    })();
+
     const pomVolumeChartElement = (
         <ResponsiveContainer width="100%" height="100%">
             <LineChart data={aggregatedData.dailyPomVolumeChartData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
@@ -2145,13 +2175,27 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ logs, tasks, allTasks, proj
                         </div>
                         <div className="h-72">{priorityFocusChartElement}</div>
                     </div>
-                    {/* Task Completion Rate by Priority */}
+                    {/* Daily Pomodoros by Priority */}
                     <div>
                         <div className="flex justify-center items-center gap-2 mb-2">
-                            <h3 className="text-lg font-semibold text-white text-center">Task Completion Rate by Priority</h3>
-                            <button onClick={() => openInsightModal('Task Completion Rate by Priority', taskCompletionByPriorityData, <div className="h-72">{completionRateChartElement}</div>)} className="p-1 text-purple-400 hover:text-purple-300 transition" title="Get AI Insights"><SparklesIcon /></button>
+                            <h3 className="text-lg font-semibold text-white text-center">Daily Pomodoros by Priority</h3>
+                            <button onClick={() => openInsightModal('Daily Pomodoros by Priority', dailyPomCountByPriorityData, <div className="h-72">{dailyPomCountByPriorityChartElement}</div>)} className="p-1 text-purple-400 hover:text-purple-300 transition" title="Get AI Insights"><SparklesIcon /></button>
                         </div>
-                        <div className="h-72">{completionRateChartElement}</div>
+                        <div className="h-72">{dailyPomCountByPriorityChartElement}</div>
+                    </div>
+                    {/* Total Completed Poms by Priority */}
+                    <div>
+                        <div className="flex justify-center items-center gap-2 mb-2">
+                            <h3 className="text-lg font-semibold text-white text-center">Total Completed Poms by Priority</h3>
+                            <button onClick={() => openInsightModal('Total Completed Poms by Priority', totalPomsByPriorityData, <div className="h-72">{totalPomsByPriorityChartElement}</div>)} className="p-1 text-purple-400 hover:text-purple-300 transition" title="Get AI Insights"><SparklesIcon /></button>
+                        </div>
+                        {totalPomsByPriorityData.some(d => d.poms > 0) ? (
+                            <div className="h-72">{totalPomsByPriorityChartElement}</div>
+                        ) : (
+                            <div className="h-72 flex items-center justify-center text-white/60 bg-black/10 rounded-lg">
+                                <p>No completed pomodoros with priority found for this period.</p>
+                            </div>
+                        )}
                     </div>
                 </div>
             )}
