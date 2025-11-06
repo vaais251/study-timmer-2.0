@@ -163,7 +163,7 @@ const ProjectBurndownChart: React.FC<{
             return null;
         }
 
-        const startDate = new Date((project.start_date || project.created_at) + 'T00:00:00');
+        const startDate = new Date((project.start_date || project.created_at.split('T')[0]) + 'T00:00:00');
         const deadline = new Date(project.deadline + 'T00:00:00');
         const today = new Date();
         today.setHours(0, 0, 0, 0);
@@ -277,7 +277,7 @@ const TargetBurndownChart: React.FC<{
             return null;
         }
 
-        const startDate = new Date((target.start_date || target.created_at) + 'T00:00:00');
+        const startDate = new Date((target.start_date || target.created_at.split('T')[0]) + 'T00:00:00');
         const deadline = new Date(target.deadline + 'T00:00:00');
         const today = new Date();
         today.setHours(0, 0, 0, 0);
