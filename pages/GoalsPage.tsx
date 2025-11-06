@@ -1407,6 +1407,7 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
     const { goals, targets, projects, commitments, onAddGoal, onUpdateGoal, onDeleteGoal, onSetGoalCompletion, onAddTarget, onUpdateTarget, onDeleteTarget, onAddProject, onUpdateProject, onDeleteProject, onAddCommitment, onUpdateCommitment, onDeleteCommitment, onSetCommitmentCompletion, onMarkCommitmentBroken, onSetPinnedItem, onClearPins } = props;
 
     const [activeTab, setActiveTab] = useState<'projects' | 'targets' | 'overview' | 'deadline'>('projects');
+    const [deadlineView, setDeadlineView] = useState<'project' | 'target'>('project');
 
     const [newGoal, setNewGoal] = useState('');
     const [newTarget, setNewTarget] = useState('');
@@ -1599,6 +1600,7 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
         visibleDueProjects,
         hiddenCompletedProjectsCount,
         hiddenDueProjectsCount,
+        projectCounts,
     } = useMemo(() => {
         const thirtyDaysAgo = new Date();
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
@@ -1608,6 +1610,12 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
         const allActive = nonUpcomingProjects.filter(p => p.status === 'active');
         const allCompleted = nonUpcomingProjects.filter(p => p.status === 'completed');
         const allDue = nonUpcomingProjects.filter(p => p.status === 'due');
+
+        const counts = {
+            active: allActive.length,
+            completed: allCompleted.length,
+            due: allDue.length,
+        };
 
         if (projectSortBy === 'priority') {
             const sortByPriority = (a: Project, b: Project) => {
@@ -1649,6 +1657,7 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
             visibleDueProjects: visibleDue,
             hiddenCompletedProjectsCount: hiddenCompleted,
             hiddenDueProjectsCount: hiddenDue,
+            projectCounts: counts,
         };
     }, [projects, upcomingProjects, projectDateRange, projectSortBy]);
     
@@ -1761,12 +1770,6 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
             </div>
         );
     };
-    
-    const projectCounts = useMemo(() => ({
-        active: projects.filter(p => p.status === 'active').length,
-        completed: projects.filter(p => p.status === 'completed').length,
-        due: projects.filter(p => p.status === 'due').length,
-    }), [projects]);
     
     const targetCounts = useMemo(() => ({
         pending: targets.filter(t => t.status === 'active').length,
@@ -1977,17 +1980,48 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
                             <p className="text-white/70 text-center text-sm -mt-2 mb-6">
                                 Showing all active and recently overdue projects and targets.
                             </p>
-                            {deadlineItems.length > 0 ? (
-                                <div className="space-y-4">
-                                    {deadlineItems.map(item => (
-                                        <DeadlineItemCard key={`${item.itemType}-${item.id}`} item={item as any} />
-                                    ))}
-                                </div>
-                            ) : (
-                                <p className="text-center text-slate-400 p-4">
-                                    No active or recently due deadlines to track!
-                                </p>
-                            )}
+                            <div className="flex justify-center gap-2 mb-4 bg-black/20 p-1 rounded-full max-w-xs mx-auto">
+                                <button
+                                    onClick={() => setDeadlineView('project')}
+                                    className={`flex-1 p-2 text-sm rounded-full font-bold transition-colors ${
+                                        deadlineView === 'project'
+                                            ? 'bg-white/20 text-white'
+                                            : 'text-white/60 hover:bg-white/10'
+                                    }`}
+                                >
+                                    Projects
+                                </button>
+                                <button
+                                    onClick={() => setDeadlineView('target')}
+                                    className={`flex-1 p-2 text-sm rounded-full font-bold transition-colors ${
+                                        deadlineView === 'target'
+                                            ? 'bg-white/20 text-white'
+                                            : 'text-white/60 hover:bg-white/10'
+                                    }`}
+                                >
+                                    Targets
+                                </button>
+                            </div>
+
+                            {(() => {
+                                const itemsToShow = deadlineItems.filter(item => item.itemType === deadlineView);
+
+                                if (itemsToShow.length > 0) {
+                                    return (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            {itemsToShow.map(item => (
+                                                <DeadlineItemCard key={`${item.itemType}-${item.id}`} item={item as any} />
+                                            ))}
+                                        </div>
+                                    );
+                                } else {
+                                    return (
+                                        <p className="text-center text-slate-400 p-4">
+                                            {`No active or recently due ${deadlineView}s to track!`}
+                                        </p>
+                                    );
+                                }
+                            })()}
                         </Panel>
                     </div>
                 )}
