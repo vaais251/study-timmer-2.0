@@ -5,16 +5,11 @@ import { Goal, Target, Project, Commitment, Task, AiMemory, PomodoroHistory } fr
 
 /**
  * Initializes and returns a GoogleGenAI client instance.
- * Throws an error if the API key is not found in the environment variables.
- * This helps in debugging setup issues without compromising security.
+ * It uses a hardcoded API key as requested.
+ * Note: Hardcoding API keys in client-side code is a security risk.
  */
 const getAiClient = (): GoogleGenAI => {
-    const apiKey = process.env.API_KEY;
-    if (!apiKey) {
-        const message = "Gemini API key is not configured. Please ensure the 'API_KEY' environment variable is set.";
-        console.error(message);
-        throw new Error(message);
-    }
+    const apiKey = "AIzaSyBT9IN5PiyqaWBdM9NekDg5d-5fWDuhZnE";
     return new GoogleGenAI({ apiKey });
 };
 
