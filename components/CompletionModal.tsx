@@ -47,7 +47,6 @@ const CompletionModal: React.FC<CompletionModalProps> = ({ title, message, nextM
     const [comment, setComment] = useState('');
     
     const isFocusNext = nextMode === 'focus';
-    const accentColor = isFocusNext ? 'text-teal-400' : 'text-purple-400';
     const buttonBg = isFocusNext ? 'bg-teal-500 hover:bg-teal-600' : 'bg-purple-500 hover:bg-purple-600';
 
     const handleSelectFocusAndContinue = (level: FocusLevel) => {
@@ -61,7 +60,7 @@ const CompletionModal: React.FC<CompletionModalProps> = ({ title, message, nextM
                 <h2 className={`text-2xl font-bold text-white mb-2`}>{title}</h2>
                 <p className="text-slate-300 mb-6" dangerouslySetInnerHTML={{ __html: message }} />
                 
-                {showCommentBox && (
+                {showCommentBox ? (
                     <>
                         <textarea 
                             value={comment}
@@ -79,15 +78,15 @@ const CompletionModal: React.FC<CompletionModalProps> = ({ title, message, nextM
                             </div>
                         </div>
                     </>
+                ) : (
+                    <button
+                        onClick={() => onContinue(comment, null)}
+                        disabled={isSyncing}
+                        className={`w-full p-4 ${buttonBg} text-white font-bold rounded-lg transition-transform hover:scale-105 uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed`}
+                    >
+                        {isSyncing ? 'Processing...' : 'Start Next Phase'}
+                    </button>
                 )}
-                
-                <button
-                    onClick={() => onContinue(comment, null)}
-                    disabled={isSyncing}
-                    className={`w-full p-4 ${buttonBg} text-white font-bold rounded-lg transition-transform hover:scale-105 uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed`}
-                >
-                    {isSyncing ? 'Processing...' : 'Start Next Phase'}
-                </button>
             </div>
         </div>
     );
