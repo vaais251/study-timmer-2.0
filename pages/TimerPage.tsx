@@ -146,6 +146,7 @@ const TimerPage: React.FC<TimerPageProps> = (props) => {
                 completedToday={completedToday}
                 tasksToday={tasksToday}
                 historicalLogs={historicalLogs}
+                todaysHistory={todaysHistory}
             />
             <CategoryFocusChart
                 tasks={allTodaysTasks}

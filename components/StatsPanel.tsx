@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import Panel from './common/Panel';
-import { Task, DbDailyLog } from '../types';
+import { Task, DbDailyLog, PomodoroHistory } from '../types';
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend } from 'recharts';
 import { getTodayDateString } from '../utils/date';
 import AIInsightModal from './common/AIInsightModal';
@@ -10,6 +10,7 @@ interface StatsPanelProps {
     completedToday: Task[];
     tasksToday: Task[];
     historicalLogs: DbDailyLog[];
+    todaysHistory: PomodoroHistory[];
 }
 
 const StatItem: React.FC<{ label: string, value: string | number }> = ({ label, value }) => (
@@ -19,7 +20,7 @@ const StatItem: React.FC<{ label: string, value: string | number }> = ({ label, 
     </div>
 );
 
-const StatsPanel: React.FC<StatsPanelProps> = ({ completedToday, tasksToday, historicalLogs }) => {
+const StatsPanel: React.FC<StatsPanelProps> = ({ completedToday, tasksToday, historicalLogs, todaysHistory }) => {
     const [comparisonPeriod, setComparisonPeriod] = useState<'yesterday' | '7day'>('yesterday');
     const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -27,35 +28,55 @@ const StatsPanel: React.FC<StatsPanelProps> = ({ completedToday, tasksToday, his
         const todayString = getTodayDateString();
         const today = new Date(todayString + 'T12:00:00'); // Use a fixed time to avoid TZ issues near midnight
 
-        // --- Calculations ---
-        const dailyTotals = new Map<string, number>();
+        // --- Create maps for easier lookup ---
+        const dailyLogMap = new Map<string, DbDailyLog>();
         historicalLogs.forEach(log => {
-            dailyTotals.set(log.date, log.total_focus_minutes);
+            dailyLogMap.set(log.date, log);
         });
 
+        const allTasksForToday = [...completedToday, ...tasksToday];
+        const taskMap = new Map<string, Task>(allTasksForToday.map(t => [t.id, t]));
+
+        // Authoritative focus time is derived from the history of non-stopwatch sessions.
+        const pomodoroSessionsToday = todaysHistory.filter(h => {
+            if (!h.task_id) return true; // Assume an unlinked session is a pomodoro.
+            const task = taskMap.get(h.task_id);
+            // A task is a pomodoro task if total_poms is not negative.
+            return task ? task.total_poms >= 0 : true;
+        });
+
+        const totalFocusToday = pomodoroSessionsToday.reduce((sum, h) => sum + (Number(h.duration_minutes) || 0), 0);
+
+        // Authoritative "Poms Done" is the sum of completed_poms on today's tasks, to match the task list.
+        const pomsDone = allTasksForToday.reduce((acc, task) => {
+            // Only count poms from non-stopwatch tasks
+            if (task.total_poms > 0) {
+                return acc + task.completed_poms;
+            }
+            return acc;
+        }, 0);
+        
+        const yesterday = new Date(today);
+        yesterday.setDate(today.getDate() - 1);
+        const yesterdayLog = dailyLogMap.get(getTodayDateString(yesterday));
+        const totalFocusYesterday = yesterdayLog?.total_focus_minutes || 0;
+        
         const getRangeTotal = (endDate: Date, numDays: number): number => {
             let total = 0;
             const loopDate = new Date(endDate);
             for (let i = 0; i < numDays; i++) {
                 const dateString = getTodayDateString(loopDate);
-                total += dailyTotals.get(dateString) || 0;
+                total += dailyLogMap.get(dateString)?.total_focus_minutes || 0;
                 loopDate.setDate(loopDate.getDate() - 1);
             }
             return total;
         };
-
-        const totalFocusToday = dailyTotals.get(todayString) || 0;
-
-        const yesterday = new Date(today);
-        yesterday.setDate(today.getDate() - 1);
-        const totalFocusYesterday = dailyTotals.get(getTodayDateString(yesterday)) || 0;
-
+        
         const totalFocusRecent7Days = getRangeTotal(today, 7);
-
         const previous7DaysEndDate = new Date(today);
         previous7DaysEndDate.setDate(today.getDate() - 7);
         const totalFocusPrevious7Days = getRangeTotal(previous7DaysEndDate, 7);
-        
+
         // --- Card Data ---
         let card1: { label: string, value: string };
         let card2Value: React.ReactNode;
@@ -118,11 +139,8 @@ const StatsPanel: React.FC<StatsPanelProps> = ({ completedToday, tasksToday, his
             </div>
         );
 
-        // --- NEW LOGIC: Pom-based calculations ---
-        const allTasks = [...completedToday, ...tasksToday];
-        // Exclude stopwatch tasks from estimated poms calculation as they don't have a fixed target.
-        const pomsDone = allTasks.reduce((acc, task) => acc + (task.completed_poms || 0), 0);
-        const pomsEst = allTasks.reduce((acc, task) => acc + (task.total_poms > 0 ? task.total_poms : 0), 0);
+        // Poms Estimated still comes from the task data for today.
+        const pomsEst = allTasksForToday.reduce((acc, task) => acc + (task.total_poms > 0 ? task.total_poms : 0), 0);
         
         const completionPercentage = pomsEst > 0 ? Math.round((pomsDone / pomsEst) * 100) : 0;
         
@@ -136,7 +154,7 @@ const StatsPanel: React.FC<StatsPanelProps> = ({ completedToday, tasksToday, his
         
         return { card1, card2: { label: card2Label, value: card2Value }, card3, stats, chartData };
 
-    }, [historicalLogs, comparisonPeriod, completedToday, tasksToday]);
+    }, [historicalLogs, comparisonPeriod, completedToday, tasksToday, todaysHistory]);
 
 
     const COLORS = ['#34D399', '#F87171'];

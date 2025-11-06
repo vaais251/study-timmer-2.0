@@ -7,9 +7,10 @@ interface CompletionModalProps {
     nextMode: Mode;
     showCommentBox: boolean;
     onContinue: (comment: string, focusLevel: FocusLevel | null) => void;
+    isSyncing: boolean;
 }
 
-const FocusLevelButton: React.FC<{ level: FocusLevel; label: string; icon: string; selected: FocusLevel | null; onSelect: (level: FocusLevel) => void; }> = ({ level, label, icon, selected, onSelect }) => {
+const FocusLevelButton: React.FC<{ level: FocusLevel; label: string; icon: string; selected: FocusLevel | null; onSelect: (level: FocusLevel) => void; disabled: boolean; }> = ({ level, label, icon, selected, onSelect, disabled }) => {
     const isSelected = selected === level;
     const colors = {
         complete_focus: {
@@ -32,7 +33,8 @@ const FocusLevelButton: React.FC<{ level: FocusLevel; label: string; icon: strin
     return (
         <button
             onClick={() => onSelect(level)}
-            className={`flex-1 p-2 rounded-lg transition-all border-2 border-transparent ${isSelected ? colors[level].selectedBg : colors[level].bg}`}
+            disabled={disabled}
+            className={`flex-1 p-2 rounded-lg transition-all border-2 border-transparent ${isSelected ? colors[level].selectedBg : colors[level].bg} disabled:opacity-50 disabled:cursor-not-allowed`}
         >
             <div className="text-3xl">{icon}</div>
             <div className={`text-xs font-semibold mt-1 ${isSelected ? 'text-white' : colors[level].text}`}>{label}</div>
@@ -41,7 +43,7 @@ const FocusLevelButton: React.FC<{ level: FocusLevel; label: string; icon: strin
 };
 
 
-const CompletionModal: React.FC<CompletionModalProps> = ({ title, message, nextMode, showCommentBox, onContinue }) => {
+const CompletionModal: React.FC<CompletionModalProps> = ({ title, message, nextMode, showCommentBox, onContinue, isSyncing }) => {
     const [comment, setComment] = useState('');
     
     const isFocusNext = nextMode === 'focus';
@@ -65,14 +67,15 @@ const CompletionModal: React.FC<CompletionModalProps> = ({ title, message, nextM
                             value={comment}
                             onChange={(e) => setComment(e.target.value)}
                             placeholder="What did you accomplish? (Optional)"
-                            className="w-full bg-slate-700/50 border border-slate-600 rounded-lg p-3 text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-400 focus:border-teal-400 mb-4 min-h-[80px]"
+                            className="w-full bg-slate-700/50 border border-slate-600 rounded-lg p-3 text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-400 focus:border-teal-400 mb-4 min-h-[80px] disabled:opacity-50"
+                            disabled={isSyncing}
                         />
                          <div className="my-4">
                             <h3 className="text-sm font-semibold text-white mb-2">How was your focus? (Click to continue)</h3>
                             <div className="flex justify-center gap-2">
-                                <FocusLevelButton level="complete_focus" label="Full Focus" icon="😊" selected={null} onSelect={handleSelectFocusAndContinue} />
-                                <FocusLevelButton level="half_focus" label="Half Focus" icon="🤔" selected={null} onSelect={handleSelectFocusAndContinue} />
-                                <FocusLevelButton level="none_focus" label="Distracted" icon="😩" selected={null} onSelect={handleSelectFocusAndContinue} />
+                                <FocusLevelButton level="complete_focus" label="Full Focus" icon="😊" selected={null} onSelect={handleSelectFocusAndContinue} disabled={isSyncing} />
+                                <FocusLevelButton level="half_focus" label="Half Focus" icon="🤔" selected={null} onSelect={handleSelectFocusAndContinue} disabled={isSyncing} />
+                                <FocusLevelButton level="none_focus" label="Distracted" icon="😩" selected={null} onSelect={handleSelectFocusAndContinue} disabled={isSyncing} />
                             </div>
                         </div>
                     </>
@@ -80,9 +83,10 @@ const CompletionModal: React.FC<CompletionModalProps> = ({ title, message, nextM
                 
                 <button
                     onClick={() => onContinue(comment, null)}
-                    className={`w-full p-4 ${buttonBg} text-white font-bold rounded-lg transition-transform hover:scale-105 uppercase tracking-wider`}
+                    disabled={isSyncing}
+                    className={`w-full p-4 ${buttonBg} text-white font-bold rounded-lg transition-transform hover:scale-105 uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed`}
                 >
-                    Start Next Phase
+                    {isSyncing ? 'Processing...' : 'Start Next Phase'}
                 </button>
             </div>
         </div>

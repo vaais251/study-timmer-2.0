@@ -1032,6 +1032,8 @@ const App: React.FC = () => {
 
     // Modal Continue Handler
     const handleModalContinue = (comment: string, focusLevel: FocusLevel | null) => {
+        if (isSyncing) return;
+    
         // --- Immediate UI Updates ---
         if (notificationInterval.current) clearInterval(notificationInterval.current);
         setIsModalVisible(false);
@@ -1564,6 +1566,7 @@ const App: React.FC = () => {
                     nextMode={modalContent.nextMode}
                     showCommentBox={modalContent.showCommentBox}
                     onContinue={handleModalContinue}
+                    isSyncing={isSyncing}
                 />
             )}
             
