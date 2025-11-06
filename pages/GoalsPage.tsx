@@ -1059,7 +1059,7 @@ const GoalItem: React.FC<{
 
     if (isEditing) {
         return (
-             <li className="bg-gradient-to-br from-purple-900/50 via-indigo-900/50 to-blue-900/50 border border-cyan-400 rounded-xl p-4 ring-2 ring-cyan-400/50">
+             <li className="bg-slate-700/50 border border-cyan-400 rounded-xl p-4 ring-2 ring-cyan-400/50">
                 <div className="flex flex-col gap-3">
                      <textarea
                         value={editText}
@@ -1085,19 +1085,16 @@ const GoalItem: React.FC<{
     }
     
     return (
-        <li className={`bg-gradient-to-br from-slate-800 to-slate-900 border border-white/10 rounded-xl p-4 transform transition-all hover:scale-[1.02] hover:shadow-2xl hover:border-white/20 ${isComplete ? 'opacity-50' : ''}`}>
+        <li className={`bg-slate-800 rounded-xl p-4 transition-all hover:bg-slate-700/50 ${isComplete ? 'opacity-50' : ''}`}>
             <div className="flex items-start justify-between gap-4">
                 <div className="flex items-start gap-3 flex-grow min-w-0">
                      <input
                         type="checkbox"
                         checked={isComplete}
                         onChange={(e) => onSetCompletion(goal.id, e.target.checked)}
-                        className="h-6 w-6 rounded bg-white/20 border-white/30 text-green-400 focus:ring-green-400 flex-shrink-0 cursor-pointer mt-1"
+                        className="h-6 w-6 rounded bg-slate-700 border-slate-600 text-green-400 focus:ring-green-400 flex-shrink-0 cursor-pointer mt-0.5"
                         aria-label={`Mark goal as ${isComplete ? 'incomplete' : 'complete'}`}
                     />
-                    <div className="text-amber-300 mt-1 flex-shrink-0">
-                        <StarIcon />
-                    </div>
                     <p className={`text-white/90 font-medium text-base flex-grow break-words ${isComplete ? 'line-through' : ''}`}>{goal.text}</p>
                 </div>
                 <div className="flex items-center gap-1 flex-shrink-0">
@@ -1230,13 +1227,13 @@ const CommitmentItem: React.FC<{
     }
 
     const statusStyles = {
-        active: 'bg-black/20',
-        completed: 'bg-green-900/40 opacity-70',
-        broken: 'bg-red-900/40 opacity-70',
+        active: 'border-l-cyan-400 bg-slate-800',
+        completed: 'border-l-green-500 bg-slate-800/60 opacity-70',
+        broken: 'border-l-red-500 bg-slate-800/60 opacity-70',
     };
 
     return (
-        <li className={`flex flex-col sm:flex-row sm:items-start justify-between gap-4 p-4 rounded-lg ${statusStyles[commitment.status]}`}>
+        <li className={`flex flex-col sm:flex-row sm:items-start justify-between gap-4 p-4 rounded-lg border-l-4 ${statusStyles[commitment.status]}`}>
              <div className="flex items-start gap-3 flex-grow min-w-0">
                 <div className="flex-grow">
                     <p className={`text-white ${isTerminated ? 'line-through' : ''}`}>{commitment.text}</p>
@@ -1284,8 +1281,11 @@ const CommitmentsPanel: React.FC<{
     const [newDueDate, setNewDueDate] = useState('');
     const [view, setView] = useState<'active' | 'completed' | 'broken'>('active');
     
-    const [dateRange, setDateRange] = useState<{ start: string; end: string }>({ start: '', end: '' });
-    const [showDateFilter, setShowDateFilter] = useState(false);
+    const commitmentCounts = useMemo(() => ({
+        active: commitments.filter(c => c.status === 'active').length,
+        completed: commitments.filter(c => c.status === 'completed').length,
+        broken: commitments.filter(c => c.status === 'broken').length,
+    }), [commitments]);
 
     const handleAdd = () => {
         if (newCommitment.trim()) {
@@ -1295,141 +1295,66 @@ const CommitmentsPanel: React.FC<{
         }
     };
     
-    const { active, completed, broken, hiddenCompletedCount, hiddenBrokenCount } = useMemo(() => {
-        const thirtyDaysAgo = new Date();
-        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const visibleCommitments = useMemo(() => {
+        return commitments.filter(c => c.status === view).sort((a,b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    }, [commitments, view]);
 
-        const allActive = commitments.filter(c => c.status === 'active');
-        const allCompleted = commitments.filter(c => c.status === 'completed');
-        const allBroken = commitments.filter(c => c.status === 'broken');
-
-        let filteredCompleted = allCompleted;
-        let filteredBroken = allBroken;
-
-        if (dateRange.start && dateRange.end) {
-            filteredCompleted = allCompleted.filter(c => {
-                if (!c.completed_at) return false;
-                const completedDate = c.completed_at.split('T')[0];
-                return completedDate >= dateRange.start && completedDate <= dateRange.end;
-            });
-            filteredBroken = allBroken.filter(c => {
-                if (!c.broken_at) return false;
-                const brokenDate = c.broken_at.split('T')[0];
-                return brokenDate >= dateRange.start && brokenDate <= dateRange.end;
-            });
-        } else {
-            filteredCompleted = allCompleted.filter(c => c.completed_at && new Date(c.completed_at) > thirtyDaysAgo);
-            filteredBroken = allBroken.filter(c => c.broken_at && new Date(c.broken_at) > thirtyDaysAgo);
-        }
-
-        const hiddenCompletedCount = allCompleted.length - filteredCompleted.length;
-        const hiddenBrokenCount = allBroken.length - filteredBroken.length;
-
-        allActive.sort((a,b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-        filteredCompleted.sort((a,b) => new Date(b.completed_at || 0).getTime() - new Date(a.completed_at || 0).getTime());
-        filteredBroken.sort((a,b) => new Date(b.broken_at || 0).getTime() - new Date(a.broken_at || 0).getTime());
-
-        return { 
-            active: allActive, 
-            completed: filteredCompleted, 
-            broken: filteredBroken,
-            hiddenCompletedCount,
-            hiddenBrokenCount
-        };
-    }, [commitments, dateRange]);
-
-    const handleClearFilter = () => {
-        setDateRange({ start: '', end: '' });
-        setShowDateFilter(false);
-    };
-
-    const lists = { active, completed, broken };
-    const currentList = lists[view];
-    const hiddenCount = view === 'completed' ? hiddenCompletedCount : hiddenBrokenCount;
-    
-    const FilterControls = () => {
-        if (view !== 'completed' && view !== 'broken') return null;
-
-        return (
-            <div className="bg-black/20 p-2 rounded-lg mb-4 text-sm text-center">
-                {!showDateFilter ? (
-                    <div className="flex justify-center items-center gap-4 py-1">
-                        <p className="text-white/70">
-                            {dateRange.start && dateRange.end 
-                                ? `Showing custom range.`
-                                : `Showing last 30 days. ${hiddenCount > 0 ? `${hiddenCount} older items hidden.` : ''}`
-                            }
-                        </p>
-                        <button onClick={() => setShowDateFilter(true)} className="font-semibold text-cyan-300 hover:text-cyan-200">
-                            Filter Date
-                        </button>
-                    </div>
-                ) : (
-                    <div className="space-y-2 p-2 animate-fadeIn">
-                        <div className="flex flex-col sm:flex-row items-center justify-center gap-2">
-                            <input type="date" value={dateRange.start} onChange={e => setDateRange(p => ({...p, start: e.target.value}))} className="bg-white/20 border border-white/30 rounded-lg p-2 text-white/80 w-full text-center" style={{colorScheme: 'dark'}}/>
-                            <span className="text-white/80">to</span>
-                            <input type="date" value={dateRange.end} onChange={e => setDateRange(p => ({...p, end: e.target.value}))} className="bg-white/20 border border-white/30 rounded-lg p-2 text-white/80 w-full text-center" style={{colorScheme: 'dark'}}/>
-                        </div>
-                        <div className="flex justify-center gap-4 pt-1">
-                            <button onClick={() => setShowDateFilter(false)} className="text-white/70 hover:text-white">Cancel</button>
-                            <button onClick={handleClearFilter} className="font-semibold text-amber-400 hover:text-amber-300">Clear</button>
-                        </div>
-                    </div>
-                )}
-            </div>
-        );
-    };
-    
     return (
         <Panel title="My Commitments">
-            <div className="text-center mb-4 flex justify-center items-center gap-2 -mt-4">
-                <p className="text-white/80 text-sm">What will you hold yourself accountable for?</p>
-                 <ExplanationTooltip 
-                    title="About Commitments"
-                    content="Commitments are promises to yourself. They have a <strong>2-hour 'grace period'</strong> for edits, after which they lock to encourage reflection.<br/><br/>- After locking, you can mark a commitment as 'Completed' or 'Broken'.<br/>- If a due date is set, it completes automatically after it passes.<br/>- If no due date, you can manually complete it after one month."
-                />
-            </div>
-            <div className="space-y-2 mb-4">
-                <div className="relative">
-                    <input
-                        type="text"
-                        value={newCommitment}
-                        onChange={e => setNewCommitment(e.target.value)}
-                        onKeyPress={e => e.key === 'Enter' && handleAdd()}
-                        placeholder="I commit to..."
-                        className="w-full bg-black/30 border-2 border-white/20 rounded-full py-3 pr-28 pl-6 text-white placeholder:text-white/50 focus:outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/50 transition-all"
-                    />
-                    <button onClick={handleAdd} className="absolute inset-y-1.5 right-1.5 px-6 rounded-full font-bold text-white transition-all duration-300 bg-gradient-to-br from-cyan-500 to-sky-600 hover:from-cyan-600 hover:to-sky-700 hover:scale-105">
-                        Commit
-                    </button>
+            <details className="group bg-slate-900/30 rounded-xl transition-[max-height] duration-500 overflow-hidden mb-4">
+                <summary className="p-3 font-semibold text-white cursor-pointer list-none flex justify-between items-center hover:bg-slate-700/20">
+                    🤝 Add New Commitment
+                    <svg className="w-4 h-4 text-white/70 transform transition-transform group-open:rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                    </svg>
+                </summary>
+                <div className="p-4 border-t border-slate-700 space-y-3">
+                    <p className="text-white/80 text-center text-sm">
+                        What will you hold yourself accountable for? 
+                        <ExplanationTooltip 
+                            title="About Commitments"
+                            content="Commitments are promises to yourself. They have a <strong>2-hour 'grace period'</strong> for edits, after which they lock to encourage reflection.<br/><br/>- After locking, you can mark a commitment as 'Completed' or 'Broken'.<br/>- If a due date is set, it completes automatically after it passes.<br/>- If no due date, you can manually complete it after one month."
+                        />
+                    </p>
+                    <div className="relative">
+                        <input
+                            type="text"
+                            value={newCommitment}
+                            onChange={e => setNewCommitment(e.target.value)}
+                            onKeyPress={e => e.key === 'Enter' && handleAdd()}
+                            placeholder="I commit to..."
+                            className="w-full bg-black/30 border-2 border-white/20 rounded-full py-3 pr-28 pl-6 text-white placeholder:text-white/50 focus:outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/50 transition-all"
+                        />
+                        <button onClick={handleAdd} className="absolute inset-y-1.5 right-1.5 px-6 rounded-full font-bold text-white transition-all duration-300 bg-gradient-to-br from-cyan-500 to-sky-600 hover:from-cyan-600 hover:to-sky-700 hover:scale-105">
+                            Commit
+                        </button>
+                    </div>
+                    <div className="flex items-center gap-2 px-2">
+                        <label htmlFor="commitment-due-date" className="text-sm text-white/70">Optional Due Date:</label>
+                        <input
+                            id="commitment-due-date"
+                            type="date"
+                            value={newDueDate}
+                            onChange={e => setNewDueDate(e.target.value)}
+                            className="bg-white/20 border border-white/30 rounded-lg p-1.5 text-white/80 w-full sm:w-auto text-center"
+                            style={{colorScheme: 'dark'}}
+                        />
+                    </div>
                 </div>
-                <div className="flex items-center gap-2 px-2">
-                    <label htmlFor="commitment-due-date" className="text-sm text-white/70">Optional Due Date:</label>
-                    <input
-                        id="commitment-due-date"
-                        type="date"
-                        value={newDueDate}
-                        onChange={e => setNewDueDate(e.target.value)}
-                        className="bg-white/20 border border-white/30 rounded-lg p-1.5 text-white/80 w-full sm:w-auto text-center"
-                        style={{colorScheme: 'dark'}}
-                    />
-                </div>
-            </div>
+            </details>
+
              <div className="flex justify-center gap-2 mb-4 bg-black/20 p-1 rounded-full">
                 {(['active', 'completed', 'broken'] as const).map(status => (
                      <button key={status} onClick={() => setView(status)} className={`flex-1 p-2 text-sm rounded-full font-bold transition-colors ${view === status ? 'bg-white/20 text-white' : 'text-white/60 hover:bg-white/10'}`}>
-                        {status.charAt(0).toUpperCase() + status.slice(1)} ({status === 'active' ? lists.active.length : commitments.filter(c => c.status === status).length})
+                        {status.charAt(0).toUpperCase() + status.slice(1)} ({commitmentCounts[status]})
                     </button>
                 ))}
             </div>
             
-            <FilterControls />
-            
             <ul className="space-y-2 max-h-64 overflow-y-auto pr-2">
-                {currentList.map(c => <CommitmentItem key={c.id} commitment={c} onUpdate={onUpdate} onDelete={onDelete} onSetCompletion={onSetCompletion} onMarkAsBroken={onMarkAsBroken} />)}
-                {currentList.length === 0 && <p className="text-center text-white/60 p-4">
-                    {dateRange.start && dateRange.end ? `No ${view} commitments in this date range.` : `No ${view} commitments.`}
+                {visibleCommitments.map(c => <CommitmentItem key={c.id} commitment={c} onUpdate={onUpdate} onDelete={onDelete} onSetCompletion={onSetCompletion} onMarkAsBroken={onMarkAsBroken} />)}
+                {visibleCommitments.length === 0 && <p className="text-center text-white/60 p-4">
+                    No {view} commitments.
                 </p>}
             </ul>
         </Panel>
@@ -1988,6 +1913,10 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
             return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
         })[0];
     }, [targets]);
+    
+    const spotlightGoal = useMemo(() => {
+        return goals.find(g => !g.completed_at);
+    }, [goals]);
 
     return (
         <div className="space-y-6">
@@ -2031,30 +1960,44 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
                 )}
                 {activeTab === 'overview' && (
                     <div className="space-y-6 animate-fadeIn">
-                        {/* Core Goals */}
+                        {spotlightGoal && (
+                             <div className="bg-gradient-to-br from-slate-800 to-slate-900 border border-purple-400/50 rounded-xl p-4 shadow-2xl">
+                                <h3 className="text-sm font-bold text-purple-300 uppercase tracking-wider mb-2 text-center">Goal Spotlight</h3>
+                                 <GoalItem 
+                                     goal={spotlightGoal} 
+                                     onUpdateGoal={onUpdateGoal} 
+                                     onDeleteGoal={onDeleteGoal} 
+                                     onSetCompletion={onSetGoalCompletion} 
+                                 />
+                             </div>
+                        )}
                         <Panel title="My Core Goals">
-                            <p className="text-white/80 text-center text-sm mb-4 -mt-4">Your guiding stars. What long-term ambitions are you working towards?</p>
-                            <div className="relative mb-4">
-                                <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none text-amber-300">
-                                    <StarIcon />
+                            <details className="group bg-slate-900/30 rounded-xl transition-[max-height] duration-500 overflow-hidden mb-4">
+                                <summary className="p-3 font-semibold text-white cursor-pointer list-none flex justify-between items-center hover:bg-slate-700/20">
+                                    ⭐ Add New Goal
+                                    <svg className="w-4 h-4 text-white/70 transform transition-transform group-open:rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                                    </svg>
+                                </summary>
+                                <div className="p-4 border-t border-slate-700">
+                                    <div className="relative">
+                                        <input
+                                            type="text"
+                                            value={newGoal}
+                                            onChange={(e) => setNewGoal(e.target.value)}
+                                            onKeyPress={(e) => e.key === 'Enter' && handleAddGoal()}
+                                            placeholder="What's your next big ambition?"
+                                            className="w-full bg-black/30 border-2 border-white/20 rounded-full py-3 pr-28 pl-6 text-white placeholder:text-white/50 focus:outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-400/50 transition-all"
+                                        />
+                                        <button onClick={handleAddGoal} className="absolute inset-y-1.5 right-1.5 px-6 rounded-full font-bold text-white transition-all duration-300 bg-gradient-to-br from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 hover:scale-105">
+                                            Add Goal
+                                        </button>
+                                    </div>
                                 </div>
-                                <input
-                                    type="text"
-                                    value={newGoal}
-                                    onChange={(e) => setNewGoal(e.target.value)}
-                                    onKeyPress={(e) => e.key === 'Enter' && handleAddGoal()}
-                                    placeholder="What's your next big goal?"
-                                    className="w-full bg-black/30 border-2 border-white/20 rounded-full py-3 pr-28 pl-12 text-white placeholder:text-white/50 focus:outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-400/50 transition-all"
-                                />
-                                <button onClick={handleAddGoal} className="absolute inset-y-1.5 right-1.5 px-6 rounded-full font-bold text-white transition-all duration-300 bg-gradient-to-br from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 hover:scale-105">
-                                    Add
-                                </button>
-                            </div>
+                            </details>
+
                             <ul className="space-y-2">
-                                {visibleGoals.filter(g => !g.completed_at).map(goal => (
-                                    <GoalItem key={goal.id} goal={goal} onUpdateGoal={onUpdateGoal} onDeleteGoal={onDeleteGoal} onSetCompletion={onSetGoalCompletion} />
-                                ))}
-                                {visibleGoals.filter(g => g.completed_at).map(goal => (
+                                {visibleGoals.map(goal => (
                                     <GoalItem key={goal.id} goal={goal} onUpdateGoal={onUpdateGoal} onDeleteGoal={onDeleteGoal} onSetCompletion={onSetGoalCompletion} />
                                 ))}
                             </ul>
@@ -2065,7 +2008,6 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
                             )}
                             {goals.length === 0 && <p className="text-center text-white/60 p-4">Set your first high-level goal!</p>}
                         </Panel>
-                        {/* Commitments */}
                         <CommitmentsPanel 
                             commitments={commitments}
                             onAdd={onAddCommitment}
