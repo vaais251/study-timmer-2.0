@@ -1033,7 +1033,7 @@ const App: React.FC = () => {
 
     // Modal Continue Handler
     const handleModalContinue = (comment: string, focusLevel: FocusLevel | null) => {
-        if (isSyncing) return;
+        if (isSyncing) return; // Safeguard against re-entry from double-clicks
     
         // --- Immediate UI Updates ---
         if (notificationInterval.current) clearInterval(notificationInterval.current);
