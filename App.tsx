@@ -1,7 +1,4 @@
 
-
-
-
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
@@ -1161,6 +1158,7 @@ const App: React.FC = () => {
                     }
                     await Promise.all(recalcPromises);
                 }
+                setToastNotification('✅ Progress saved!');
             } catch (err) {
                 console.error("Sync Error: A critical background update failed. Reverting UI.", err);
                 setToastNotification("⚠️ Sync Failed! Restoring previous state.");
