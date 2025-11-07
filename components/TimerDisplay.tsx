@@ -39,7 +39,7 @@ const TimerDisplay: React.FC<TimerDisplayProps> = ({ timeRemaining, totalTime, i
     };
 
     return (
-        <div className="relative h-80 sm:h-96 flex items-center justify-center my-4 animate-float">
+        <div className="relative h-80 sm:h-96 flex items-center justify-center my-4">
             <svg
                 className={`absolute w-72 h-72 sm:w-80 sm:h-80 transition-transform duration-500 ${isRunning ? 'timer-running scale-105' : 'scale-100'}`}
                 viewBox="0 0 220 220"

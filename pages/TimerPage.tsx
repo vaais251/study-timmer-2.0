@@ -1,13 +1,14 @@
+
 import React, { useMemo } from 'react';
 import { AppState, Settings, Task, DbDailyLog, PomodoroHistory } from '../types';
 import SessionInfo from '../components/SessionInfo';
 import TimerDisplay from '../components/TimerDisplay';
 import Controls from '../components/Controls';
-import StatsPanel from '../components/StatsPanel';
 import AmbientSounds from '../components/AmbientSounds';
-import CategoryFocusPieChart from '../components/CategoryFocusPieChart';
 import TodayLog from '../components/TodayLog';
 import FocusQueue from '../components/FocusQueue';
+import StatsPanel from '../components/StatsPanel';
+import CategoryFocusPieChart from '../components/CategoryFocusPieChart';
 
 interface TimerPageProps {
     appState: AppState;
@@ -80,6 +81,19 @@ const TimerPage: React.FC<TimerPageProps> = (props) => {
             
             {/* Main Timer Block */}
             <div className="bg-slate-800/50 backdrop-blur-md rounded-2xl p-4 sm:p-6 border border-slate-700/80 animate-slideUp">
+                <div className="text-center pb-4 mb-4 border-b border-slate-700/80">
+                    <h3 className="text-sm font-semibold uppercase text-teal-400 tracking-wider mb-2">
+                        Focusing On
+                    </h3>
+                    {currentTask ? (
+                        <p className="font-semibold text-xl text-slate-100 truncate max-w-full" title={currentTask.text}>
+                            {currentTask.text}
+                        </p>
+                    ) : (
+                        <p className="text-slate-400 italic">No task selected</p>
+                    )}
+                </div>
+
                 <TimerDisplay
                     timeRemaining={displayTime}
                     totalTime={appState.sessionTotalTime}
@@ -88,19 +102,6 @@ const TimerPage: React.FC<TimerPageProps> = (props) => {
                     isStopwatchMode={isStopwatchMode}
                     timeForProgress={appState.timeRemaining}
                 />
-                
-                <div className="text-center my-2 px-4 h-20 flex flex-col justify-center items-center bg-black/20 rounded-lg border border-slate-700/50 mx-auto max-w-md">
-                    <h3 className="text-sm font-semibold uppercase text-teal-400 tracking-wider mb-2">
-                        Focusing On
-                    </h3>
-                    {currentTask ? (
-                        <p className="font-semibold text-lg text-slate-100 truncate max-w-full" title={currentTask.text}>
-                            {currentTask.text}
-                        </p>
-                    ) : (
-                        <p className="text-slate-400 italic">No task selected</p>
-                    )}
-                </div>
 
                 <Controls
                     isRunning={appState.isRunning}
@@ -123,26 +124,29 @@ const TimerPage: React.FC<TimerPageProps> = (props) => {
                     </div>
                 )}
             </div>
-            
+
             {/* Widgets Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-slideUp" style={{animationDelay: '100ms'}}>
                 <FocusQueue nextTasks={nextTasks} />
                 <TodayLog todaysHistory={todaysHistory} tasks={allTodaysTasks} />
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-slideUp" style={{animationDelay: '200ms'}}>
                 <StatsPanel
-                    dailyLog={dailyLog}
                     completedToday={completedToday}
                     tasksToday={tasksToday}
                     historicalLogs={historicalLogs}
                     todaysHistory={todaysHistory}
+                    dailyLog={dailyLog}
                 />
                 <CategoryFocusPieChart
                     tasks={allTodaysTasks}
                     todaysHistory={todaysHistory}
                 />
             </div>
-
+            
             {/* Ambient Sounds */}
-            <div className="animate-slideUp" style={{animationDelay: '200ms'}}>
+            <div className="animate-slideUp" style={{animationDelay: '300ms'}}>
                 <AmbientSounds />
             </div>
         </div>
