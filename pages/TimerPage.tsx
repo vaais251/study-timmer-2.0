@@ -88,6 +88,20 @@ const TimerPage: React.FC<TimerPageProps> = (props) => {
                     isStopwatchMode={isStopwatchMode}
                     timeForProgress={appState.timeRemaining}
                 />
+                
+                <div className="text-center my-2 px-4 h-20 flex flex-col justify-center items-center bg-black/20 rounded-lg border border-slate-700/50 mx-auto max-w-md">
+                    <h3 className="text-sm font-semibold uppercase text-teal-400 tracking-wider mb-2">
+                        Focusing On
+                    </h3>
+                    {currentTask ? (
+                        <p className="font-semibold text-lg text-slate-100 truncate max-w-full" title={currentTask.text}>
+                            {currentTask.text}
+                        </p>
+                    ) : (
+                        <p className="text-slate-400 italic">No task selected</p>
+                    )}
+                </div>
+
                 <Controls
                     isRunning={appState.isRunning}
                     startTimer={startTimer}
@@ -112,7 +126,7 @@ const TimerPage: React.FC<TimerPageProps> = (props) => {
             
             {/* Widgets Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-slideUp" style={{animationDelay: '100ms'}}>
-                <FocusQueue currentTask={currentTask} nextTasks={nextTasks} />
+                <FocusQueue nextTasks={nextTasks} />
                 <TodayLog todaysHistory={todaysHistory} tasks={allTodaysTasks} />
                 <StatsPanel
                     dailyLog={dailyLog}
