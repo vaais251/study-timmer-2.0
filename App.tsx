@@ -1,5 +1,6 @@
 
 
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
@@ -1036,7 +1037,10 @@ const App: React.FC = () => {
     const handleModalContinue = (comment: string, focusLevel: FocusLevel | null) => {
         if (isSyncing) return; // Safeguard against re-entry from double-clicks
     
-        // --- Immediate UI Updates ---
+        // --- 1. SAVE PRE-UPDATE STATE FOR ROLLBACK ---
+        const preUpdateState = { appState, tasks, phaseEndTime };
+
+        // --- 2. IMMEDIATE UI UPDATES (Optimistic) ---
         if (notificationInterval.current) clearInterval(notificationInterval.current);
         setIsModalVisible(false);
         setIsSyncing(true);
@@ -1046,7 +1050,7 @@ const App: React.FC = () => {
         const taskJustWorkedOn = tasksToday.find(t => !t.completed_at);
         const sessionTotalTime = appState.sessionTotalTime;
     
-        // 1. Create a purely optimistic version of the task that was just worked on.
+        // Create a purely optimistic version of the task that was just worked on.
         let optimisticUpdatedTask: Task | null = null;
         if (wasFocusSession && taskJustWorkedOn) {
             optimisticUpdatedTask = {
@@ -1063,12 +1067,12 @@ const App: React.FC = () => {
             }
         }
         
-        // 2. Create the optimistic task list for UI state
+        // Create the optimistic task list for UI state
         const optimisticTasks = optimisticUpdatedTask 
             ? tasks.map(t => t.id === optimisticUpdatedTask!.id ? optimisticUpdatedTask! : t)
             : tasks;
             
-        // 3. Determine next timer state based on optimistic data
+        // Determine next timer state based on optimistic data
         const nextMode = modalContent.nextMode;
         const currentSessionNumber = appState.currentSession;
         const sessionsPerCycle = settings.sessionsPerCycle;
@@ -1108,7 +1112,7 @@ const App: React.FC = () => {
         
         const newEndTime = nextMode === 'break' ? Date.now() + newTime * 1000 : null;
     
-        // 4. Set all UI states at once
+        // Set all UI states at once
         setAppState(prev => ({
             ...prev,
             mode: nextMode,
@@ -1118,9 +1122,9 @@ const App: React.FC = () => {
             isRunning: true,
         }));
         setPhaseEndTime(newEndTime);
-        setTasks(optimisticTasks); // This is crucial
+        setTasks(optimisticTasks);
     
-        // --- Perform DB updates in the background ---
+        // --- 3. PERFORM DB UPDATES WITH ROLLBACK ON FAILURE ---
         const performAllUpdatesInBackground = async () => {
             try {
                 if (wasFocusSession && taskJustWorkedOn) {
@@ -1149,30 +1153,42 @@ const App: React.FC = () => {
                         });
                     }
                     
-                    // --- NEW, MORE ROBUST ORDER ---
                     const focusDuration = Math.round(sessionTotalTime / 60);
 
-                    // 1. Log the history first. This is the most critical record for stats and prevents data inconsistency.
+                    // 1. Log history first.
                     await dbService.addPomodoroHistory(taskJustWorkedOn.id, focusDuration, focusLevel);
                     
-                    // 2. Then, update the task's pomodoro count. If this fails, the time is still logged correctly.
-                    await handleTaskCompletion(taskJustWorkedOn, taskComment);
-                    
-                    // 3. Finally, run recalculations which depend on the above data being correct.
-                    const recalcPromises: Promise<any>[] = [];
-                    if (taskJustWorkedOn.tags && taskJustWorkedOn.tags.length > 0) {
-                       recalcPromises.push(dbService.recalculateProgressForAffectedTargets(taskJustWorkedOn.tags, session?.user.id || ''));
+                    // 2. Then, update the task's pomodoro count.
+                    const updatedTask = await handleTaskCompletion(taskJustWorkedOn, taskComment);
+
+                    if (!updatedTask) {
+                        throw new Error("Task update failed, but history was already logged.");
                     }
-                    if (taskJustWorkedOn.project_id) {
-                        recalcPromises.push(checkProjectDurationCompletion(taskJustWorkedOn.id, focusDuration));
+                    
+                    // 3. Finally, run dependent recalculations.
+                    const recalcPromises: Promise<any>[] = [];
+                    if (updatedTask.tags && updatedTask.tags.length > 0) {
+                       recalcPromises.push(dbService.recalculateProgressForAffectedTargets(updatedTask.tags, session?.user.id || ''));
+                    }
+                    if (updatedTask.project_id) {
+                         const project = projects.find(p => p.id === updatedTask!.project_id);
+                         if (project && project.completion_criteria_type === 'duration_minutes') {
+                             recalcPromises.push(dbService.recalculateProjectProgress(project.id));
+                         }
                     }
                     await Promise.all(recalcPromises);
                 }
             } catch (err) {
-                console.error("Error during background data update:", err);
-                setToastNotification("⚠️ Sync Error. Data might be stale.");
+                console.error("Sync Error: A critical background update failed. Reverting UI.", err);
+                setToastNotification("⚠️ Sync Failed! Restoring previous state.");
+
+                // --- ROLLBACK OPTIMISTIC UPDATES ---
+                setAppState(preUpdateState.appState);
+                setTasks(preUpdateState.tasks);
+                setPhaseEndTime(preUpdateState.phaseEndTime);
             } finally {
-                // Refresh everything from DB to ensure consistency, then turn off sync indicator
+                // This refresh ensures we are perfectly in sync with the DB,
+                // whether the updates succeeded or failed (and were rolled back).
                 try {
                      await Promise.all([
                         refreshHistoryAndLogs(),
