@@ -941,39 +941,6 @@ const App: React.FC = () => {
     }
     
     // Task Handlers
-    const handleTaskCompletion = async (taskToComplete: Task, comment: string): Promise<Task | null> => {
-        if (!taskToComplete) return null;
-    
-        const isStopwatch = taskToComplete.total_poms < 0;
-    
-        const updatedFields: Partial<Task> = {
-            completed_poms: isStopwatch ? taskToComplete.completed_poms : taskToComplete.completed_poms + 1,
-            comments: comment ? [...(taskToComplete.comments || []), comment] : taskToComplete.comments,
-        };
-        
-        let taskIsNowComplete = false;
-        if (!isStopwatch && updatedFields.completed_poms >= taskToComplete.total_poms) {
-            updatedFields.completed_at = new Date().toISOString();
-            taskIsNowComplete = true;
-        }
-        
-        const updatedTask = await dbService.updateTask(taskToComplete.id, updatedFields, {
-            shouldRecalculate: false // Defer recalculation
-        });
-    
-        if (taskIsNowComplete && updatedTask && updatedTask.project_id) {
-            await dbService.addProjectUpdate(
-                updatedTask.project_id,
-                getTodayDateString(),
-                `Completed task: "${updatedTask.text}"`,
-                updatedTask.id
-            );
-            await dbService.recalculateProjectProgress(updatedTask.project_id);
-        }
-        
-        return updatedTask;
-    };
-
     const handleCompleteStopwatchTask = async () => {
         const currentTask = tasksToday.find(t => !t.completed_at);
         if (!currentTask || currentTask.total_poms >= 0) {
@@ -1138,24 +1105,22 @@ const App: React.FC = () => {
                     
                     const focusDuration = Math.round(sessionTotalTime / 60);
 
-                    await dbService.addPomodoroHistory(taskJustWorkedOn.id, focusDuration, focusLevel);
-                    
-                    const updatedTask = await handleTaskCompletion(taskJustWorkedOn, taskComment);
+                    const updatedTask = await dbService.logPomodoroCompletion(
+                        taskJustWorkedOn,
+                        taskComment,
+                        focusDuration,
+                        focusLevel
+                    );
 
                     if (!updatedTask) {
-                        throw new Error("Task update failed, but history was already logged.");
+                        throw new Error("Failed to save pomodoro session. The operation may have been rolled back.");
                     }
                     
                     const recalcPromises: Promise<any>[] = [];
                     if (updatedTask.tags && updatedTask.tags.length > 0) {
                        recalcPromises.push(dbService.recalculateProgressForAffectedTargets(updatedTask.tags, session?.user.id || ''));
                     }
-                    if (updatedTask.project_id) {
-                         const project = projects.find(p => p.id === updatedTask!.project_id);
-                         if (project && project.completion_criteria_type === 'duration_minutes') {
-                             recalcPromises.push(dbService.recalculateProjectProgress(project.id));
-                         }
-                    }
+                    // Project progress is already recalculated inside logPomodoroCompletion
                     await Promise.all(recalcPromises);
                 }
                 setToastNotification('✅ Progress saved!');

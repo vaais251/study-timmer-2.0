@@ -1,3 +1,4 @@
+
 import { supabase } from './supabaseClient';
 import { Settings, Task, DbDailyLog, Project, Goal, Target, PomodoroHistory, Commitment, ProjectUpdate, AiMemory, AppNotification, FocusLevel } from '../types';
 import { getTodayDateString } from '../utils/date';
@@ -1088,9 +1089,9 @@ export const checkAndUpdatePastDueCommitments = async (): Promise<Commitment[] |
 
 // --- Daily Logs ---
 
-export const upsertDailyLog = async (log: DbDailyLog): Promise<void> => {
+export const upsertDailyLog = async (log: DbDailyLog): Promise<{ error: any }> => {
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!user) return { error: new Error("User not found") };
 
     const logData = {
         user_id: user.id,
@@ -1108,7 +1109,7 @@ export const upsertDailyLog = async (log: DbDailyLog): Promise<void> => {
 
     if (selectError) {
         console.error("Error checking for existing daily log:", selectError);
-        return;
+        return { error: selectError };
     }
     
     if (existingLog) {
@@ -1121,12 +1122,14 @@ export const upsertDailyLog = async (log: DbDailyLog): Promise<void> => {
             .eq('id', existingLog.id);
         
         if (updateError) console.error("Error updating daily log:", updateError);
+        return { error: updateError };
     } else {
         const { error: insertError } = await supabase
             .from('daily_logs')
             .insert(logData);
             
         if (insertError) console.error("Error inserting daily log:", insertError);
+        return { error: insertError };
     }
 };
 
@@ -1264,9 +1267,84 @@ export const clearAllPins = async (): Promise<boolean> => {
 
 // --- Pomodoro History ---
 
-export const addPomodoroHistory = async (taskId: string | null, duration: number, difficulty: FocusLevel | null): Promise<void> => {
+export const logPomodoroCompletion = async (
+  taskToComplete: Task,
+  comment: string,
+  durationMinutes: number,
+  focusLevel: FocusLevel | null
+): Promise<Task | null> => {
+  // This function should only be called for countdown-style pomodoros.
+  if (taskToComplete.total_poms < 0) {
+      console.warn("logPomodoroCompletion called for a stopwatch task. This is unexpected.");
+      return null;
+  }
+  
+  // Prepare the optimistic update for the task.
+  const originalPoms = taskToComplete.completed_poms;
+  const originalComments = taskToComplete.comments;
+  
+  const updatedFields: Partial<Task> = {
+    completed_poms: originalPoms + 1,
+    comments: comment ? [...(taskToComplete.comments || []), comment] : taskToComplete.comments,
+  };
+
+  let taskIsNowComplete = false;
+  if (updatedFields.completed_poms >= taskToComplete.total_poms) {
+    updatedFields.completed_at = new Date().toISOString();
+    taskIsNowComplete = true;
+  }
+
+  // 1. Attempt to update the task first.
+  const { data: updatedTask, error: taskUpdateError } = await supabase
+    .from('tasks')
+    .update(updatedFields)
+    .eq('id', taskToComplete.id)
+    .select('*')
+    .single();
+  
+  if (taskUpdateError || !updatedTask) {
+    console.error("Initial task update failed during pomodoro completion:", taskUpdateError);
+    return null;
+  }
+
+  // 2. Attempt to add the history record.
+  const { error: historyError } = await addPomodoroHistory(updatedTask.id, durationMinutes, focusLevel);
+
+  if (historyError) {
+    console.error("Pomodoro history insertion failed. Attempting to roll back task update.", historyError);
+    // 3. ROLLBACK! History insertion failed, so revert the task update.
+    const { error: rollbackError } = await supabase
+      .from('tasks')
+      .update({ 
+        completed_poms: originalPoms, 
+        completed_at: null, // Always revert completion status
+        comments: originalComments,
+      })
+      .eq('id', taskToComplete.id);
+    
+    if (rollbackError) {
+      console.error("CRITICAL: FAILED TO ROLL BACK TASK UPDATE. Database is now in an inconsistent state.", rollbackError);
+    }
+    return null; 
+  }
+  
+  // 4. If both succeeded, handle post-completion logic for projects.
+  if (taskIsNowComplete && updatedTask.project_id) {
+      await addProjectUpdate(
+          updatedTask.project_id,
+          getTodayDateString(),
+          `Completed task: "${updatedTask.text}"`,
+          updatedTask.id
+      );
+      await recalculateProjectProgress(updatedTask.project_id);
+  }
+  
+  return updatedTask;
+};
+
+export const addPomodoroHistory = async (taskId: string | null, duration: number, difficulty: FocusLevel | null): Promise<{ error: any }> => {
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!user) return { error: new Error("User not found") };
 
     const endedAtDate = new Date();
     const ended_at = endedAtDate.toISOString();
@@ -1282,7 +1360,7 @@ export const addPomodoroHistory = async (taskId: string | null, duration: number
 
     if (error) {
         console.error("Error adding pomodoro history:", JSON.stringify(error, null, 2));
-        return;
+        return { error };
     }
     
     // Authoritatively update daily_logs based on user's local day
@@ -1298,17 +1376,19 @@ export const addPomodoroHistory = async (taskId: string | null, duration: number
 
     if (historyError) {
         console.error("Error fetching today's history for log update:", historyError);
-        return;
+        return { error: historyError };
     }
 
     const total_focus_minutes = todaysHistory.reduce((sum, h) => sum + (Number(h.duration_minutes) || 0), 0);
     const completed_sessions = todaysHistory.length;
 
-    await upsertDailyLog({
+    const { error: upsertError } = await upsertDailyLog({
         date,
         completed_sessions,
         total_focus_minutes
     });
+
+    return { error: upsertError };
 };
 
 export const getPomodoroHistory = async (startDate: string, endDate: string): Promise<PomodoroHistory[]> => {
