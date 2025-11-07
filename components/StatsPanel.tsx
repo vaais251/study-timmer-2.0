@@ -1,50 +1,40 @@
 import React, { useMemo, useState } from 'react';
 import Panel from './common/Panel';
 import { Task, DbDailyLog, PomodoroHistory } from '../types';
-import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend } from 'recharts';
 import { getTodayDateString } from '../utils/date';
-import AIInsightModal from './common/AIInsightModal';
-import { SparklesIcon } from './common/Icons';
+import { UpArrowIcon, DownArrowIcon } from './common/Icons';
 
 interface StatsPanelProps {
     completedToday: Task[];
     tasksToday: Task[];
     historicalLogs: DbDailyLog[];
     todaysHistory: PomodoroHistory[];
-    dailyLog: DbDailyLog; // Added for authoritative today's stats
+    dailyLog: DbDailyLog;
 }
 
-const StatItem: React.FC<{ label: string, value: string | number }> = ({ label, value }) => (
-    <div className="bg-white/10 p-3 rounded-lg text-center">
-        <div className="text-xs text-white/80 mb-1">{label}</div>
-        <div className="text-2xl font-semibold text-white">{value}</div>
+const StatCard: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+    <div className="bg-slate-800/70 p-4 rounded-xl text-center flex flex-col justify-center min-h-[100px]">
+        {children}
     </div>
 );
 
 const StatsPanel: React.FC<StatsPanelProps> = ({ completedToday, tasksToday, historicalLogs, todaysHistory, dailyLog }) => {
     const [comparisonPeriod, setComparisonPeriod] = useState<'yesterday' | '7day'>('yesterday');
-    const [isModalOpen, setIsModalOpen] = useState(false);
 
-    const { card1, card2, card3, stats, chartData } = useMemo(() => {
+    const { card1, card2, stats } = useMemo(() => {
         const todayString = getTodayDateString();
-        const today = new Date(todayString + 'T12:00:00'); // Use a fixed time to avoid TZ issues near midnight
+        const today = new Date(todayString + 'T12:00:00');
 
-        // --- Create maps for easier lookup ---
         const dailyLogMap = new Map<string, DbDailyLog>();
         historicalLogs.forEach(log => {
             dailyLogMap.set(log.date, log);
         });
 
         const allTasksForToday = [...completedToday, ...tasksToday];
-        const taskMap = new Map<string, Task>(allTasksForToday.map(t => [t.id, t]));
-
-        // Use the authoritative total focus minutes from the dailyLog prop.
-        // This fixes the inconsistency where this panel recalculated the value.
+        
         const totalFocusToday = dailyLog.total_focus_minutes;
 
-        // Authoritative "Poms Done" is the sum of completed_poms on today's tasks, to match the task list.
         const pomsDone = allTasksForToday.reduce((acc, task) => {
-            // Only count poms from non-stopwatch tasks
             if (task.total_poms > 0) {
                 return acc + task.completed_poms;
             }
@@ -72,49 +62,36 @@ const StatsPanel: React.FC<StatsPanelProps> = ({ completedToday, tasksToday, his
         previous7DaysEndDate.setDate(today.getDate() - 7);
         const totalFocusPrevious7Days = getRangeTotal(previous7DaysEndDate, 7);
 
-        // --- Card Data ---
         let card1: { label: string, value: string };
         let card2Value: React.ReactNode;
-        let card3: { label: string, value: string };
 
         if (comparisonPeriod === 'yesterday') {
             card1 = { label: "Focus Time", value: `${totalFocusToday}m` };
             
-            // Robust comparison logic
-            if (totalFocusToday > 0 && totalFocusYesterday > 0) {
+            if (totalFocusToday > 0 || totalFocusYesterday > 0) {
                 const diff = totalFocusToday - totalFocusYesterday;
                 if (diff > 0) {
-                    card2Value = <div className="text-2xl font-semibold text-green-400">▲ {diff}m</div>;
+                    card2Value = <div className="text-4xl font-bold text-green-400 flex items-center justify-center gap-1"><UpArrowIcon /> {diff}m</div>;
                 } else if (diff < 0) {
-                    card2Value = <div className="text-2xl font-semibold text-red-400">▼ {Math.abs(diff)}m</div>;
+                    card2Value = <div className="text-4xl font-bold text-red-400 flex items-center justify-center gap-1"><DownArrowIcon /> {Math.abs(diff)}m</div>;
                 } else {
-                    card2Value = <div className="text-2xl font-semibold text-white">0m</div>;
+                    card2Value = <div className="text-4xl font-bold text-white">0m</div>;
                 }
-            } else if (totalFocusToday > 0 && totalFocusYesterday === 0) {
-                card2Value = <div className="text-2xl font-semibold text-green-400">▲ {totalFocusToday}m</div>;
-            } else if (totalFocusToday === 0 && totalFocusYesterday > 0) {
-                card2Value = <div className="text-2xl font-semibold text-red-400">▼ {totalFocusYesterday}m</div>;
-            } else { // both are 0
-                card2Value = <div className="text-2xl font-semibold text-white">-</div>;
+            } else {
+                card2Value = <div className="text-4xl font-bold text-white">-</div>;
             }
-            
-            const sevenDayAverageForStatCard = totalFocusRecent7Days > 0 ? Math.round(totalFocusRecent7Days / 7) : 0;
-            card3 = { label: "7-Day Avg", value: `${sevenDayAverageForStatCard}m` };
-
         } else { // '7day' which is now 'vs Last Week'
             card1 = { label: "This Week", value: `${totalFocusRecent7Days}m` };
             
             const diff = totalFocusRecent7Days - totalFocusPrevious7Days;
             if (totalFocusRecent7Days > 0 || totalFocusPrevious7Days > 0) {
                 const color = diff > 0 ? 'text-green-400' : diff < 0 ? 'text-red-400' : 'text-white';
-                const symbol = diff > 0 ? '▲' : diff < 0 ? '▼' : '';
-                const text = diff === 0 ? '0m' : `${symbol} ${Math.abs(diff)}m`;
-                card2Value = <div className={`text-2xl font-semibold ${color}`}>{text}</div>;
+                const Symbol = diff > 0 ? UpArrowIcon : DownArrowIcon;
+                const text = diff === 0 ? '0m' : <><Symbol /> {Math.abs(diff)}m</>;
+                card2Value = <div className={`text-4xl font-bold ${color} flex items-center justify-center gap-1`}>{text}</div>;
             } else {
-                card2Value = <div className="text-2xl font-semibold text-white">-</div>;
+                card2Value = <div className="text-4xl font-bold text-white">-</div>;
             }
-            
-            card3 = { label: "Last Week", value: `${totalFocusPrevious7Days}m` };
         }
 
         const card2Label = (
@@ -122,7 +99,7 @@ const StatsPanel: React.FC<StatsPanelProps> = ({ completedToday, tasksToday, his
                 <select
                     value={comparisonPeriod}
                     onChange={(e) => setComparisonPeriod(e.target.value as 'yesterday' | '7day')}
-                    className="w-full bg-transparent text-xs text-white/80 mb-1 border-0 focus:ring-0 focus:outline-none text-center appearance-none cursor-pointer pr-5"
+                    className="bg-transparent text-sm text-white/80 border-0 focus:ring-0 focus:outline-none text-center appearance-none cursor-pointer pr-5"
                     aria-label="Select comparison period"
                 >
                     <option value="yesterday" className="bg-slate-800">vs Yesterday</option>
@@ -134,76 +111,35 @@ const StatsPanel: React.FC<StatsPanelProps> = ({ completedToday, tasksToday, his
             </div>
         );
 
-        // Poms Estimated still comes from the task data for today.
         const pomsEst = allTasksForToday.reduce((acc, task) => acc + (task.total_poms > 0 ? task.total_poms : 0), 0);
-        
         const completionPercentage = pomsEst > 0 ? Math.round((pomsDone / pomsEst) * 100) : 0;
-        
         const stats = { completionPercentage, pomsDone, pomsEst };
-
-        const pomsRemaining = Math.max(0, pomsEst - pomsDone);
-        const chartData = [
-            { name: 'Poms Done', value: pomsDone },
-            { name: 'Poms Remaining', value: pomsRemaining },
-        ].filter(d => d.value > 0); // Only show slices with a value
         
-        return { card1, card2: { label: card2Label, value: card2Value }, card3, stats, chartData };
+        return { card1, card2: { label: card2Label, value: card2Value }, stats };
 
-    }, [historicalLogs, comparisonPeriod, completedToday, tasksToday, todaysHistory, dailyLog]);
-
-
-    const COLORS = ['#34D399', '#F87171'];
-
-    const chartElement = (
-        <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-                <Pie data={chartData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} fill="#8884d8" label>
-                    {chartData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
-                </Pie>
-                <Tooltip contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }} itemStyle={{ color: 'white' }} />
-                <Legend />
-            </PieChart>
-        </ResponsiveContainer>
-    );
+    }, [historicalLogs, comparisonPeriod, completedToday, tasksToday, dailyLog]);
 
     return (
-        <>
-            <Panel title="📊 Today's Progress">
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                    <StatItem label={card1.label} value={card1.value} />
-                    
-                    <div className="bg-white/10 p-3 rounded-lg text-center">
-                        {card2.label}
-                        {card2.value}
-                    </div>
-                    
-                    <StatItem label={card3.label} value={card3.value} />
-                    <StatItem label="Completion %" value={`${stats.completionPercentage}%`} />
-                    <StatItem label="Poms Done" value={stats.pomsDone} />
-                    <StatItem label="Poms Estimated" value={stats.pomsEst} />
-                </div>
-                 <div className="flex justify-center items-center gap-2 mt-6 -mb-2">
-                    <h3 className="text-md font-semibold text-white">Task Completion Breakdown</h3>
-                    <button
-                        onClick={() => setIsModalOpen(true)}
-                        className="p-1 text-purple-400 hover:text-purple-300 transition"
-                        title="Get AI Insights for this chart"
-                    >
-                        <SparklesIcon />
-                    </button>
-                </div>
-                <div className="h-56 mt-4">
-                   {chartElement}
-                </div>
-            </Panel>
-            <AIInsightModal
-                isOpen={isModalOpen}
-                onClose={() => setIsModalOpen(false)}
-                chartTitle="Today's Task Completion Breakdown"
-                chartData={chartData}
-                chartElement={<div className="h-56">{chartElement}</div>}
-            />
-        </>
+        <Panel title="Today's Progress" className="h-full">
+            <div className="grid grid-cols-2 gap-4">
+                <StatCard>
+                    <div className="text-4xl font-bold text-white">{card1.value}</div>
+                    <div className="text-xs text-slate-400 uppercase tracking-wider mt-1">{card1.label}</div>
+                </StatCard>
+                <StatCard>
+                    {card2.label}
+                    <div className="mt-1">{card2.value}</div>
+                </StatCard>
+                <StatCard>
+                    <div className="text-4xl font-bold text-white">{stats.completionPercentage}%</div>
+                    <div className="text-xs text-slate-400 uppercase tracking-wider mt-1">Completion</div>
+                </StatCard>
+                <StatCard>
+                    <div className="text-4xl font-bold text-white">{`${stats.pomsDone}/${stats.pomsEst}`}</div>
+                    <div className="text-xs text-slate-400 uppercase tracking-wider mt-1">Poms Done</div>
+                </StatCard>
+            </div>
+        </Panel>
     );
 };
 

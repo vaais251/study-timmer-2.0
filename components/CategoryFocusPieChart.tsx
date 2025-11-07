@@ -118,8 +118,8 @@ const CategoryFocusPieChart: React.FC<CategoryFocusPieChartProps> = ({ tasks, to
 
     return (
         <>
-            <Panel title="Today's Focus Distribution">
-                <div className="relative">
+            <Panel title="Today's Focus Distribution" className="h-full flex flex-col">
+                <div className="relative flex-grow">
                     <button
                         onClick={() => setIsModalOpen(true)}
                         className="absolute -top-12 right-0 p-1 text-purple-400 hover:text-purple-300 transition z-10"

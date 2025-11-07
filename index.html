@@ -32,8 +32,15 @@
 }
 </script>
 <style>
+  @keyframes gradientBG {
+	0% { background-position: 0% 50%; }
+	50% { background-position: 100% 50%; }
+	100% { background-position: 0% 50%; }
+  }
   body {
-    background-color: #111827; /* A dark slate/blue */
+    background: linear-gradient(-45deg, #111827, #1e293b, #312e81, #111827);
+    background-size: 400% 400%;
+    animation: gradientBG 20s ease infinite;
   }
   /* --- Animation Keyframes --- */
   @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
@@ -72,6 +79,19 @@
     from { opacity: 1; transform: scale(1); max-height: 200px; }
     to { opacity: 0; transform: scale(0.95); max-height: 0; padding-top: 0; padding-bottom: 0; margin-top: 0; margin-bottom: 0; border: 0; }
   }
+  @keyframes float {
+	0%, 100% { transform: translateY(0px); }
+	50% { transform: translateY(-10px); }
+  }
+    /* Neon glow effect for timer text */
+    @keyframes neon-glow-focus {
+        from { text-shadow: 0 0 6px #fff, 0 0 12px #2dd4bf, 0 0 20px #2dd4bf; }
+        to { text-shadow: 0 0 12px #fff, 0 0 24px #2dd4bf, 0 0 40px #2dd4bf; }
+    }
+    @keyframes neon-glow-break {
+        from { text-shadow: 0 0 6px #fff, 0 0 12px #c084fc, 0 0 20px #c084fc; }
+        to { text-shadow: 0 0 12px #fff, 0 0 24px #c084fc, 0 0 40px #c084fc; }
+    }
   /* --- Animation Classes --- */
   .animate-fadeIn { animation: fadeIn 0.4s ease-out forwards; }
   .animate-slideUp { animation: slideUp 0.4s ease-out forwards; }
@@ -87,6 +107,30 @@
     animation: item-delete 0.4s ease-out forwards;
     overflow: hidden; /* Important for height transition */
   }
+  .animate-float {
+    animation: float 6s ease-in-out infinite;
+  }
+  .timer-text-glow-focus { animation: neon-glow-focus 1.5s ease-in-out infinite alternate; }
+  .timer-text-glow-break { animation: neon-glow-break 1.5s ease-in-out infinite alternate; }
+
+  /* Custom Scrollbar */
+    .custom-scrollbar::-webkit-scrollbar {
+        width: 6px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+        background: transparent;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: #4b5563;
+        border-radius: 10px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+        background: #6b7280;
+    }
+    .custom-scrollbar {
+        scrollbar-width: thin;
+        scrollbar-color: #4b5563 transparent;
+    }
 </style>
 </head>
 <body class="transition-colors duration-500 ease-in-out">

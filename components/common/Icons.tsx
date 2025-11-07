@@ -41,6 +41,8 @@ export const QuestionMarkCircleIcon: React.FC = () => <svg {...iconWithStrokePro
 export const BellIcon: React.FC = () => <svg {...iconWithStrokeProps}><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>;
 export const ExclamationTriangleIcon: React.FC = () => <svg {...iconWithStrokeProps}><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>;
 export const RocketIcon: React.FC = () => <svg {...iconWithStrokeProps}><path d="M12 2c3.5 0 5 2.5 5 5 0 2.5-1.5 5-5 5s-5-2.5-5-5c0-2.5 1.5-5 5-5z" /><path d="M12 12v10" /><path d="M12 17c-1.5 0-3 1.5-3 3v2h6v-2c0-1.5-1.5-3-3-3z" /></svg>;
+export const UpArrowIcon: React.FC<{ className?: string }> = ({ className }) => <svg {...commonProps} className={`${className} w-6 h-6`}><path d="M12 8l-6 6h12z"/></svg>;
+export const DownArrowIcon: React.FC<{ className?: string }> = ({ className }) => <svg {...commonProps} className={`${className} w-6 h-6`}><path d="M12 16l6-6H6z"/></svg>;
 
 
 // Navbar Icons

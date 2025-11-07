@@ -1,6 +1,6 @@
 
+
 import React, { useState, useEffect } from 'react';
-import Panel from './common/Panel';
 import { playWhiteNoise, stopWhiteNoise, setWhiteNoiseVolume } from '../utils/audio';
 
 const AmbientSounds: React.FC = () => {
@@ -31,9 +31,12 @@ const AmbientSounds: React.FC = () => {
     };
 
     return (
-        <Panel title="🎧 Ambient Sound">
+        <div className="bg-slate-800/50 backdrop-blur-md rounded-xl p-3 sm:p-4 border border-slate-700/80">
             <div className="flex items-center justify-between gap-4">
-                <span className="text-white font-semibold">White Noise</span>
+                 <div className="flex items-center gap-3">
+                    <div className="text-2xl flex-shrink-0">🎧</div>
+                    <span className="text-white font-semibold hidden sm:inline">Ambient Noise</span>
+                </div>
                 <div className="flex items-center gap-4 flex-grow">
                      <input
                         type="range"
@@ -42,12 +45,13 @@ const AmbientSounds: React.FC = () => {
                         step="0.01"
                         value={volume}
                         onChange={handleVolumeChange}
-                        className="w-full h-2 bg-white/20 rounded-lg appearance-none cursor-pointer"
+                        className="w-full h-2 bg-slate-700/50 rounded-lg appearance-none cursor-pointer accent-cyan-400"
                         disabled={!isPlaying}
+                        aria-label="White noise volume"
                     />
                     <button
                         onClick={handleTogglePlay}
-                        className={`px-4 py-2 rounded-lg font-bold text-white transition hover:scale-105 ${
+                        className={`w-24 px-4 py-2 rounded-full font-bold text-white transition hover:scale-105 ${
                             isPlaying ? 'bg-gradient-to-br from-pink-500 to-red-500' : 'bg-gradient-to-br from-cyan-400 to-blue-600'
                         }`}
                     >
@@ -55,7 +59,7 @@ const AmbientSounds: React.FC = () => {
                     </button>
                 </div>
             </div>
-        </Panel>
+        </div>
     );
 };
 

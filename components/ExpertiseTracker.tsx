@@ -1,10 +1,12 @@
 
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { PomodoroHistory, Task } from '../types';
 import * as dbService from '../services/dbService';
 import Panel from './common/Panel';
 import Spinner from './common/Spinner';
 import { ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
+import { getTodayDateString } from '../utils/date';
 
 
 const TEN_THOUSAND_HOURS_IN_MINUTES = 10000 * 60;
@@ -124,7 +126,7 @@ const DailyFocusTrendChart: React.FC<{
         const dataByDate = new Map<string, any>();
         const loopDate = new Date(startDate);
         while(loopDate <= endDate) {
-            const dateStr = loopDate.toISOString().split('T')[0];
+            const dateStr = getTodayDateString(loopDate);
             const initialData: any = { 
                 date: new Date(dateStr + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
             };
@@ -134,7 +136,7 @@ const DailyFocusTrendChart: React.FC<{
         }
         
         history.forEach(h => {
-            const historyDate = new Date(h.ended_at).toISOString().split('T')[0];
+            const historyDate = getTodayDateString(new Date(h.ended_at));
             if (dataByDate.has(historyDate) && h.task_id) {
                 const dayData = dataByDate.get(historyDate);
                 const taskTags = taskMap.get(h.task_id);
