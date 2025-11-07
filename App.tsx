@@ -1,6 +1,7 @@
 
 
 
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
@@ -827,18 +828,6 @@ const App: React.FC = () => {
          if (appState.mode === 'focus') playFocusStartSound(); else playBreakStartSound();
     }, [appState.mode]);
 
-    // Check project completion after a focus session
-    const checkProjectDurationCompletion = useCallback(async (taskId: string, durationAdded: number) => {
-        const task = tasks.find(t => t.id === taskId);
-        if (!task || !task.project_id) return;
-
-        const project = projects.find(p => p.id === task.project_id);
-        if (!project || project.status !== 'active' || project.completion_criteria_type !== 'duration_minutes') return;
-        
-        await dbService.recalculateProjectProgress(project.id);
-        await refreshProjects();
-    }, [tasks, projects, refreshProjects]);
-
     // Phase Completion Logic
     const completePhase = useCallback(async () => {
         stopTimer();
@@ -994,34 +983,20 @@ const App: React.FC = () => {
             console.warn("Attempted to complete a non-stopwatch task via stopwatch handler.");
             return;
         }
-    
+
+        const preUpdateState = { appState: { ...appState }, tasks: [...tasks], phaseEndTime };
+
         stopTimer();
         const sessionDurationMinutes = Math.round(appState.timeRemaining / 60);
-    
-        // 1. If there's time on the clock, save it as a focus session.
-        if (sessionDurationMinutes > 0) {
-            await dbService.addPomodoroHistory(currentTask.id, sessionDurationMinutes, null);
-        }
-        
-        // 2. Mark the task as complete
-        await dbService.updateTask(currentTask.id, { completed_at: new Date().toISOString() }, {
-            shouldRecalculate: true // Let updateTask handle the recalculations
-        });
-        
-        // Add a project update after the task is marked as complete
-        if (currentTask.project_id) {
-            await dbService.addProjectUpdate(currentTask.project_id, todayString, `Completed task: "${currentTask.text}"`, currentTask.id);
-        }
-        
-        // 3. Trigger a selective data refresh to sync UI
-        await Promise.all([refreshTasks(), refreshHistoryAndLogs(), refreshProjects(), refreshTargets()]);
-        
-        // 4. Reset the timer for the next task
-        const nextTask = tasks.filter(t => t.due_date === todayString && !t.completed_at)[0];
+
+        const optimisticTasks = tasks.map(t => t.id === currentTask.id ? { ...t, completed_at: new Date().toISOString() } : t);
+        setTasks(optimisticTasks);
+
+        const nextTask = optimisticTasks.filter(t => t.due_date === todayString && !t.completed_at)[0];
         const isNextStopwatch = nextTask?.total_poms < 0;
         const newTime = isNextStopwatch ? 0 : (nextTask?.custom_focus_duration || settings.focusDuration) * 60;
         const newTotalTime = isNextStopwatch ? (nextTask?.custom_focus_duration || settings.focusDuration) * 60 : newTime;
-    
+
         setAppState({
             mode: 'focus',
             currentSession: 1,
@@ -1030,17 +1005,35 @@ const App: React.FC = () => {
             isRunning: false,
         });
         setPhaseEndTime(null);
-        setToastNotification('Task completed and time saved!');
+        setIsSyncing(true);
+
+        try {
+            if (sessionDurationMinutes > 0) {
+                await dbService.addPomodoroHistory(currentTask.id, sessionDurationMinutes, null);
+            }
+            await dbService.updateTask(currentTask.id, { completed_at: new Date().toISOString() });
+            if (currentTask.project_id) {
+                await dbService.addProjectUpdate(currentTask.project_id, todayString, `Completed task: "${currentTask.text}"`, currentTask.id);
+            }
+            await Promise.all([refreshTasks(), refreshHistoryAndLogs(), refreshProjects(), refreshTargets()]);
+            setToastNotification('Task completed and time saved!');
+        } catch (error) {
+            console.error("Sync failed for handleCompleteStopwatchTask:", error);
+            setToastNotification("⚠️ Complete task failed! Restoring.");
+            setAppState(preUpdateState.appState);
+            setTasks(preUpdateState.tasks);
+            setPhaseEndTime(preUpdateState.phaseEndTime);
+        } finally {
+            setIsSyncing(false);
+        }
     };
 
     // Modal Continue Handler
     const handleModalContinue = (comment: string, focusLevel: FocusLevel | null) => {
-        if (isSyncing) return; // Safeguard against re-entry from double-clicks
+        if (isSyncing) return;
     
-        // --- 1. SAVE PRE-UPDATE STATE FOR ROLLBACK ---
         const preUpdateState = { appState, tasks, phaseEndTime };
 
-        // --- 2. IMMEDIATE UI UPDATES (Optimistic) ---
         if (notificationInterval.current) clearInterval(notificationInterval.current);
         setIsModalVisible(false);
         setIsSyncing(true);
@@ -1050,29 +1043,25 @@ const App: React.FC = () => {
         const taskJustWorkedOn = tasksToday.find(t => !t.completed_at);
         const sessionTotalTime = appState.sessionTotalTime;
     
-        // Create a purely optimistic version of the task that was just worked on.
         let optimisticUpdatedTask: Task | null = null;
         if (wasFocusSession && taskJustWorkedOn) {
             optimisticUpdatedTask = {
                 ...taskJustWorkedOn,
                 completed_poms: taskJustWorkedOn.total_poms < 0
-                    ? taskJustWorkedOn.completed_poms // Stopwatch poms don't increment this way
+                    ? taskJustWorkedOn.completed_poms
                     : taskJustWorkedOn.completed_poms + 1,
                 comments: comment ? [...(taskJustWorkedOn.comments || []), comment] : taskJustWorkedOn.comments,
             };
     
-            // If this pom completes the task, optimistically mark it so.
             if (taskJustWorkedOn.total_poms > 0 && optimisticUpdatedTask.completed_poms >= taskJustWorkedOn.total_poms) {
                 optimisticUpdatedTask.completed_at = new Date().toISOString();
             }
         }
         
-        // Create the optimistic task list for UI state
         const optimisticTasks = optimisticUpdatedTask 
             ? tasks.map(t => t.id === optimisticUpdatedTask!.id ? optimisticUpdatedTask! : t)
             : tasks;
             
-        // Determine next timer state based on optimistic data
         const nextMode = modalContent.nextMode;
         const currentSessionNumber = appState.currentSession;
         const sessionsPerCycle = settings.sessionsPerCycle;
@@ -1112,7 +1101,6 @@ const App: React.FC = () => {
         
         const newEndTime = nextMode === 'break' ? Date.now() + newTime * 1000 : null;
     
-        // Set all UI states at once
         setAppState(prev => ({
             ...prev,
             mode: nextMode,
@@ -1124,11 +1112,9 @@ const App: React.FC = () => {
         setPhaseEndTime(newEndTime);
         setTasks(optimisticTasks);
     
-        // --- 3. PERFORM DB UPDATES WITH ROLLBACK ON FAILURE ---
         const performAllUpdatesInBackground = async () => {
             try {
                 if (wasFocusSession && taskJustWorkedOn) {
-                    // @learn logic
                     let taskComment = comment;
                     const learnRegex = /@learn\s(.+)/i;
                     const learnMatch = comment.match(learnRegex);
@@ -1155,17 +1141,14 @@ const App: React.FC = () => {
                     
                     const focusDuration = Math.round(sessionTotalTime / 60);
 
-                    // 1. Log history first.
                     await dbService.addPomodoroHistory(taskJustWorkedOn.id, focusDuration, focusLevel);
                     
-                    // 2. Then, update the task's pomodoro count.
                     const updatedTask = await handleTaskCompletion(taskJustWorkedOn, taskComment);
 
                     if (!updatedTask) {
                         throw new Error("Task update failed, but history was already logged.");
                     }
                     
-                    // 3. Finally, run dependent recalculations.
                     const recalcPromises: Promise<any>[] = [];
                     if (updatedTask.tags && updatedTask.tags.length > 0) {
                        recalcPromises.push(dbService.recalculateProgressForAffectedTargets(updatedTask.tags, session?.user.id || ''));
@@ -1182,13 +1165,10 @@ const App: React.FC = () => {
                 console.error("Sync Error: A critical background update failed. Reverting UI.", err);
                 setToastNotification("⚠️ Sync Failed! Restoring previous state.");
 
-                // --- ROLLBACK OPTIMISTIC UPDATES ---
                 setAppState(preUpdateState.appState);
                 setTasks(preUpdateState.tasks);
                 setPhaseEndTime(preUpdateState.phaseEndTime);
             } finally {
-                // This refresh ensures we are perfectly in sync with the DB,
-                // whether the updates succeeded or failed (and were rolled back).
                 try {
                      await Promise.all([
                         refreshHistoryAndLogs(),
@@ -1209,204 +1189,512 @@ const App: React.FC = () => {
     };
     
     const handleUpdateTaskTimers = async (id: string, newTimers: { focus: number | null, break: number | null }) => {
-        await dbService.updateTask(id, {
-            custom_focus_duration: newTimers.focus,
-            custom_break_duration: newTimers.break,
-        });
-        await refreshTasks();
+        const updates = { custom_focus_duration: newTimers.focus, custom_break_duration: newTimers.break };
+        const tasksSnapshot = [...tasks];
+        setTasks(currentTasks => currentTasks.map(t => t.id === id ? { ...t, ...updates } : t));
+        setIsSyncing(true);
+
+        try {
+            await dbService.updateTask(id, updates);
+            await refreshTasks();
+            setToastNotification('Task timers updated!');
+        } catch (error) {
+            console.error("Sync Error: updateTaskTimers", error);
+            setToastNotification("⚠️ Update failed! Reverting changes.");
+            setTasks(tasksSnapshot);
+        } finally {
+            setIsSyncing(false);
+        }
     };
 
     const handleUpdateTask = async (id: string, newText: string, newTags: string[], newPoms: number, projectId: string | null, priority: number | null) => {
-        await dbService.updateTask(id, {
-            text: newText,
-            tags: newTags,
-            total_poms: newPoms,
-            project_id: projectId,
-            priority: priority,
-        });
-        await Promise.all([refreshTasks(), refreshProjects(), refreshTargets()]);
+        const updates = { text: newText, tags: newTags, total_poms: newPoms, project_id: projectId, priority: priority };
+        const tasksSnapshot = [...tasks];
+        setTasks(currentTasks => currentTasks.map(t => t.id === id ? { ...t, ...updates } : t));
+        setIsSyncing(true);
+
+        try {
+            await dbService.updateTask(id, updates);
+            await Promise.all([refreshTasks(), refreshProjects(), refreshTargets()]);
+            setToastNotification('Task updated!');
+        } catch (error) {
+            console.error("Sync Error: handleUpdateTask", error);
+            setToastNotification("⚠️ Update failed! Reverting changes.");
+            setTasks(tasksSnapshot);
+        } finally {
+            setIsSyncing(false);
+        }
     };
 
     const handleAddTask = async (text: string, poms: number, dueDate: string, projectId: string | null, tags: string[], priority: number | null) => {
-        await dbService.addTask(text, poms, dueDate, projectId, tags, priority);
-        await refreshTasks();
-        if (projectId) {
-            await refreshProjects();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        const optimisticTask: Task = {
+            id: crypto.randomUUID(),
+            user_id: user.id, created_at: new Date().toISOString(), text, total_poms: poms,
+            completed_poms: 0, comments: [], due_date: dueDate, completed_at: null, project_id: projectId,
+            tags, task_order: (tasks.filter(t => t.due_date === dueDate).length), priority,
+            custom_focus_duration: null, custom_break_duration: null,
+        };
+        
+        const tasksSnapshot = [...tasks];
+        setTasks(currentTasks => [...currentTasks, optimisticTask]);
+        setIsSyncing(true);
+
+        try {
+            await dbService.addTask(text, poms, dueDate, projectId, tags, priority);
+            await Promise.all([refreshTasks(), projectId ? refreshProjects() : Promise.resolve()]);
+            setToastNotification('Task added!');
+        } catch (error) {
+            console.error("Sync Error: handleAddTask", error);
+            setToastNotification("⚠️ Add task failed! Restoring.");
+            setTasks(tasksSnapshot);
+        } finally {
+            setIsSyncing(false);
         }
     };
 
     const handleDeleteTask = async (id: string) => {
-        await dbService.deleteTask(id);
-        await Promise.all([refreshTasks(), refreshProjects(), refreshTargets()]);
+        const tasksSnapshot = [...tasks];
+        setTasks(currentTasks => currentTasks.filter(t => t.id !== id));
+        setIsSyncing(true);
+
+        try {
+            await dbService.deleteTask(id);
+            await Promise.all([refreshTasks(), refreshProjects(), refreshTargets()]);
+            setToastNotification('Task deleted.');
+        } catch (error) {
+            console.error("Sync Error: handleDeleteTask", error);
+            setToastNotification("⚠️ Delete failed! Restoring task.");
+            setTasks(tasksSnapshot);
+        } finally {
+            setIsSyncing(false);
+        }
     };
 
     const handleMoveTask = async (id: string, action: 'postpone' | 'duplicate') => {
-        await dbService.moveTask(id, action);
-        await refreshTasks();
+        // This action is more complex for an optimistic update because it creates a new task.
+        // For now, we keep it pessimistic to ensure correctness, but mark it for future refactoring.
+        setIsSyncing(true);
+        try {
+            await dbService.moveTask(id, action);
+            await refreshTasks();
+            setToastNotification(`Task ${action}d!`);
+        } catch (error) {
+             console.error("Sync Error: handleMoveTask", error);
+             setToastNotification("⚠️ Action failed!");
+        } finally {
+            setIsSyncing(false);
+        }
     };
     
     const handleBringTaskForward = async (id: string) => {
-        await dbService.bringTaskForward(id);
-        await refreshTasks();
+        const tasksSnapshot = [...tasks];
+        const today = getTodayDateString();
+        setTasks(currentTasks => currentTasks.map(t => t.id === id ? { ...t, due_date: today } : t));
+        setIsSyncing(true);
+        
+        try {
+            await dbService.bringTaskForward(id);
+            await refreshTasks();
+            setToastNotification('Task moved to today!');
+        } catch (error) {
+            console.error("Sync Error: handleBringTaskForward", error);
+            setToastNotification("⚠️ Move failed! Reverting.");
+            setTasks(tasksSnapshot);
+        } finally {
+            setIsSyncing(false);
+        }
     };
 
     const handleSortChange = async (newSortBy: 'default' | 'priority') => {
-        const newSettings: Settings = { ...settings, todaySortBy: newSortBy };
-        setSettings(newSettings); // Optimistic update
-        await dbService.updateSettings(newSettings);
+        const settingsSnapshot = { ...settings };
+        setSettings(s => ({ ...s, todaySortBy: newSortBy }));
+        setIsSyncing(true);
+
+        try {
+            await dbService.updateSettings({ ...settings, todaySortBy: newSortBy });
+            // No refresh needed, UI is already updated.
+        } catch (error) {
+            console.error("Sync Error: handleSortChange", error);
+            setToastNotification("⚠️ Sort preference not saved.");
+            setSettings(settingsSnapshot);
+        } finally {
+            setIsSyncing(false);
+        }
     };
 
     const handleReorderTasks = async (reorderedTasks: Task[]) => {
-        handleSortChange('default');
+        const tasksSnapshot = [...tasks];
         
-        setTasks(currentTasks => {
-            const reorderedIds = new Set(reorderedTasks.map(t => t.id));
-            const otherTasks = currentTasks.filter(t => !reorderedIds.has(t.id));
-            return [...otherTasks, ...reorderedTasks].sort((a,b) => (a.task_order ?? Infinity) - (b.task_order ?? Infinity));
-        });
-
-        await dbService.updateTaskOrder(reorderedTasks.map((task, index) => ({ id: task.id, task_order: index })));
-        await refreshTasks();
+        const reorderedIds = new Set(reorderedTasks.map(t => t.id));
+        const otherTasks = tasks.filter(t => !reorderedIds.has(t.id));
+        const newOptimisticTasks = [...otherTasks, ...reorderedTasks].sort((a,b) => (a.task_order ?? Infinity) - (b.task_order ?? Infinity));
+        
+        setTasks(newOptimisticTasks);
+        handleSortChange('default'); // Switch to default sort for DnD to work
+        setIsSyncing(true);
+        
+        try {
+            await dbService.updateTaskOrder(reorderedTasks.map((task, index) => ({ id: task.id, task_order: index })));
+            await refreshTasks(); // Refresh to get final order from DB
+        } catch (error) {
+            console.error("Sync Error: handleReorderTasks", error);
+            setToastNotification("⚠️ Reorder failed! Reverting.");
+            setTasks(tasksSnapshot);
+        } finally {
+            setIsSyncing(false);
+        }
     };
 
     const handleMarkTaskIncomplete = async (id: string) => {
-        await dbService.markTaskIncomplete(id);
-        await Promise.all([refreshTasks(), refreshProjects(), refreshTargets()]);
+        const tasksSnapshot = [...tasks];
+        setTasks(currentTasks => currentTasks.map(t => t.id === id ? { ...t, completed_at: null } : t));
+        setIsSyncing(true);
+
+        try {
+            await dbService.markTaskIncomplete(id);
+            await Promise.all([refreshTasks(), refreshProjects(), refreshTargets()]);
+            setToastNotification('Task marked as incomplete.');
+        } catch (error) {
+            console.error("Sync Error: handleMarkTaskIncomplete", error);
+            setToastNotification("⚠️ Update failed! Reverting.");
+            setTasks(tasksSnapshot);
+        } finally {
+            setIsSyncing(false);
+        }
     };
 
     // --- Project Handlers ---
     const handleAddProject = async (name: string, description: string | null = null, startDate: string | null = null, deadline: string | null = null, criteria: {type: Project['completion_criteria_type'], value: number | null} = {type: 'manual', value: null}, priority: number | null = null, activeDays: number[] | null = null): Promise<string | null> => {
-        const newProject = await dbService.addProject(name, description, startDate, deadline, criteria.type, criteria.value, priority, activeDays);
-        if (newProject) {
-            await refreshProjects();
-            return newProject.id;
+        setIsSyncing(true);
+        try {
+            const newProject = await dbService.addProject(name, description, startDate, deadline, criteria.type, criteria.value, priority, activeDays);
+            if (newProject) {
+                await refreshProjects();
+                setToastNotification('Project added!');
+                return newProject.id;
+            }
+            return null;
+        } catch (error) {
+            console.error("Sync Error: handleAddProject", error);
+            setToastNotification("⚠️ Add project failed.");
+            return null;
+        } finally {
+            setIsSyncing(false);
         }
-        return null;
     };
     
     const handleUpdateProject = async (id: string, updates: Partial<Project>) => {
-        await dbService.updateProject(id, updates);
-        await refreshProjects();
+        const projectsSnapshot = [...projects];
+        setProjects(current => current.map(p => p.id === id ? { ...p, ...updates } : p));
+        setIsSyncing(true);
+
+        try {
+            await dbService.updateProject(id, updates);
+            await refreshProjects();
+            setToastNotification('Project updated!');
+        } catch (error) {
+            console.error("Sync Error: handleUpdateProject", error);
+            setToastNotification("⚠️ Update failed! Reverting.");
+            setProjects(projectsSnapshot);
+        } finally {
+            setIsSyncing(false);
+        }
     };
 
     const handleDeleteProject = async (id: string) => {
-        const result = await dbService.deleteProject(id);
-        if (result.success) {
-            await Promise.all([refreshProjects(), refreshTasks()]);
-        } else if (result.error) {
-            alert(`Error: ${result.error}`);
+        const projectsSnapshot = [...projects];
+        setProjects(current => current.filter(p => p.id !== id));
+        setIsSyncing(true);
+
+        try {
+            const result = await dbService.deleteProject(id);
+            if (result.success) {
+                await Promise.all([refreshProjects(), refreshTasks()]);
+                setToastNotification('Project deleted.');
+            } else {
+                throw new Error(result.error || "Failed to delete project.");
+            }
+        } catch (error) {
+            console.error("Sync Error: handleDeleteProject", error);
+            setToastNotification(`⚠️ Delete failed! Reverting.`);
+            setProjects(projectsSnapshot);
+        } finally {
+            setIsSyncing(false);
         }
     };
     
     // --- Goal Handlers ---
     const handleAddGoal = async (text: string) => {
-        await dbService.addGoal(text);
-        await refreshGoals();
+        setIsSyncing(true);
+        try {
+            await dbService.addGoal(text);
+            await refreshGoals();
+            setToastNotification('Goal added!');
+        } catch (error) {
+             console.error("Sync Error: handleAddGoal", error);
+             setToastNotification("⚠️ Add goal failed.");
+        } finally {
+            setIsSyncing(false);
+        }
     };
     
     const handleUpdateGoal = async (id: string, text: string) => {
-        await dbService.updateGoal(id, { text });
-        await refreshGoals();
+        const goalsSnapshot = [...goals];
+        setGoals(current => current.map(g => g.id === id ? { ...g, text } : g));
+        setIsSyncing(true);
+        try {
+            await dbService.updateGoal(id, { text });
+            await refreshGoals();
+            setToastNotification('Goal updated!');
+        } catch (error) {
+             console.error("Sync Error: handleUpdateGoal", error);
+             setToastNotification("⚠️ Update failed! Reverting.");
+             setGoals(goalsSnapshot);
+        } finally {
+            setIsSyncing(false);
+        }
     };
 
     const handleDeleteGoal = async (id: string) => {
-        await dbService.deleteGoal(id);
-        await refreshGoals();
+        const goalsSnapshot = [...goals];
+        setGoals(current => current.filter(g => g.id !== id));
+        setIsSyncing(true);
+        try {
+            await dbService.deleteGoal(id);
+            await refreshGoals();
+            setToastNotification('Goal deleted.');
+        } catch (error) {
+             console.error("Sync Error: handleDeleteGoal", error);
+             setToastNotification("⚠️ Delete failed! Reverting.");
+             setGoals(goalsSnapshot);
+        } finally {
+            setIsSyncing(false);
+        }
     };
 
     const handleSetGoalCompletion = async (id: string, isComplete: boolean) => {
-        await dbService.setGoalCompletion(id, isComplete ? new Date().toISOString() : null);
-        await refreshGoals();
+        const goalsSnapshot = [...goals];
+        const completed_at = isComplete ? new Date().toISOString() : null;
+        setGoals(current => current.map(g => g.id === id ? { ...g, completed_at } : g));
+        setIsSyncing(true);
+        try {
+            await dbService.setGoalCompletion(id, completed_at);
+            await refreshGoals();
+            setToastNotification(`Goal marked as ${isComplete ? 'complete' : 'incomplete'}.`);
+        } catch (error) {
+             console.error("Sync Error: handleSetGoalCompletion", error);
+             setToastNotification("⚠️ Update failed! Reverting.");
+             setGoals(goalsSnapshot);
+        } finally {
+            setIsSyncing(false);
+        }
     };
     
     // --- Target Handlers ---
-    const handleAddTarget = async (
-        text: string, 
-        deadline: string, 
-        priority: number | null, 
-        startDate: string | null, 
-        completionMode: Target['completion_mode'], 
-        tags: string[] | null, 
-        targetMinutes: number | null
-    ) => {
-        await dbService.addTarget(text, deadline, priority, startDate, completionMode, tags, targetMinutes);
-        await refreshTargets();
+    const handleAddTarget = async (text: string, deadline: string, priority: number | null, startDate: string | null, completionMode: Target['completion_mode'], tags: string[] | null, targetMinutes: number | null) => {
+        setIsSyncing(true);
+        try {
+            await dbService.addTarget(text, deadline, priority, startDate, completionMode, tags, targetMinutes);
+            await refreshTargets();
+            setToastNotification('Target added!');
+        } catch (error) {
+             console.error("Sync Error: handleAddTarget", error);
+             setToastNotification("⚠️ Add target failed.");
+        } finally {
+            setIsSyncing(false);
+        }
     };
     
     const handleUpdateTarget = async (id: string, updates: Partial<Target>) => {
-        await dbService.updateTarget(id, updates);
-        await refreshTargets();
+        const targetsSnapshot = [...targets];
+        setTargets(current => current.map(t => t.id === id ? { ...t, ...updates } : t));
+        setIsSyncing(true);
+        try {
+            await dbService.updateTarget(id, updates);
+            await refreshTargets();
+            setToastNotification('Target updated!');
+        } catch (error) {
+             console.error("Sync Error: handleUpdateTarget", error);
+             setToastNotification("⚠️ Update failed! Reverting.");
+             setTargets(targetsSnapshot);
+        } finally {
+            setIsSyncing(false);
+        }
     };
 
     const handleDeleteTarget = async (id: string) => {
-        await dbService.deleteTarget(id);
-        await refreshTargets();
+        const targetsSnapshot = [...targets];
+        setTargets(current => current.filter(t => t.id !== id));
+        setIsSyncing(true);
+        try {
+            await dbService.deleteTarget(id);
+            await refreshTargets();
+            setToastNotification('Target deleted.');
+        } catch (error) {
+             console.error("Sync Error: handleDeleteTarget", error);
+             setToastNotification("⚠️ Delete failed! Reverting.");
+             setTargets(targetsSnapshot);
+        } finally {
+            setIsSyncing(false);
+        }
     };
 
     // --- Spotlight/Pinning Handlers ---
     const handleSetPinnedItem = async (itemId: string, itemType: 'project' | 'target') => {
-        const success = await dbService.setPinnedItem(itemId, itemType);
-        if (success) {
-            await Promise.all([refreshProjects(), refreshTargets()]);
-            setToastNotification('Item pinned to spotlight!');
-        } else {
-            setToastNotification('Error pinning item.');
+        setIsSyncing(true);
+        try {
+            const success = await dbService.setPinnedItem(itemId, itemType);
+            if (success) {
+                await Promise.all([refreshProjects(), refreshTargets()]);
+                setToastNotification('Item pinned to spotlight!');
+            } else {
+                throw new Error("Pinning failed in dbService.");
+            }
+        } catch (error) {
+            console.error("Sync Error: handleSetPinnedItem", error);
+            setToastNotification("⚠️ Error pinning item.");
+            // No rollback needed as it's a simple flag
+        } finally {
+            setIsSyncing(false);
         }
     };
 
     const handleClearPins = async () => {
-        const success = await dbService.clearAllPins();
-        if (success) {
-            await Promise.all([refreshProjects(), refreshTargets()]);
-            setToastNotification('Spotlight cleared!');
-        } else {
-            setToastNotification('Error clearing pins.');
+        setIsSyncing(true);
+        try {
+            const success = await dbService.clearAllPins();
+            if (success) {
+                await Promise.all([refreshProjects(), refreshTargets()]);
+                setToastNotification('Spotlight cleared!');
+            } else {
+                throw new Error("Clearing pins failed in dbService.");
+            }
+        } catch (error) {
+            console.error("Sync Error: handleClearPins", error);
+            setToastNotification("⚠️ Error clearing pins.");
+        } finally {
+            setIsSyncing(false);
         }
     };
 
     // --- Commitment Handlers ---
     const handleAddCommitment = async (text: string, dueDate: string | null) => {
-        await dbService.addCommitment(text, dueDate);
-        await refreshCommitments();
+        setIsSyncing(true);
+        try {
+            await dbService.addCommitment(text, dueDate);
+            await refreshCommitments();
+            setToastNotification("Commitment added!");
+        } catch(error) {
+            console.error("Sync Error: handleAddCommitment", error);
+            setToastNotification("⚠️ Add commitment failed.");
+        } finally {
+            setIsSyncing(false);
+        }
     };
 
     const handleUpdateCommitment = async (id: string, updates: { text: string; dueDate: string | null }) => {
-        await dbService.updateCommitment(id, updates);
-        await refreshCommitments();
+        const commitmentsSnapshot = [...allCommitments];
+        setAllCommitments(current => current.map(c => c.id === id ? { ...c, ...updates } : c));
+        setIsSyncing(true);
+        try {
+            await dbService.updateCommitment(id, updates);
+            await refreshCommitments();
+            setToastNotification("Commitment updated!");
+        } catch (error) {
+            console.error("Sync Error: handleUpdateCommitment", error);
+            setToastNotification("⚠️ Update failed! Reverting.");
+            setAllCommitments(commitmentsSnapshot);
+        } finally {
+            setIsSyncing(false);
+        }
     };
 
     const handleDeleteCommitment = async (id: string) => {
-        await dbService.deleteCommitment(id);
-        await refreshCommitments();
+        const commitmentsSnapshot = [...allCommitments];
+        setAllCommitments(current => current.filter(c => c.id !== id));
+        setIsSyncing(true);
+        try {
+            await dbService.deleteCommitment(id);
+            await refreshCommitments();
+            setToastNotification("Commitment deleted!");
+        } catch (error) {
+            console.error("Sync Error: handleDeleteCommitment", error);
+            setToastNotification("⚠️ Delete failed! Reverting.");
+            setAllCommitments(commitmentsSnapshot);
+        } finally {
+            setIsSyncing(false);
+        }
     };
 
     const handleSetCommitmentCompletion = async (id: string, isComplete: boolean) => {
-        await dbService.setCommitmentCompletion(id, isComplete);
-        await refreshCommitments();
+        setIsSyncing(true);
+        try {
+            await dbService.setCommitmentCompletion(id, isComplete);
+            await refreshCommitments();
+            setToastNotification(`Commitment marked ${isComplete ? 'complete' : 'active'}.`);
+        } catch (error) {
+            console.error("Sync Error: handleSetCommitmentCompletion", error);
+            setToastNotification("⚠️ Update failed.");
+        } finally {
+            setIsSyncing(false);
+        }
     };
     
     const handleMarkCommitmentBroken = async (id: string) => {
-        await dbService.markCommitmentBroken(id);
-        await refreshCommitments();
+        setIsSyncing(true);
+        try {
+            await dbService.markCommitmentBroken(id);
+            await refreshCommitments();
+            setToastNotification("Commitment marked as broken.");
+        } catch (error) {
+            console.error("Sync Error: handleMarkCommitmentBroken", error);
+            setToastNotification("⚠️ Update failed.");
+        } finally {
+            setIsSyncing(false);
+        }
     };
 
-    // --- Reschedule Handlers ---
+    // --- Reschedule Handlers (Kept pessimistic as they are complex operations) ---
     const handleRescheduleProject = async (id: string, newDeadline: string | null) => {
-        await dbService.rescheduleProject(id, newDeadline);
-        setToastNotification('Project rescheduled successfully!');
-        await refreshProjects();
+        setIsSyncing(true);
+        try {
+            await dbService.rescheduleProject(id, newDeadline);
+            await refreshProjects();
+            setToastNotification('Project rescheduled successfully!');
+        } catch (error) {
+            setToastNotification('⚠️ Reschedule failed.');
+        } finally {
+            setIsSyncing(false);
+        }
     };
 
     const handleRescheduleTarget = async (id: string, newDeadline: string) => {
-        await dbService.rescheduleTarget(id, newDeadline);
-        setToastNotification('Target rescheduled successfully!');
-        await refreshTargets();
+        setIsSyncing(true);
+        try {
+            await dbService.rescheduleTarget(id, newDeadline);
+            await refreshTargets();
+            setToastNotification('Target rescheduled successfully!');
+        } catch (error) {
+            setToastNotification('⚠️ Reschedule failed.');
+        } finally {
+            setIsSyncing(false);
+        }
     };
 
     const handleRescheduleCommitment = async (id: string, newDueDate: string | null) => {
-        await dbService.rescheduleCommitment(id, newDueDate);
-        setToastNotification('Commitment rescheduled successfully!');
-        await refreshCommitments();
+        setIsSyncing(true);
+        try {
+            await dbService.rescheduleCommitment(id, newDueDate);
+            await refreshCommitments();
+            setToastNotification('Commitment rescheduled successfully!');
+        } catch (error) {
+            setToastNotification('⚠️ Reschedule failed.');
+        } finally {
+            setIsSyncing(false);
+        }
     };
 
     const handleRescheduleItemFromAI = async (itemId: string, itemType: 'project' | 'target' | 'commitment', newDate: string | null): Promise<void> => {
@@ -1429,9 +1717,7 @@ const App: React.FC = () => {
 
     // --- AI Coach Specific Task Adder (for promise-based flow) ---
     const handleAddTaskFromAI = async (text: string, poms: number, dueDate: string, projectId: string | null, tags: string[], priority: number | null): Promise<void> => {
-        await dbService.addTask(text, poms, dueDate, projectId, tags, priority);
-        await refreshTasks();
-        if (projectId) await refreshProjects();
+        await handleAddTask(text, poms, dueDate, projectId, tags, priority);
     };
 
     const handleMemoryChangeFromAI = async () => {
@@ -1451,9 +1737,19 @@ const App: React.FC = () => {
 
     // Settings
     const handleSaveSettings = async (newSettings: Settings) => {
-        await dbService.updateSettings(newSettings);
+        const settingsSnapshot = { ...settings };
         setSettings(newSettings);
-        setToastNotification('Settings saved!');
+        setIsSyncing(true);
+        try {
+            await dbService.updateSettings(newSettings);
+            setToastNotification('Settings saved!');
+        } catch (error) {
+            console.error("Sync Error: handleSaveSettings", error);
+            setToastNotification("⚠️ Save failed! Reverting.");
+            setSettings(settingsSnapshot);
+        } finally {
+            setIsSyncing(false);
+        }
     };
 
     if (!session) {
