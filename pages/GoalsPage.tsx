@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Goal, Target, Project, Task, PomodoroHistory, ProjectUpdate, Commitment } from '../types';
 import Panel from '../components/common/Panel';
-import { TrashIcon, EditIcon, StarIcon, LockIcon, CheckIcon, TargetIcon as GoalsIcon, RescheduleIcon, CalendarIcon, FilledStarIcon } from '../components/common/Icons';
+import { TrashIcon, EditIcon, StarIcon, LockIcon, CheckIcon, TargetIcon, RescheduleIcon, CalendarIcon, FilledStarIcon, LayoutIcon } from '../components/common/Icons';
 import * as dbService from '../services/dbService';
 import Spinner from '../components/common/Spinner';
 import { getTodayDateString, getMonthStartDateString } from '../utils/date';
@@ -1818,10 +1818,10 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
     };
     
     const tabConfig = {
-        projects: { icon: <GoalsIcon />, label: "Projects" },
-        targets: { icon: <CheckIcon />, label: "Targets" },
+        projects: { icon: <LayoutIcon />, label: "Projects" },
+        targets: { icon: <TargetIcon />, label: "Targets" },
         overview: { icon: <StarIcon />, label: "Overview" },
-        deadline: { icon: <RescheduleIcon />, label: "Deadlines" },
+        deadline: { icon: <CalendarIcon />, label: "Deadlines" },
     };
 
     const renderProjectsList = () => {
@@ -1957,19 +1957,19 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
                 )}
             </Panel>
 
-            <div className="flex justify-center gap-2 sm:gap-4 bg-slate-800/50 p-1 rounded-full max-w-xl mx-auto">
+            <div className="flex flex-wrap justify-center gap-2 bg-slate-800/50 p-1 rounded-full max-w-2xl mx-auto">
                 {(Object.keys(tabConfig) as Array<keyof typeof tabConfig>).map(key => (
                     <button
                         key={key}
                         onClick={() => setActiveTab(key)}
-                        className={`w-12 h-12 md:flex-1 md:px-4 md:py-2.5 rounded-full font-bold transition-all flex items-center justify-center gap-2 text-sm ${
+                        className={`flex-grow sm:flex-1 px-3 py-2.5 rounded-full font-bold transition-all flex items-center justify-center gap-2 text-xs sm:text-sm ${
                             activeTab === key
                                 ? 'bg-slate-700 text-white shadow-inner'
                                 : 'text-slate-400 hover:bg-slate-700/50 hover:text-white'
                         }`}
                     >
                         {tabConfig[key].icon}
-                        <span className="hidden md:inline whitespace-nowrap">{tabConfig[key].label}</span>
+                        <span className="whitespace-nowrap">{tabConfig[key].label}</span>
                     </button>
                 ))}
             </div>
