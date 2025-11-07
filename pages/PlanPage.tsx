@@ -28,6 +28,7 @@ const PlanPage: React.FC<PlanPageProps> = (props) => {
 
     return (
         <>
+            <h1 className="text-3xl font-bold text-white mb-6 animate-slideInFromLeft">Plan Your Success</h1>
             {/* Tab Navigation */}
             <div className="mb-6 flex justify-center gap-2 bg-slate-800/50 p-1 rounded-full max-w-sm mx-auto">
                 <button

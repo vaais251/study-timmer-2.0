@@ -155,12 +155,12 @@ const StatsPage: React.FC = () => {
         <div>
             <div className="flex justify-between items-center mb-4 gap-4">
                 <div className="flex-1"></div> {/* Left spacer */}
-                <div className="flex justify-center gap-1 sm:gap-2 bg-slate-800/50 p-1 rounded-full max-w-xl mx-auto flex-grow">
+                <div className="flex justify-center gap-2 sm:gap-4 bg-slate-800/50 p-1 rounded-full max-w-xl mx-auto flex-grow">
                     {tabs.map(tab => (
                         <button
                             key={tab.key}
                             onClick={() => setActiveTab(tab.key as any)}
-                            className={`flex-grow sm:flex-grow-0 p-2 sm:px-4 sm:py-2 text-xs sm:text-sm rounded-full font-bold transition-colors flex justify-center items-center ${
+                            className={`w-12 h-12 sm:flex-1 sm:px-4 sm:py-2 text-xs sm:text-sm rounded-full font-bold transition-all flex justify-center items-center ${
                                 activeTab === tab.key
                                     ? 'bg-slate-700 text-white shadow-inner'
                                     : 'text-slate-400 hover:bg-slate-700/50 hover:text-white'

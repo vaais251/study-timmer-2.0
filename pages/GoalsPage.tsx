@@ -140,7 +140,7 @@ const DeadlineItemCard: React.FC<{ item: (Project & { itemType: 'project' }) | (
     const badgeClass = item.itemType === 'project' ? 'bg-blue-500/30 text-blue-300' : 'bg-purple-500/30 text-purple-300';
 
     return (
-        <div className={`bg-slate-800/50 rounded-lg p-4 border-l-4 ${urgencyClass} space-y-3`}>
+        <div className={`bg-slate-800/40 backdrop-blur-sm border border-slate-700/60 rounded-lg p-4 border-l-4 ${urgencyClass} space-y-3`}>
             <div className="flex justify-between items-start gap-4">
                 <div className="flex-grow">
                     <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${badgeClass}`}>{item.itemType}</span>
@@ -539,21 +539,21 @@ const ActivityLog: React.FC<{ projectId: string, tasks: Task[] }> = ({ projectId
     }
 
     return (
-        <div className="mt-3 pt-3 border-t border-white/10 space-y-3 animate-fadeIn">
+        <div className="mt-3 pt-3 border-t border-slate-700/60 space-y-3 animate-fadeIn">
             <h4 className="text-md font-bold text-white/90">Activity Log</h4>
-            <div className="space-y-2 bg-black/20 p-3 rounded-lg">
+            <div className="space-y-3 bg-slate-900/50 p-3 rounded-lg border border-slate-700">
                 <textarea
                     value={newUpdateDesc}
                     onChange={e => setNewUpdateDesc(e.target.value)}
                     placeholder="Log an update for this project..."
-                    className="w-full bg-white/20 border border-white/30 rounded-lg p-2 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50"
+                    className="w-full bg-slate-800/80 border border-slate-600 rounded-lg p-2 text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-400"
                     rows={2}
                 />
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    <input type="date" value={newUpdateDate} onChange={e => setNewUpdateDate(e.target.value)} className="bg-white/20 border border-white/30 rounded-lg p-2 text-white/80 w-full text-center" style={{colorScheme: 'dark'}}/>
-                    <select value={linkedTaskId} onChange={e => setLinkedTaskId(e.target.value)} className="bg-white/20 border border-white/30 rounded-lg p-2 text-white focus:outline-none focus:bg-white/30 focus:border-white/50 w-full sm:col-span-2">
-                        <option value="none" className="bg-gray-800">No linked task</option>
-                        {tasks.map(t => <option key={t.id} value={t.id} className="bg-gray-800">{t.text}</option>)}
+                    <input type="date" value={newUpdateDate} onChange={e => setNewUpdateDate(e.target.value)} className="bg-slate-800/80 border border-slate-600 rounded-lg p-2 text-white/80 w-full text-center" style={{colorScheme: 'dark'}}/>
+                    <select value={linkedTaskId} onChange={e => setLinkedTaskId(e.target.value)} className="bg-slate-800/80 border border-slate-600 rounded-lg p-2 text-white focus:outline-none focus:ring-2 focus:ring-cyan-400 w-full sm:col-span-2">
+                        <option value="none" className="bg-slate-900">No linked task</option>
+                        {tasks.map(t => <option key={t.id} value={t.id} className="bg-slate-900">{t.text}</option>)}
                     </select>
                 </div>
                 <button onClick={handleAddUpdate} className="w-full p-2 rounded-lg font-bold text-white transition hover:scale-105 bg-gradient-to-br from-cyan-500 to-sky-600">Add Log Entry</button>
@@ -571,7 +571,7 @@ const ActivityLog: React.FC<{ projectId: string, tasks: Task[] }> = ({ projectId
                          return (
                              <li
                                  key={update.id}
-                                 className={`bg-black/20 rounded-md text-sm group relative transition-all duration-300 ${hasComments ? 'cursor-pointer hover:bg-black/40' : ''}`}
+                                 className={`bg-black/20 rounded-md text-sm group transition-all duration-300 ${hasComments ? 'cursor-pointer hover:bg-black/40' : ''}`}
                                  onClick={() => hasComments && setExpandedUpdateId(isExpanded ? null : update.id)}
                              >
                                  <div className="p-2 flex justify-between items-start gap-2">
@@ -755,30 +755,30 @@ const ProjectItem: React.FC<ProjectItemProps> = ({ project, tasks, onUpdateProje
 
     if (isEditing) {
         return (
-            <div className="bg-white/20 p-3 rounded-xl ring-2 ring-cyan-400 space-y-3">
-                <input type="text" value={editName} onChange={e => setEditName(e.target.value)} placeholder="Project Name" className="w-full bg-white/20 border border-white/30 rounded-lg p-2 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50" />
-                <textarea value={editDescription} onChange={e => setEditDescription(e.target.value)} placeholder="Project Description (Optional)" className="w-full bg-white/20 border border-white/30 rounded-lg p-2 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50" rows={2}></textarea>
+            <div className="bg-slate-700/80 p-4 rounded-xl ring-2 ring-cyan-400 space-y-3">
+                <input type="text" value={editName} onChange={e => setEditName(e.target.value)} placeholder="Project Name" className="w-full bg-slate-800/80 border border-slate-600 rounded-lg p-2 text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-400" />
+                <textarea value={editDescription} onChange={e => setEditDescription(e.target.value)} placeholder="Project Description (Optional)" className="w-full bg-slate-800/80 border border-slate-600 rounded-lg p-2 text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-400" rows={2}></textarea>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                    <input type="date" value={editStartDate} onChange={e => setEditStartDate(e.target.value)} className="bg-white/20 border border-white/30 rounded-lg p-2 text-white/80 w-full text-center" style={{colorScheme: 'dark'}} />
-                    <input type="date" value={editDeadline} onChange={e => setEditDeadline(e.target.value)} className="bg-white/20 border border-white/30 rounded-lg p-2 text-white/80 w-full text-center" style={{colorScheme: 'dark'}} />
+                    <input type="date" value={editStartDate} onChange={e => setEditStartDate(e.target.value)} className="bg-slate-800/80 border border-slate-600 rounded-lg p-2 text-white/80 w-full text-center" style={{colorScheme: 'dark'}} />
+                    <input type="date" value={editDeadline} onChange={e => setEditDeadline(e.target.value)} className="bg-slate-800/80 border border-slate-600 rounded-lg p-2 text-white/80 w-full text-center" style={{colorScheme: 'dark'}} />
                 </div>
                 <div className="space-y-2">
                     <label className="text-xs text-white/70">Active Days (leave blank for all days)</label>
                     <DaySelector selectedDays={editActiveDays} onDayToggle={handleDayToggle} />
                 </div>
-                <select value={editCriteriaType} onChange={e => setEditCriteriaType(e.target.value as any)} className="bg-white/20 border border-white/30 rounded-lg p-2 text-white focus:outline-none focus:bg-white/30 focus:border-white/50 w-full">
-                    <option value="manual" className="bg-gray-800">Manual</option>
-                    <option value="task_count" className="bg-gray-800">Task Count</option>
-                    <option value="duration_minutes" className="bg-gray-800">Time Duration</option>
+                <select value={editCriteriaType} onChange={e => setEditCriteriaType(e.target.value as any)} className="bg-slate-800/80 border border-slate-600 rounded-lg p-2 text-white focus:outline-none focus:ring-2 focus:ring-cyan-400 w-full">
+                    <option value="manual" className="bg-slate-900">Manual</option>
+                    <option value="task_count" className="bg-slate-900">Task Count</option>
+                    <option value="duration_minutes" className="bg-slate-900">Time Duration</option>
                 </select>
                 {editCriteriaType !== 'manual' && (
-                    <input type="number" value={editCriteriaValue} onChange={e => setEditCriteriaValue(e.target.value)} placeholder={editCriteriaType === 'task_count' ? '# of tasks' : 'Minutes of focus'} className="w-full bg-white/20 border border-white/30 rounded-lg p-2 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50" />
+                    <input type="number" value={editCriteriaValue} onChange={e => setEditCriteriaValue(e.target.value)} placeholder={editCriteriaType === 'task_count' ? '# of tasks' : 'Minutes of focus'} className="w-full bg-slate-800/80 border border-slate-600 rounded-lg p-2 text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-400" />
                 )}
                 <div className="flex justify-between items-center mt-2">
                     <PrioritySelector priority={editPriority} setPriority={setEditPriority} />
                     <div className="flex justify-end gap-2 text-sm">
-                        <button onClick={handleCancel} className="p-2 px-4 rounded-md font-bold text-white transition hover:scale-105 bg-gradient-to-br from-gray-500 to-gray-600">Cancel</button>
-                        <button onClick={handleSave} className="p-2 px-4 rounded-md font-bold text-white transition hover:scale-105 bg-gradient-to-br from-blue-500 to-cyan-600">Save</button>
+                        <button onClick={handleCancel} className="p-2 px-4 rounded-md font-bold text-white transition hover:scale-105 bg-slate-600 hover:bg-slate-700">Cancel</button>
+                        <button onClick={handleSave} className="p-2 px-4 rounded-md font-bold text-white transition hover:scale-105 bg-cyan-600 hover:bg-cyan-700">Save</button>
                     </div>
                 </div>
             </div>
@@ -786,10 +786,10 @@ const ProjectItem: React.FC<ProjectItemProps> = ({ project, tasks, onUpdateProje
     }
     
     const priorityClass = `border-l-4 ${priorityBorderColors[project.priority as number] ?? 'border-l-transparent'}`;
-    const bgColor = isSelected ? 'bg-slate-700/50' : isComplete ? 'bg-slate-800/50' : isDue ? 'bg-red-900/40' : 'bg-slate-800';
+    const bgColor = isSelected ? 'bg-slate-700/50' : isComplete ? 'bg-slate-800/60' : isDue ? 'bg-red-900/50' : 'bg-slate-800/40 backdrop-blur-sm';
 
     return (
-        <div className={`rounded-xl ${priorityClass} ${bgColor} transition-all duration-300 ${isComplete ? 'opacity-60' : ''} ${isSelected ? 'ring-2 ring-cyan-400' : ''}`}>
+        <div className={`rounded-xl ${priorityClass} ${bgColor} transition-all duration-300 border border-slate-700/60 hover:border-slate-600 ${isComplete ? 'opacity-60' : ''} ${isSelected ? 'ring-2 ring-cyan-400' : ''}`}>
             <div className="p-4 cursor-pointer" onClick={onSelect}>
                 <div className="flex justify-between items-start gap-2">
                     <div className="flex-grow min-w-0">
@@ -805,7 +805,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({ project, tasks, onUpdateProje
                                 onChange={handleManualCompleteToggle} 
                                 onClick={e => e.stopPropagation()}
                                 disabled={!isEditable}
-                                className="h-5 w-5 rounded bg-white/20 border-white/30 text-green-400 focus:ring-green-400 flex-shrink-0 cursor-pointer disabled:cursor-not-allowed" 
+                                className="h-5 w-5 rounded bg-slate-700/50 border-slate-600 text-green-400 focus:ring-green-400 flex-shrink-0 cursor-pointer disabled:cursor-not-allowed" 
                                 aria-label={`Mark project ${project.name} as complete`}
                             />
                         )}
@@ -828,7 +828,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({ project, tasks, onUpdateProje
                     </div>
                 )}
             </div>
-             <div className="bg-black/20 px-4 py-2 flex justify-between items-center text-xs">
+             <div className="bg-black/20 px-4 py-2 flex justify-between items-center text-xs rounded-b-xl">
                 <div className="flex items-center gap-2 flex-wrap">
                     {project.deadline && <MetadataPill icon={<CalendarIcon/>} text={new Date(project.deadline + 'T00:00:00').toLocaleDateString()} />}
                     {activeDaysString && <MetadataPill icon={<span>📅</span>} text={activeDaysString} />}
@@ -936,48 +936,48 @@ const TargetItem: React.FC<TargetItemProps> = ({ target, onUpdateTarget, onDelet
 
     if (isEditing) {
         return (
-            <li className="bg-white/20 p-3 rounded-lg ring-2 ring-cyan-400 space-y-3">
-                <input type="text" value={editText} onChange={e => setEditText(e.target.value)} placeholder="Target description" className="w-full bg-white/20 border border-white/30 rounded-lg p-2 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50" />
+            <li className="bg-slate-700/80 p-3 rounded-lg ring-2 ring-cyan-400 space-y-3">
+                <input type="text" value={editText} onChange={e => setEditText(e.target.value)} placeholder="Target description" className="w-full bg-slate-800/80 border border-slate-600 rounded-lg p-2 text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-400" />
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <div>
                         <label className="text-xs text-white/70 mb-1">Start Date</label>
-                        <input type="date" value={editStartDate} onChange={e => setEditStartDate(e.target.value)} className="bg-white/20 border border-white/30 rounded-lg p-2 text-white/80 w-full text-center" style={{colorScheme: 'dark'}} />
+                        <input type="date" value={editStartDate} onChange={e => setEditStartDate(e.target.value)} className="bg-slate-800/80 border border-slate-600 rounded-lg p-2 text-white/80 w-full text-center" style={{colorScheme: 'dark'}} />
                     </div>
                     <div>
                         <label className="text-xs text-white/70 mb-1">Deadline</label>
-                        <input type="date" value={editDeadline} onChange={e => setEditDeadline(e.target.value)} className="bg-white/20 border border-white/30 rounded-lg p-2 text-white/80 w-full text-center" style={{colorScheme: 'dark'}} />
+                        <input type="date" value={editDeadline} onChange={e => setEditDeadline(e.target.value)} className="bg-slate-800/80 border border-slate-600 rounded-lg p-2 text-white/80 w-full text-center" style={{colorScheme: 'dark'}} />
                     </div>
                 </div>
                 <div>
                     <label className="text-xs text-white/70 mb-1">Completion Mode</label>
-                    <select value={editCompletionMode} onChange={e => setEditCompletionMode(e.target.value as Target['completion_mode'])} className="w-full bg-white/20 border border-white/30 rounded-lg p-2 text-white focus:outline-none focus:bg-white/30 focus:border-white/50">
-                        <option value="manual" className="bg-gray-800">Manual</option>
-                        <option value="focus_minutes" className="bg-gray-800">Focus Minutes</option>
+                    <select value={editCompletionMode} onChange={e => setEditCompletionMode(e.target.value as Target['completion_mode'])} className="w-full bg-slate-800/80 border border-slate-600 rounded-lg p-2 text-white focus:outline-none focus:ring-2 focus:ring-cyan-400">
+                        <option value="manual" className="bg-slate-900">Manual</option>
+                        <option value="focus_minutes" className="bg-slate-900">Focus Minutes</option>
                     </select>
                 </div>
                 {editCompletionMode === 'focus_minutes' && (
                     <div className="space-y-2 animate-fadeIn">
-                        <input type="text" value={editTags} onChange={e => setEditTags(e.target.value)} placeholder="Tags (comma-separated)" className="w-full bg-white/20 border border-white/30 rounded-lg p-2 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50" />
-                        <input type="number" value={editTargetMinutes} onChange={e => setEditTargetMinutes(e.target.value)} placeholder="Target Minutes" className="w-full bg-white/20 border border-white/30 rounded-lg p-2 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50" />
+                        <input type="text" value={editTags} onChange={e => setEditTags(e.target.value)} placeholder="Tags (comma-separated)" className="w-full bg-slate-800/80 border border-slate-600 rounded-lg p-2 text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-400" />
+                        <input type="number" value={editTargetMinutes} onChange={e => setEditTargetMinutes(e.target.value)} placeholder="Target Minutes" className="w-full bg-slate-800/80 border border-slate-600 rounded-lg p-2 text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-400" />
                     </div>
                 )}
                 <div className="flex justify-between items-center mt-2">
                     <PrioritySelector priority={editPriority} setPriority={setEditPriority} />
                     <div className="flex justify-end gap-2 text-sm">
-                        <button onClick={handleCancel} className="p-2 px-4 rounded-md font-bold text-white transition hover:scale-105 bg-gradient-to-br from-gray-500 to-gray-600">Cancel</button>
-                        <button onClick={handleSave} className="p-2 px-4 rounded-md font-bold text-white transition hover:scale-105 bg-gradient-to-br from-blue-500 to-cyan-600">Save</button>
+                        <button onClick={handleCancel} className="p-2 px-4 rounded-md font-bold text-white transition hover:scale-105 bg-slate-600 hover:bg-slate-700">Cancel</button>
+                        <button onClick={handleSave} className="p-2 px-4 rounded-md font-bold text-white transition hover:scale-105 bg-cyan-600 hover:bg-cyan-700">Save</button>
                     </div>
                 </div>
             </li>
         );
     }
     
-    let bgColor = 'bg-slate-800';
+    let bgColor = 'bg-slate-800/40 backdrop-blur-sm';
     let textColor = 'text-white';
     if (isCompleted) {
-        bgColor = 'bg-slate-800/50 opacity-60';
+        bgColor = 'bg-slate-800/60 opacity-60';
     } else if (isIncomplete) {
-        bgColor = 'bg-red-900/40';
+        bgColor = 'bg-red-900/50';
         textColor = 'text-red-300';
     }
     const priorityClass = `border-l-4 ${priorityBorderColors[target.priority as number] ?? 'border-l-transparent'}`;
@@ -988,7 +988,7 @@ const TargetItem: React.FC<TargetItemProps> = ({ target, onUpdateTarget, onDelet
     const isEditable = !isCompleted && !isOld;
 
     return (
-        <li className={`rounded-lg transition-all ${bgColor} ${priorityClass} ${isSelected ? 'ring-2 ring-cyan-400' : ''}`}>
+        <li className={`rounded-lg transition-all border border-slate-700/60 hover:border-slate-600 ${bgColor} ${priorityClass} ${isSelected ? 'ring-2 ring-cyan-400' : ''}`}>
             <div className="p-4 cursor-pointer" onClick={onSelect}>
                 <div className="flex items-start justify-between gap-3">
                     <div className="flex items-start gap-3 flex-grow min-w-0">
@@ -1001,7 +1001,7 @@ const TargetItem: React.FC<TargetItemProps> = ({ target, onUpdateTarget, onDelet
                                     onUpdateTarget(target.id, { completed_at: e.target.checked ? new Date().toISOString() : null })
                                 }} 
                                 disabled={!isEditable}
-                                className="h-5 w-5 rounded bg-white/20 border-white/30 text-green-400 focus:ring-green-400 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0 mt-0.5" 
+                                className="h-5 w-5 rounded bg-slate-700/50 border-slate-600 text-green-400 focus:ring-green-400 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0 mt-0.5" 
                             />
                         )}
                         <div className="flex-grow">
@@ -1068,12 +1068,12 @@ const GoalItem: React.FC<{
 
     if (isEditing) {
         return (
-             <li className="bg-slate-700/50 border border-cyan-400 rounded-xl p-4 ring-2 ring-cyan-400/50">
+             <li className="bg-slate-700/80 border border-cyan-400 rounded-xl p-4 ring-2 ring-cyan-400/50">
                 <div className="flex flex-col gap-3">
                      <textarea
                         value={editText}
                         onChange={e => setEditText(e.target.value)}
-                        className="w-full bg-black/30 border-2 border-white/20 rounded-lg p-2 text-white placeholder:text-white/60 focus:outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-400/50 transition-all resize-none"
+                        className="w-full bg-slate-800/80 border-2 border-slate-600 rounded-lg p-2 text-white placeholder:text-slate-400 focus:outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-400/50 transition-all resize-none"
                         aria-label="Edit goal text"
                         rows={3}
                         autoFocus
@@ -1085,8 +1085,8 @@ const GoalItem: React.FC<{
                         }}
                     />
                     <div className="flex justify-end gap-2 text-sm">
-                        <button onClick={handleCancel} className="p-2 px-4 rounded-md font-bold text-white transition hover:scale-105 bg-gray-600 hover:bg-gray-700">Cancel</button>
-                        <button onClick={handleSave} className="p-2 px-4 rounded-md font-bold text-white transition hover:scale-105 bg-blue-600 hover:bg-blue-700">Save</button>
+                        <button onClick={handleCancel} className="p-2 px-4 rounded-md font-bold text-white transition hover:scale-105 bg-slate-600 hover:bg-slate-700">Cancel</button>
+                        <button onClick={handleSave} className="p-2 px-4 rounded-md font-bold text-white transition hover:scale-105 bg-cyan-600 hover:bg-cyan-700">Save</button>
                     </div>
                 </div>
             </li>
@@ -1094,7 +1094,7 @@ const GoalItem: React.FC<{
     }
     
     return (
-        <li className={`bg-slate-800 rounded-xl p-4 transition-all hover:bg-slate-700/50 ${isComplete ? 'opacity-50' : ''}`}>
+        <li className={`bg-slate-800/40 backdrop-blur-sm rounded-xl p-4 transition-all border border-slate-700/60 hover:border-slate-600 hover:bg-slate-700/50 ${isComplete ? 'opacity-50' : ''}`}>
             <div className="flex items-start justify-between gap-4">
                 <div className="flex items-start gap-3 flex-grow min-w-0">
                      <input
@@ -1212,37 +1212,37 @@ const CommitmentItem: React.FC<{
     
     if (isEditing) {
         return (
-            <li className="bg-white/20 p-3 rounded-lg ring-2 ring-cyan-400 space-y-2">
+            <li className="bg-slate-700/80 p-3 rounded-lg ring-2 ring-cyan-400 space-y-2">
                 <input
                     type="text"
                     value={editText}
                     onChange={e => setEditText(e.target.value)}
-                    className="w-full bg-white/20 border border-white/30 rounded-lg p-2 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50"
+                    className="w-full bg-slate-800/80 border border-slate-600 rounded-lg p-2 text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-400"
                     autoFocus
                 />
                  <input
                     type="date"
                     value={editDueDate}
                     onChange={e => setEditDueDate(e.target.value)}
-                    className="bg-white/20 border border-white/30 rounded-lg p-2 text-white/80 w-full text-center"
+                    className="bg-slate-800/80 border border-slate-600 rounded-lg p-2 text-white/80 w-full text-center"
                     style={{colorScheme: 'dark'}}
                 />
                 <div className="flex justify-end gap-2 text-sm mt-2">
-                    <button onClick={() => setIsEditing(false)} className="p-2 px-4 rounded-md font-bold text-white transition hover:scale-105 bg-gradient-to-br from-gray-500 to-gray-600">Cancel</button>
-                    <button onClick={handleSave} className="p-2 px-4 rounded-md font-bold text-white transition hover:scale-105 bg-gradient-to-br from-blue-500 to-cyan-600">Save</button>
+                    <button onClick={() => setIsEditing(false)} className="p-2 px-4 rounded-md font-bold text-white transition hover:scale-105 bg-slate-600 hover:bg-slate-700">Cancel</button>
+                    <button onClick={handleSave} className="p-2 px-4 rounded-md font-bold text-white transition hover:scale-105 bg-cyan-600 hover:bg-cyan-700">Save</button>
                 </div>
             </li>
         )
     }
 
     const statusStyles = {
-        active: 'border-l-cyan-400 bg-slate-800',
+        active: 'border-l-cyan-400 bg-slate-800/40 backdrop-blur-sm',
         completed: 'border-l-green-500 bg-slate-800/60 opacity-70',
         broken: 'border-l-red-500 bg-slate-800/60 opacity-70',
     };
 
     return (
-        <li className={`flex flex-col sm:flex-row sm:items-start justify-between gap-4 p-4 rounded-lg border-l-4 ${statusStyles[commitment.status]}`}>
+        <li className={`flex flex-col sm:flex-row sm:items-start justify-between gap-4 p-4 rounded-lg border-l-4 border border-slate-700/60 ${statusStyles[commitment.status]}`}>
              <div className="flex items-start gap-3 flex-grow min-w-0">
                 <div className="flex-grow">
                     <p className={`text-white ${isTerminated ? 'line-through' : ''}`}>{commitment.text}</p>
@@ -1310,47 +1310,39 @@ const CommitmentsPanel: React.FC<{
 
     return (
         <Panel title="My Commitments">
-            <details className="group bg-slate-900/30 rounded-xl transition-[max-height] duration-500 overflow-hidden mb-4">
-                <summary className="p-3 font-semibold text-white cursor-pointer list-none flex justify-between items-center hover:bg-slate-700/20">
-                    🤝 Add New Commitment
-                    <svg className="w-4 h-4 text-white/70 transform transition-transform group-open:rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                    </svg>
-                </summary>
-                <div className="p-4 border-t border-slate-700 space-y-3">
-                    <p className="text-white/80 text-center text-sm">
-                        What will you hold yourself accountable for? 
-                        <ExplanationTooltip 
-                            title="About Commitments"
-                            content="Commitments are promises to yourself. They have a <strong>2-hour 'grace period'</strong> for edits, after which they lock to encourage reflection.<br/><br/>- After locking, you can mark a commitment as 'Completed' or 'Broken'.<br/>- If a due date is set, it completes automatically after it passes.<br/>- If no due date, you can manually complete it after one month."
-                        />
-                    </p>
-                    <div className="relative">
-                        <input
-                            type="text"
-                            value={newCommitment}
-                            onChange={e => setNewCommitment(e.target.value)}
-                            onKeyPress={e => e.key === 'Enter' && handleAdd()}
-                            placeholder="I commit to..."
-                            className="w-full bg-black/30 border-2 border-white/20 rounded-full py-3 pr-28 pl-6 text-white placeholder:text-white/50 focus:outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/50 transition-all"
-                        />
-                        <button onClick={handleAdd} className="absolute inset-y-1.5 right-1.5 px-6 rounded-full font-bold text-white transition-all duration-300 bg-gradient-to-br from-cyan-500 to-sky-600 hover:from-cyan-600 hover:to-sky-700 hover:scale-105">
-                            Commit
-                        </button>
-                    </div>
-                    <div className="flex items-center gap-2 px-2">
-                        <label htmlFor="commitment-due-date" className="text-sm text-white/70">Optional Due Date:</label>
+            <div className="bg-slate-900/50 p-4 rounded-xl space-y-3 mb-4 border border-slate-700">
+                <p className="text-white/80 text-center text-sm">
+                    What will you hold yourself accountable for? 
+                    <ExplanationTooltip 
+                        title="About Commitments"
+                        content="Commitments are promises to yourself. They have a <strong>2-hour 'grace period'</strong> for edits, after which they lock to encourage reflection.<br/><br/>- After locking, you can mark a commitment as 'Completed' or 'Broken'.<br/>- If a due date is set, it completes automatically after it passes.<br/>- If no due date, you can manually complete it after one month."
+                    />
+                </p>
+                <input
+                    type="text"
+                    value={newCommitment}
+                    onChange={e => setNewCommitment(e.target.value)}
+                    onKeyPress={e => e.key === 'Enter' && handleAdd()}
+                    placeholder="I commit to..."
+                    className="w-full bg-slate-800/80 border-2 border-slate-600 rounded-lg p-3 text-white placeholder:text-slate-400 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400"
+                />
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div className="flex items-center gap-2">
+                        <label htmlFor="commitment-due-date" className="text-sm text-white/70 flex-shrink-0">Due Date (Optional):</label>
                         <input
                             id="commitment-due-date"
                             type="date"
                             value={newDueDate}
                             onChange={e => setNewDueDate(e.target.value)}
-                            className="bg-white/20 border border-white/30 rounded-lg p-1.5 text-white/80 w-full sm:w-auto text-center"
+                            className="bg-slate-800/80 border-2 border-slate-600 rounded-lg p-2 text-white/80 w-full text-center"
                             style={{colorScheme: 'dark'}}
                         />
                     </div>
+                    <button onClick={handleAdd} className="w-full sm:w-auto h-12 px-6 rounded-lg font-bold text-white transition hover:scale-105 bg-gradient-to-br from-cyan-500 to-sky-600">
+                        Commit
+                    </button>
                 </div>
-            </details>
+            </div>
 
              <div className="flex justify-center gap-2 mb-4 bg-black/20 p-1 rounded-full">
                 {(['active', 'completed', 'broken'] as const).map(status => (
@@ -1408,6 +1400,10 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
 
     const [activeTab, setActiveTab] = useState<'projects' | 'targets' | 'overview' | 'deadline'>('projects');
     const [deadlineView, setDeadlineView] = useState<'project' | 'target'>('project');
+
+    const [isProjectFormOpen, setIsProjectFormOpen] = useState(false);
+    const [isTargetFormOpen, setIsTargetFormOpen] = useState(false);
+    const [isGoalFormOpen, setIsGoalFormOpen] = useState(false);
 
     const [newGoal, setNewGoal] = useState('');
     const [newTarget, setNewTarget] = useState('');
@@ -1493,6 +1489,7 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
             setNewProjectActiveDays([]);
             setCriteriaType('manual');
             setCriteriaValue('');
+            setIsProjectFormOpen(false);
         }
     };
 
@@ -1500,6 +1497,7 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
         if (newGoal.trim()) {
             onAddGoal(newGoal.trim());
             setNewGoal('');
+            setIsGoalFormOpen(false);
         }
     };
 
@@ -1531,6 +1529,7 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
         setNewCompletionMode('manual');
         setNewTags('');
         setNewTargetMinutes('');
+        setIsTargetFormOpen(false);
     };
     
     const handleNewProjectDayToggle = (dayIndex: number) => {
@@ -1917,6 +1916,8 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
 
     return (
         <div className="space-y-6">
+            <h1 className="text-3xl font-bold text-white mb-2 animate-slideInFromLeft">Goals &amp; Ambitions</h1>
+            
             <Panel title="Spotlight">
                 {pinnedItem ? (
                     <div>
@@ -1956,12 +1957,12 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
                 )}
             </Panel>
 
-            <div className="flex justify-center gap-1 sm:gap-2 bg-slate-800/50 p-1 rounded-full max-w-xl mx-auto">
+            <div className="flex justify-center gap-2 sm:gap-4 bg-slate-800/50 p-1 rounded-full max-w-xl mx-auto">
                 {(Object.keys(tabConfig) as Array<keyof typeof tabConfig>).map(key => (
                     <button
                         key={key}
                         onClick={() => setActiveTab(key)}
-                        className={`flex-grow md:flex-grow-0 md:flex-1 p-2.5 text-xs sm:text-sm rounded-full font-bold transition-colors flex items-center justify-center gap-2 ${
+                        className={`w-12 h-12 md:flex-1 md:px-4 md:py-2.5 rounded-full font-bold transition-all flex items-center justify-center gap-2 text-sm ${
                             activeTab === key
                                 ? 'bg-slate-700 text-white shadow-inner'
                                 : 'text-slate-400 hover:bg-slate-700/50 hover:text-white'
@@ -2039,14 +2040,9 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
                              </div>
                         )}
                         <Panel title="My Core Goals">
-                            <details className="group bg-slate-900/30 rounded-xl transition-[max-height] duration-500 overflow-hidden mb-4">
-                                <summary className="p-3 font-semibold text-white cursor-pointer list-none flex justify-between items-center hover:bg-slate-700/20">
-                                    ⭐ Add New Goal
-                                    <svg className="w-4 h-4 text-white/70 transform transition-transform group-open:rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                                    </svg>
-                                </summary>
-                                <div className="p-4 border-t border-slate-700">
+                            {isGoalFormOpen ? (
+                                <div className="bg-slate-900/50 p-4 rounded-xl space-y-3 mb-4 border border-slate-700 animate-fadeIn">
+                                    <h3 className="text-lg font-semibold text-white text-center">⭐ Add New Goal</h3>
                                     <div className="relative">
                                         <input
                                             type="text"
@@ -2054,14 +2050,24 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
                                             onChange={(e) => setNewGoal(e.target.value)}
                                             onKeyPress={(e) => e.key === 'Enter' && handleAddGoal()}
                                             placeholder="What's your next big ambition?"
-                                            className="w-full bg-black/30 border-2 border-white/20 rounded-full py-3 pr-28 pl-6 text-white placeholder:text-white/50 focus:outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-400/50 transition-all"
+                                            className="w-full bg-slate-800/80 border-2 border-slate-600 rounded-lg p-3 text-white placeholder:text-slate-400 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400"
+                                            autoFocus
                                         />
-                                        <button onClick={handleAddGoal} className="absolute inset-y-1.5 right-1.5 px-6 rounded-full font-bold text-white transition-all duration-300 bg-gradient-to-br from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 hover:scale-105">
+                                    </div>
+                                    <div className="flex justify-end gap-2">
+                                         <button onClick={() => setIsGoalFormOpen(false)} className="h-12 px-6 rounded-lg font-bold text-slate-300 hover:text-white transition bg-slate-600 hover:bg-slate-700">Cancel</button>
+                                         <button onClick={handleAddGoal} className="h-12 px-6 rounded-lg font-bold text-white transition hover:scale-105 bg-gradient-to-br from-purple-500 to-indigo-600">
                                             Add Goal
                                         </button>
                                     </div>
                                 </div>
-                            </details>
+                            ) : (
+                                <div className="mb-4 text-center">
+                                    <button onClick={() => setIsGoalFormOpen(true)} className="bg-slate-900/50 hover:bg-slate-800/80 border-2 border-slate-700/80 text-white font-semibold py-3 px-6 rounded-lg transition-colors w-full sm:w-auto">
+                                        + Add New Goal
+                                    </button>
+                                </div>
+                            )}
 
                             <ul className="space-y-2">
                                 {visibleGoals.map(goal => (
@@ -2088,55 +2094,59 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
                 {activeTab === 'projects' && (
                     <div className="space-y-6 animate-fadeIn">
                         
-                        <details className="group bg-slate-800/50 rounded-xl border border-slate-700/80 transition-[max-height] duration-500 overflow-hidden">
-                            <summary className="p-4 font-bold text-lg text-white cursor-pointer list-none flex justify-between items-center hover:bg-slate-700/20">
-                                ✨ Add New Project
-                                <svg className="w-5 h-5 text-white/70 transform transition-transform group-open:rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                                </svg>
-                            </summary>
-                            <div className="p-4 border-t border-slate-700">
-                                 <div className="space-y-4">
-                                    <input type="text" value={newProjectName} onChange={e => setNewProjectName(e.target.value)} placeholder="Project Name" className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50" />
-                                    <textarea value={newProjectDescription} onChange={e => setNewProjectDescription(e.target.value)} placeholder="Project Description (Optional)" className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50" rows={2}></textarea>
+                        {isProjectFormOpen ? (
+                             <div className="bg-slate-800/50 backdrop-blur-md rounded-xl p-4 sm:p-6 border border-slate-700/80 animate-fadeIn">
+                                <h2 className="text-2xl font-bold text-white mb-4 text-center">Add New Project</h2>
+                                <div className="space-y-4">
+                                    <input type="text" value={newProjectName} onChange={e => setNewProjectName(e.target.value)} placeholder="Project Name" className="w-full bg-slate-900/50 border-2 border-slate-700 rounded-lg p-3 text-white placeholder:text-slate-400 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400" />
+                                    <textarea value={newProjectDescription} onChange={e => setNewProjectDescription(e.target.value)} placeholder="Project Description (Optional)" className="w-full bg-slate-900/50 border-2 border-slate-700 rounded-lg p-3 text-white placeholder:text-slate-400 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400" rows={2}></textarea>
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                         <div>
-                                            <label className="text-xs text-white/70 mb-1">Start Date</label>
-                                            <input type="date" value={newProjectStartDate} onChange={e => setNewProjectStartDate(e.target.value)} className="bg-white/20 border border-white/30 rounded-lg p-3 text-white/80 w-full text-center" style={{colorScheme: 'dark'}}/>
+                                            <label className="text-xs text-slate-300 mb-1 block">Start Date</label>
+                                            <input type="date" value={newProjectStartDate} onChange={e => setNewProjectStartDate(e.target.value)} className="w-full bg-slate-900/50 border-2 border-slate-700 rounded-lg p-3 text-white/80 text-center" style={{colorScheme: 'dark'}}/>
                                         </div>
                                         <div>
-                                            <label className="text-xs text-white/70 mb-1">Deadline</label>
-                                            <input type="date" value={newProjectDeadline} onChange={e => setNewProjectDeadline(e.target.value)} className="bg-white/20 border border-white/30 rounded-lg p-3 text-white/80 w-full text-center" style={{colorScheme: 'dark'}}/>
+                                            <label className="text-xs text-slate-300 mb-1 block">Deadline</label>
+                                            <input type="date" value={newProjectDeadline} onChange={e => setNewProjectDeadline(e.target.value)} className="w-full bg-slate-900/50 border-2 border-slate-700 rounded-lg p-3 text-white/80 text-center" style={{colorScheme: 'dark'}}/>
                                         </div>
                                     </div>
                                     <div className="space-y-2">
-                                        <label className="text-xs text-white/70">Active Days (leave blank for all days)</label>
+                                        <label className="text-xs text-slate-300">Active Days (leave blank for all days)</label>
                                         <DaySelector selectedDays={newProjectActiveDays} onDayToggle={handleNewProjectDayToggle} />
                                     </div>
                                     <div>
-                                        <label className="text-xs text-white/70 mb-1 flex items-center gap-1.5">
+                                        <label className="text-xs text-slate-300 mb-1 flex items-center gap-1.5">
                                             Completion Criteria
                                             <ExplanationTooltip title="Completion Criteria" content="How will this project be marked as complete?<br/><strong>Manual:</strong> You check it off yourself.<br/><strong>Task Count:</strong> Completes after a set number of linked tasks are done.<br/><strong>Time Duration:</strong> Completes after a total number of focus minutes are logged on linked tasks." />
                                         </label>
                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                            <select value={criteriaType} onChange={e => setCriteriaType(e.target.value as any)} className="bg-white/20 border border-white/30 rounded-lg p-3 text-white focus:outline-none focus:bg-white/30 focus:border-white/50">
-                                                <option value="manual" className="bg-gray-800">Manual</option>
-                                                <option value="task_count" className="bg-gray-800">Task Count</option>
-                                                <option value="duration_minutes" className="bg-gray-800">Time Duration</option>
+                                            <select value={criteriaType} onChange={e => setCriteriaType(e.target.value as any)} className="w-full bg-slate-900/50 border-2 border-slate-700 rounded-lg p-3 text-white focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400">
+                                                <option value="manual" className="bg-slate-900">Manual</option>
+                                                <option value="task_count" className="bg-slate-900">Task Count</option>
+                                                <option value="duration_minutes" className="bg-slate-900">Time Duration</option>
                                             </select>
-                                            <input type="number" value={criteriaValue} onChange={e => setCriteriaValue(e.target.value)} placeholder="Target Value" disabled={criteriaType === 'manual'} className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50 disabled:opacity-50" />
+                                            <input type="number" value={criteriaValue} onChange={e => setCriteriaValue(e.target.value)} placeholder="Target Value" disabled={criteriaType === 'manual'} className="w-full bg-slate-900/50 border-2 border-slate-700 rounded-lg p-3 text-white placeholder:text-slate-400 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 disabled:opacity-50" />
                                         </div>
                                     </div>
                                     <div className="flex flex-wrap justify-between items-end gap-4 pt-1">
                                         <div>
-                                            <label className="text-xs text-white/70 mb-1">Priority</label>
+                                            <label className="text-xs text-slate-300 mb-1 block">Priority</label>
                                             <PrioritySelector priority={newProjectPriority} setPriority={setNewProjectPriority} />
                                         </div>
-                                        <button onClick={handleAddProject} className="h-12 px-6 rounded-lg font-bold text-white transition hover:scale-105 bg-gradient-to-br from-blue-500 to-sky-600">Add Project</button>
+                                        <div className="flex items-center gap-2">
+                                            <button onClick={() => setIsProjectFormOpen(false)} className="h-12 px-6 rounded-lg font-bold text-slate-300 hover:text-white transition bg-slate-600 hover:bg-slate-700">Cancel</button>
+                                            <button onClick={handleAddProject} className="h-12 px-6 rounded-lg font-bold text-white transition hover:scale-105 bg-gradient-to-br from-blue-500 to-sky-600">Add Project</button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
-                        </details>
+                        ) : (
+                            <div className="mb-6 text-center">
+                                <button onClick={() => setIsProjectFormOpen(true)} className="bg-slate-800/50 backdrop-blur-md hover:bg-slate-700/50 border-2 border-slate-700/80 text-white font-semibold py-3 px-6 rounded-lg transition-colors w-full sm:w-auto">
+                                    + Add New Project
+                                </button>
+                            </div>
+                        )}
 
                         <Panel title="My Projects">
                             <div className="flex flex-col sm:flex-row justify-between items-center mb-4 gap-2">
@@ -2176,53 +2186,57 @@ const GoalsPage: React.FC<GoalsPageProps> = (props) => {
                 )}
                 {activeTab === 'targets' && (
                      <div className="space-y-6 animate-fadeIn">
-                        
-                        <details className="group bg-slate-800/50 rounded-xl border border-slate-700/80 transition-[max-height] duration-500 overflow-hidden">
-                             <summary className="p-4 font-bold text-lg text-white cursor-pointer list-none flex justify-between items-center hover:bg-slate-700/20">
-                                ✨ Add New Target
-                                <svg className="w-5 h-5 text-white/70 transform transition-transform group-open:rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                                </svg>
-                            </summary>
-                            <div className="p-4 border-t border-slate-700">
+                        {isTargetFormOpen ? (
+                             <div className="bg-slate-800/50 backdrop-blur-md rounded-xl p-4 sm:p-6 border border-slate-700/80 animate-fadeIn">
+                                <h2 className="text-2xl font-bold text-white mb-4 text-center">Add New Target</h2>
                                <div className="space-y-4">
-                                    <input type="text" value={newTarget} onChange={e => setNewTarget(e.target.value)} placeholder="What's a specific, measurable goal?" className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50" />
+                                    <input type="text" value={newTarget} onChange={e => setNewTarget(e.target.value)} placeholder="What's a specific, measurable goal?" className="w-full bg-slate-900/50 border-2 border-slate-700 rounded-lg p-3 text-white placeholder:text-slate-400 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400" />
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                         <div>
-                                            <label className="text-xs text-white/70 mb-1">Start Date</label>
-                                            <input type="date" value={newTargetStartDate} onChange={e => setNewTargetStartDate(e.target.value)} className="bg-white/20 border border-white/30 rounded-lg p-3 text-white/80 w-full text-center" style={{colorScheme: 'dark'}}/>
+                                            <label className="text-xs text-slate-300 mb-1 block">Start Date</label>
+                                            <input type="date" value={newTargetStartDate} onChange={e => setNewTargetStartDate(e.target.value)} className="w-full bg-slate-900/50 border-2 border-slate-700 rounded-lg p-3 text-white/80 text-center" style={{colorScheme: 'dark'}}/>
                                         </div>
                                         <div>
-                                            <label className="text-xs text-white/70 mb-1">Deadline *</label>
-                                            <input type="date" value={newDeadline} onChange={e => setNewDeadline(e.target.value)} required className="bg-white/20 border border-white/30 rounded-lg p-3 text-white/80 w-full text-center" style={{colorScheme: 'dark'}}/>
+                                            <label className="text-xs text-slate-300 mb-1 block">Deadline *</label>
+                                            <input type="date" value={newDeadline} onChange={e => setNewDeadline(e.target.value)} required className="w-full bg-slate-900/50 border-2 border-slate-700 rounded-lg p-3 text-white/80 text-center" style={{colorScheme: 'dark'}}/>
                                         </div>
                                     </div>
                                     <div>
-                                        <label className="text-xs text-white/70 mb-1 flex items-center gap-1.5">
+                                        <label className="text-xs text-slate-300 mb-1 flex items-center gap-1.5">
                                             Completion Mode
                                             <ExplanationTooltip title="Completion Mode" content="<strong>Manual:</strong> You check off the target yourself.<br/><strong>Focus Minutes:</strong> Automatically completes when you log enough focus minutes on tasks with specific tags." />
                                         </label>
-                                        <select value={newCompletionMode} onChange={e => setNewCompletionMode(e.target.value as any)} className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white focus:outline-none focus:bg-white/30 focus:border-white/50">
-                                            <option value="manual" className="bg-gray-800">Manual</option>
-                                            <option value="focus_minutes" className="bg-gray-800">Focus Minutes</option>
+                                        <select value={newCompletionMode} onChange={e => setNewCompletionMode(e.target.value as any)} className="w-full bg-slate-900/50 border-2 border-slate-700 rounded-lg p-3 text-white focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400">
+                                            <option value="manual" className="bg-slate-900">Manual</option>
+                                            <option value="focus_minutes" className="bg-slate-900">Focus Minutes</option>
                                         </select>
                                     </div>
                                     {newCompletionMode === 'focus_minutes' && (
                                          <div className="space-y-2 animate-fadeIn">
-                                            <input type="text" value={newTags} onChange={e => setNewTags(e.target.value)} placeholder="Tags to track (e.g., coding, research)" className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50" />
-                                            <input type="number" value={newTargetMinutes} onChange={e => setNewTargetMinutes(e.target.value)} placeholder="Target Minutes (e.g., 600 for 10h)" className="w-full bg-white/20 border border-white/30 rounded-lg p-3 text-white placeholder:text-white/60 focus:outline-none focus:bg-white/30 focus:border-white/50" />
+                                            <input type="text" value={newTags} onChange={e => setNewTags(e.target.value)} placeholder="Tags to track (e.g., coding, research)" className="w-full bg-slate-900/50 border-2 border-slate-700 rounded-lg p-3 text-white placeholder:text-slate-400 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400" />
+                                            <input type="number" value={newTargetMinutes} onChange={e => setNewTargetMinutes(e.target.value)} placeholder="Target Minutes (e.g., 600 for 10h)" className="w-full bg-slate-900/50 border-2 border-slate-700 rounded-lg p-3 text-white placeholder:text-slate-400 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400" />
                                         </div>
                                     )}
                                     <div className="flex flex-wrap justify-between items-end gap-4 pt-1">
                                         <div>
-                                            <label className="text-xs text-white/70 mb-1">Priority</label>
+                                            <label className="text-xs text-slate-300 mb-1 block">Priority</label>
                                             <PrioritySelector priority={newTargetPriority} setPriority={setNewTargetPriority} />
                                         </div>
-                                        <button onClick={handleAddTarget} className="h-12 px-6 rounded-lg font-bold text-white transition hover:scale-105 bg-gradient-to-br from-purple-500 to-indigo-600">Add Target</button>
+                                        <div className="flex items-center gap-2">
+                                            <button onClick={() => setIsTargetFormOpen(false)} className="h-12 px-6 rounded-lg font-bold text-slate-300 hover:text-white transition bg-slate-600 hover:bg-slate-700">Cancel</button>
+                                            <button onClick={handleAddTarget} className="h-12 px-6 rounded-lg font-bold text-white transition hover:scale-105 bg-gradient-to-br from-purple-500 to-indigo-600">Add Target</button>
+                                        </div>
                                     </div>
                                </div>
                             </div>
-                        </details>
+                        ) : (
+                             <div className="mb-6 text-center">
+                                <button onClick={() => setIsTargetFormOpen(true)} className="bg-slate-800/50 backdrop-blur-md hover:bg-slate-700/50 border-2 border-slate-700/80 text-white font-semibold py-3 px-6 rounded-lg transition-colors w-full sm:w-auto">
+                                    + Add New Target
+                                </button>
+                            </div>
+                        )}
+                        
 
                         <Panel title="Key Targets">
                             <div className="flex flex-col sm:flex-row justify-between items-center mb-4 gap-2">
