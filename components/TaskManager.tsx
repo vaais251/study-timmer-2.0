@@ -546,131 +546,132 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasksToday, tasksForTomorrow,
     const tomorrowTasksCount = tasksForTomorrow.length;
 
     return (
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-            {/* Left Column: Today's Workspace */}
-            <div className="lg:col-span-3 space-y-6">
-                <div className="bg-slate-800/50 backdrop-blur-md rounded-xl p-4 sm:p-6 border border-slate-700/80 animate-slideUp">
-                    <h2 className="text-2xl font-bold text-white mb-4">Add Task for Today</h2>
-                    <TaskInputGroup 
-                        onAddTask={onAddTask}
-                        placeholder="What's your main focus today?"
-                        buttonText="Add"
-                        buttonClass="bg-gradient-to-br from-green-500 to-emerald-600"
-                        projects={projects}
-                        onAddProject={onAddProject}
-                        isPlanning={false}
-                    />
-                </div>
-                <div className="bg-slate-800/50 backdrop-blur-md rounded-xl p-4 sm:p-6 border border-slate-700/80 animate-slideUp">
-                    <div className="flex justify-between items-center mb-2">
-                        <h2 className="text-2xl font-bold text-white">Today's Focus</h2>
-                        <button
-                            onClick={() => onSortTodayByChange(todaySortBy === 'default' ? 'priority' : 'default')}
-                            className="text-xs text-cyan-300 hover:text-cyan-200 font-semibold px-3 py-1 rounded-full hover:bg-white/10 transition"
-                            aria-label={`Sort tasks by ${todaySortBy === 'default' ? 'priority' : 'default order'}`}
-                        >
-                            Sort by: {todaySortBy === 'default' ? 'Default' : 'Priority'}
-                        </button>
-                    </div>
-                    <CategoryFocusDropdown tasks={tasksToday} settings={settings} title="Est. Focus by Category" />
-                    <ul className="max-h-96 overflow-y-auto pr-2" onDragOver={(e) => e.preventDefault()}>
-                        {tasksToday.map((task) => (
-                            <TaskItem 
-                                key={task.id} 
-                                task={task} 
-                                isCompleted={false} 
-                                settings={settings}
-                                projects={projects}
-                                onDelete={onDeleteTask} 
-                                onMove={onMoveTask}
-                                onUpdateTaskTimers={onUpdateTaskTimers}
-                                onUpdateTask={onUpdateTask}
-                                isJustAdded={task.id === justAddedTaskId}
-                                dragProps={todaySortBy === 'default' ? { 
-                                    draggable: true, 
-                                    onDragStart: (e: React.DragEvent<HTMLLIElement>) => handleDragStartToday(e, tasksToday.findIndex(t => t.id === task.id)),
-                                    onDragEnter: (e: React.DragEvent<HTMLLIElement>) => handleDragEnterToday(e, tasksToday.findIndex(t => t.id === task.id)),
-                                    onDragEnd: handleDropToday
-                                } : undefined}
-                            />
-                        ))}
-                        {tasksToday.length === 0 && completedToday.length === 0 && <p className="text-center text-white/60 p-4">All done! Add a new task to get started.</p>}
-                    </ul>
-                    {completedToday.length > 0 && (
-                        <details className="group mt-4 pt-4 border-t border-slate-700">
-                            <summary className="cursor-pointer text-slate-400 hover:text-white font-semibold list-none">
-                                <span className="group-open:hidden">► Show {completedToday.length} Completed</span>
-                                <span className="hidden group-open:inline">▼ Hide {completedToday.length} Completed</span>
-                            </summary>
-                            <ul className="mt-2 space-y-2">
-                                {completedToday.map(task => (
-                                    <TaskItem key={task.id} task={task} isCompleted={true} settings={settings} projects={projects} onDelete={onDeleteTask} onUpdateTaskTimers={onUpdateTaskTimers} onUpdateTask={onUpdateTask} onMarkTaskIncomplete={onMarkTaskIncomplete} />
-                                ))}
-                            </ul>
-                        </details>
-                    )}
-                </div>
+        <div className="space-y-6">
+            {/* "Add Task for Today" Panel */}
+            <div className="bg-slate-800/50 backdrop-blur-md rounded-xl p-4 sm:p-6 border border-slate-700/80 animate-slideUp">
+                <h2 className="text-2xl font-bold text-white mb-4">Add Task for Today</h2>
+                <TaskInputGroup 
+                    onAddTask={onAddTask}
+                    placeholder="What's your main focus today?"
+                    buttonText="Add"
+                    buttonClass="bg-gradient-to-br from-green-500 to-emerald-600"
+                    projects={projects}
+                    onAddProject={onAddProject}
+                    isPlanning={false}
+                />
             </div>
 
-            {/* Right Column: Lookahead */}
-            <div className="lg:col-span-2 space-y-6">
-                <div className="bg-slate-800/50 backdrop-blur-md rounded-xl p-4 sm:p-6 border border-slate-700/80 animate-slideUp">
-                    <h2 className="text-2xl font-bold text-white mb-4">Plan Ahead</h2>
-                    <TaskInputGroup 
-                        onAddTask={onAddTask}
-                        placeholder="Plan for the future..."
-                        buttonText="Plan"
-                        buttonClass="bg-gradient-to-br from-amber-500 to-orange-600"
-                        projects={projects}
-                        onAddProject={onAddProject}
-                        isPlanning={true}
-                    />
+            {/* "Today's Focus" Panel */}
+            <div className="bg-slate-800/50 backdrop-blur-md rounded-xl p-4 sm:p-6 border border-slate-700/80 animate-slideUp">
+                <div className="flex justify-between items-center mb-2">
+                    <h2 className="text-2xl font-bold text-white">Today's Focus</h2>
+                    <button
+                        onClick={() => onSortTodayByChange(todaySortBy === 'default' ? 'priority' : 'default')}
+                        className="text-xs text-cyan-300 hover:text-cyan-200 font-semibold px-3 py-1 rounded-full hover:bg-white/10 transition"
+                        aria-label={`Sort tasks by ${todaySortBy === 'default' ? 'priority' : 'default order'}`}
+                    >
+                        Sort by: {todaySortBy === 'default' ? 'Default' : 'Priority'}
+                    </button>
                 </div>
-                <div className="bg-slate-800/50 backdrop-blur-md rounded-xl p-4 sm:p-6 border border-slate-700/80 animate-slideUp">
-                    <h3 className="text-xl font-bold text-white mb-2">Tomorrow</h3>
-                    {tomorrowTasksCount > 0 && <CategoryFocusDropdown tasks={tasksForTomorrow} settings={settings} title="Est. Focus by Category" />}
-                    <ul className="max-h-48 overflow-y-auto pr-2">
-                        {tasksForTomorrow.map((task) => (
-                            <TaskItem 
-                               key={task.id} 
-                               task={task} 
-                               isCompleted={false} 
-                               settings={settings} 
-                               projects={projects}
-                               onDelete={onDeleteTask} 
-                               onUpdateTaskTimers={onUpdateTaskTimers}
-                               onUpdateTask={onUpdateTask}
-                               isTomorrowTask={true}
-                               isJustAdded={task.id === justAddedTaskId}
-                               onBringTaskForward={onBringTaskForward}
-                            />
-                        ))}
-                        {tasksForTomorrow.length === 0 && <p className="text-center text-white/60 p-4">No tasks planned for tomorrow.</p>}
-                    </ul>
-                </div>
+                <CategoryFocusDropdown tasks={tasksToday} settings={settings} title="Est. Focus by Category" />
+                <ul className="max-h-96 overflow-y-auto pr-2" onDragOver={(e) => e.preventDefault()}>
+                    {tasksToday.map((task) => (
+                        <TaskItem 
+                            key={task.id} 
+                            task={task} 
+                            isCompleted={false} 
+                            settings={settings}
+                            projects={projects}
+                            onDelete={onDeleteTask} 
+                            onMove={onMoveTask}
+                            onUpdateTaskTimers={onUpdateTaskTimers}
+                            onUpdateTask={onUpdateTask}
+                            isJustAdded={task.id === justAddedTaskId}
+                            dragProps={todaySortBy === 'default' ? { 
+                                draggable: true, 
+                                onDragStart: (e: React.DragEvent<HTMLLIElement>) => handleDragStartToday(e, tasksToday.findIndex(t => t.id === task.id)),
+                                onDragEnter: (e: React.DragEvent<HTMLLIElement>) => handleDragEnterToday(e, tasksToday.findIndex(t => t.id === task.id)),
+                                onDragEnd: handleDropToday
+                            } : undefined}
+                        />
+                    ))}
+                    {tasksToday.length === 0 && completedToday.length === 0 && <p className="text-center text-white/60 p-4">All done! Add a new task to get started.</p>}
+                </ul>
+                {completedToday.length > 0 && (
+                    <details className="group mt-4 pt-4 border-t border-slate-700">
+                        <summary className="cursor-pointer text-slate-400 hover:text-white font-semibold list-none">
+                            <span className="group-open:hidden">► Show {completedToday.length} Completed</span>
+                            <span className="hidden group-open:inline">▼ Hide {completedToday.length} Completed</span>
+                        </summary>
+                        <ul className="mt-2 space-y-2">
+                            {completedToday.map(task => (
+                                <TaskItem key={task.id} task={task} isCompleted={true} settings={settings} projects={projects} onDelete={onDeleteTask} onUpdateTaskTimers={onUpdateTaskTimers} onUpdateTask={onUpdateTask} onMarkTaskIncomplete={onMarkTaskIncomplete} />
+                            ))}
+                        </ul>
+                    </details>
+                )}
+            </div>
 
-                <div className="bg-slate-800/50 backdrop-blur-md rounded-xl p-4 sm:p-6 border border-slate-700/80 animate-slideUp">
-                    <h3 className="text-xl font-bold text-white mb-2">Future</h3>
-                    <ul className="max-h-48 overflow-y-auto pr-2">
-                        {tasksFuture.map((task) => (
-                            <TaskItem 
-                               key={task.id} 
-                               task={task} 
-                               isCompleted={false} 
-                               settings={settings} 
-                               projects={projects}
-                               onDelete={onDeleteTask} 
-                               onUpdateTaskTimers={onUpdateTaskTimers}
-                               onUpdateTask={onUpdateTask}
-                               isTomorrowTask={true}
-                               displayDate={task.due_date}
-                               isJustAdded={task.id === justAddedTaskId}
-                               onBringTaskForward={onBringTaskForward}
-                            />
-                        ))}
-                        {tasksFuture.length === 0 && <p className="text-center text-white/60 p-4">No future tasks scheduled.</p>}
-                    </ul>
-                </div>
+            {/* "Plan Ahead" Panel */}
+            <div className="bg-slate-800/50 backdrop-blur-md rounded-xl p-4 sm:p-6 border border-slate-700/80 animate-slideUp">
+                <h2 className="text-2xl font-bold text-white mb-4">Plan Ahead</h2>
+                <TaskInputGroup 
+                    onAddTask={onAddTask}
+                    placeholder="Plan for the future..."
+                    buttonText="Plan"
+                    buttonClass="bg-gradient-to-br from-amber-500 to-orange-600"
+                    projects={projects}
+                    onAddProject={onAddProject}
+                    isPlanning={true}
+                />
+            </div>
+
+            {/* "Tomorrow" Panel */}
+            <div className="bg-slate-800/50 backdrop-blur-md rounded-xl p-4 sm:p-6 border border-slate-700/80 animate-slideUp">
+                <h3 className="text-xl font-bold text-white mb-2">Tomorrow</h3>
+                {tomorrowTasksCount > 0 && <CategoryFocusDropdown tasks={tasksForTomorrow} settings={settings} title="Est. Focus by Category" />}
+                <ul className="max-h-48 overflow-y-auto pr-2">
+                    {tasksForTomorrow.map((task) => (
+                        <TaskItem 
+                           key={task.id} 
+                           task={task} 
+                           isCompleted={false} 
+                           settings={settings} 
+                           projects={projects}
+                           onDelete={onDeleteTask} 
+                           onUpdateTaskTimers={onUpdateTaskTimers}
+                           onUpdateTask={onUpdateTask}
+                           isTomorrowTask={true}
+                           isJustAdded={task.id === justAddedTaskId}
+                           onBringTaskForward={onBringTaskForward}
+                        />
+                    ))}
+                    {tasksForTomorrow.length === 0 && <p className="text-center text-white/60 p-4">No tasks planned for tomorrow.</p>}
+                </ul>
+            </div>
+
+            {/* "Future" Panel */}
+            <div className="bg-slate-800/50 backdrop-blur-md rounded-xl p-4 sm:p-6 border border-slate-700/80 animate-slideUp">
+                <h3 className="text-xl font-bold text-white mb-2">Future</h3>
+                <ul className="max-h-48 overflow-y-auto pr-2">
+                    {tasksFuture.map((task) => (
+                        <TaskItem 
+                           key={task.id} 
+                           task={task} 
+                           isCompleted={false} 
+                           settings={settings} 
+                           projects={projects}
+                           onDelete={onDeleteTask} 
+                           onUpdateTaskTimers={onUpdateTaskTimers}
+                           onUpdateTask={onUpdateTask}
+                           isTomorrowTask={true}
+                           displayDate={task.due_date}
+                           isJustAdded={task.id === justAddedTaskId}
+                           onBringTaskForward={onBringTaskForward}
+                        />
+                    ))}
+                    {tasksFuture.length === 0 && <p className="text-center text-white/60 p-4">No future tasks scheduled.</p>}
+                </ul>
             </div>
         </div>
     );

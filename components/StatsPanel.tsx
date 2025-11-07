@@ -11,6 +11,7 @@ interface StatsPanelProps {
     tasksToday: Task[];
     historicalLogs: DbDailyLog[];
     todaysHistory: PomodoroHistory[];
+    dailyLog: DbDailyLog; // Added for authoritative today's stats
 }
 
 const StatItem: React.FC<{ label: string, value: string | number }> = ({ label, value }) => (
@@ -20,7 +21,7 @@ const StatItem: React.FC<{ label: string, value: string | number }> = ({ label, 
     </div>
 );
 
-const StatsPanel: React.FC<StatsPanelProps> = ({ completedToday, tasksToday, historicalLogs, todaysHistory }) => {
+const StatsPanel: React.FC<StatsPanelProps> = ({ completedToday, tasksToday, historicalLogs, todaysHistory, dailyLog }) => {
     const [comparisonPeriod, setComparisonPeriod] = useState<'yesterday' | '7day'>('yesterday');
     const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -37,15 +38,9 @@ const StatsPanel: React.FC<StatsPanelProps> = ({ completedToday, tasksToday, his
         const allTasksForToday = [...completedToday, ...tasksToday];
         const taskMap = new Map<string, Task>(allTasksForToday.map(t => [t.id, t]));
 
-        // Authoritative focus time is derived from the history of non-stopwatch sessions.
-        const pomodoroSessionsToday = todaysHistory.filter(h => {
-            if (!h.task_id) return true; // Assume an unlinked session is a pomodoro.
-            const task = taskMap.get(h.task_id);
-            // A task is a pomodoro task if total_poms is not negative.
-            return task ? task.total_poms >= 0 : true;
-        });
-
-        const totalFocusToday = pomodoroSessionsToday.reduce((sum, h) => sum + (Number(h.duration_minutes) || 0), 0);
+        // Use the authoritative total focus minutes from the dailyLog prop.
+        // This fixes the inconsistency where this panel recalculated the value.
+        const totalFocusToday = dailyLog.total_focus_minutes;
 
         // Authoritative "Poms Done" is the sum of completed_poms on today's tasks, to match the task list.
         const pomsDone = allTasksForToday.reduce((acc, task) => {
@@ -154,7 +149,7 @@ const StatsPanel: React.FC<StatsPanelProps> = ({ completedToday, tasksToday, his
         
         return { card1, card2: { label: card2Label, value: card2Value }, card3, stats, chartData };
 
-    }, [historicalLogs, comparisonPeriod, completedToday, tasksToday, todaysHistory]);
+    }, [historicalLogs, comparisonPeriod, completedToday, tasksToday, todaysHistory, dailyLog]);
 
 
     const COLORS = ['#34D399', '#F87171'];

@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
@@ -1148,11 +1149,16 @@ const App: React.FC = () => {
                         });
                     }
                     
-                    // Now run the DB updates
-                    await handleTaskCompletion(taskJustWorkedOn, taskComment);
+                    // --- NEW, MORE ROBUST ORDER ---
                     const focusDuration = Math.round(sessionTotalTime / 60);
+
+                    // 1. Log the history first. This is the most critical record for stats and prevents data inconsistency.
                     await dbService.addPomodoroHistory(taskJustWorkedOn.id, focusDuration, focusLevel);
                     
+                    // 2. Then, update the task's pomodoro count. If this fails, the time is still logged correctly.
+                    await handleTaskCompletion(taskJustWorkedOn, taskComment);
+                    
+                    // 3. Finally, run recalculations which depend on the above data being correct.
                     const recalcPromises: Promise<any>[] = [];
                     if (taskJustWorkedOn.tags && taskJustWorkedOn.tags.length > 0) {
                        recalcPromises.push(dbService.recalculateProgressForAffectedTargets(taskJustWorkedOn.tags, session?.user.id || ''));

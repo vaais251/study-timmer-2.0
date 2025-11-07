@@ -143,6 +143,7 @@ const TimerPage: React.FC<TimerPageProps> = (props) => {
             
             <AmbientSounds />
             <StatsPanel
+                dailyLog={dailyLog}
                 completedToday={completedToday}
                 tasksToday={tasksToday}
                 historicalLogs={historicalLogs}
