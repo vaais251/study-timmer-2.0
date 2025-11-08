@@ -10,9 +10,10 @@ interface SettingsPageProps {
     canInstall: boolean;
     onInstall: () => void;
     isStandalone: boolean;
+    onTestCelebration: (message: string) => void;
 }
 
-const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onSave, canInstall, onInstall, isStandalone }) => {
+const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onSave, canInstall, onInstall, isStandalone, onTestCelebration }) => {
     return (
         <div className="space-y-6">
             <SettingsPanel 
@@ -52,6 +53,17 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onSave, canInstal
                         </p>
                     </div>
                 )}
+            </Panel>
+             <Panel title="🧪 Developer Tools">
+                 <p className="text-white/80 text-center text-sm mb-4">
+                    Use these tools to test application features.
+                </p>
+                <button
+                    onClick={() => onTestCelebration("This is a test of the celebration animation! 🎉")}
+                    className="w-full mt-2 p-3 bg-gradient-to-br from-purple-500 to-indigo-600 text-white font-bold rounded-lg transition hover:scale-105"
+                >
+                    Trigger Celebration Animation
+                </button>
             </Panel>
         </div>
     );

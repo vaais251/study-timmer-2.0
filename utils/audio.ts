@@ -44,6 +44,40 @@ export const playBreakEndSound = () => { playSound(659.25, 0.15); setTimeout(() 
 export const playAlertLoop = () => { playSound(1000, 0.3); setTimeout(() => playSound(1200, 0.3), 400); };
 export const playNotificationSound = () => { playSound(880.00, 0.1); setTimeout(() => playSound(1046.50, 0.2), 120); };
 
+// New function for the celebration animation
+export const playExplosionSound = (): void => {
+    try {
+        const ctx = getAudioContext();
+        if (!ctx) return;
+
+        // Create a buffer for white noise
+        const bufferSize = ctx.sampleRate * 0.5; // 0.5 seconds of noise
+        const noiseBuffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+        const output = noiseBuffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+            output[i] = Math.random() * 2 - 1;
+        }
+
+        // Create a source node
+        const noiseSource = ctx.createBufferSource();
+        noiseSource.buffer = noiseBuffer;
+
+        // Create a gain node for the envelope
+        const gainNode = ctx.createGain();
+        gainNode.gain.setValueAtTime(0, ctx.currentTime);
+        // Quick attack, then exponential decay
+        gainNode.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 0.01);
+        gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+
+        // Connect nodes and play
+        noiseSource.connect(gainNode).connect(ctx.destination);
+        noiseSource.start();
+        noiseSource.stop(ctx.currentTime + 0.5);
+    } catch (e) {
+        console.error("Error playing explosion sound:", e);
+    }
+};
+
 
 // --- White Noise ---
 export const playWhiteNoise = (): void => {

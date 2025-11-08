@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
@@ -247,9 +248,14 @@ const App: React.FC = () => {
     // --- Celebration Logic ---
     const triggerCelebration = useCallback((message: string) => {
         if (!celebration) {
+            resumeAudioContext(); // Ensure audio context is active for sound effects
             setCelebration({ message });
         }
     }, [celebration]);
+
+    const handleCelebrationComplete = useCallback(() => {
+        setCelebration(null);
+    }, []);
 
     const prevProjects = usePrevious(projects);
     useEffect(() => {
@@ -1883,6 +1889,7 @@ const App: React.FC = () => {
                     canInstall={!!installPrompt}
                     onInstall={handleInstallClick}
                     isStandalone={isStandalone}
+                    onTestCelebration={triggerCelebration}
                 />;
             default:
                 return <div>Page not found</div>;
@@ -1891,7 +1898,7 @@ const App: React.FC = () => {
 
     return (
         <div className="bg-slate-900 text-slate-200 min-h-screen" style={{fontFamily: `'Inter', sans-serif`}}>
-            {celebration && <CelebrationAnimation message={celebration.message} onComplete={() => setCelebration(null)} />}
+            {celebration && <CelebrationAnimation message={celebration.message} onComplete={handleCelebrationComplete} />}
             {toastNotification && <ToastNotification message={toastNotification} onDismiss={() => setToastNotification(null)} />}
             {isSyncing && <SyncIndicator />}
             <Navbar 

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { playExplosionSound, resumeAudioContext } from '../../utils/audio';
 
-declare var Tone: any;
 
 interface CelebrationAnimationProps {
     message: string;
@@ -11,10 +11,12 @@ interface CelebrationAnimationProps {
 const CelebrationAnimation: React.FC<CelebrationAnimationProps> = ({ message, onComplete }) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const animationFrameIdRef = useRef<number>(0);
-    const audioResourcesRef = useRef<{ synth: any | null }>({ synth: null });
 
     useEffect(() => {
         const onCompleteTimer = setTimeout(onComplete, 8000);
+
+        // Ensure audio context is active before any sounds attempt to play.
+        resumeAudioContext();
 
         const canvas = canvasRef.current;
         if (!canvas) return;
@@ -36,31 +38,6 @@ const CelebrationAnimation: React.FC<CelebrationAnimationProps> = ({ message, on
             }
         };
         window.addEventListener('resize', handleResize);
-
-        // --- AUDIO ---
-        let isAudioReady = false;
-        const initAudio = async () => {
-            if (isAudioReady) return;
-            try {
-                await Tone.start();
-                const explosionFilter = new Tone.Filter(800, "lowpass").toDestination();
-                audioResourcesRef.current.synth = new Tone.NoiseSynth({
-                    noise: { type: 'pink' },
-                    envelope: { attack: 0.001, decay: 0.8, sustain: 0, release: 0.8 },
-                    volume: -5
-                }).connect(explosionFilter);
-                isAudioReady = true;
-            } catch (e) {
-                console.error("Could not start audio context:", e);
-            }
-        };
-
-        const playExplosionSound = () => {
-            if (!isAudioReady || !audioResourcesRef.current.synth) return;
-            audioResourcesRef.current.synth.triggerAttackRelease("8n", Tone.now() + 0.1);
-        };
-
-        initAudio();
 
         // --- FIREWORKS ENGINE ---
         let particles: Particle[] = [];
@@ -158,7 +135,8 @@ const CelebrationAnimation: React.FC<CelebrationAnimationProps> = ({ message, on
             animationFrameIdRef.current = requestAnimationFrame(animate);
 
             if (!ctx) return;
-            ctx.fillStyle = 'rgba(15, 23, 42, 0.05)';
+            // Increased alpha for a faster fade, reducing "blinking" on lower framerates
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.15)';
             ctx.fillRect(0, 0, width, height);
             
             if (Math.random() < 0.05) {
@@ -188,9 +166,6 @@ const CelebrationAnimation: React.FC<CelebrationAnimationProps> = ({ message, on
             clearTimeout(onCompleteTimer);
             window.removeEventListener('resize', handleResize);
             cancelAnimationFrame(animationFrameIdRef.current);
-            if (audioResourcesRef.current.synth) {
-                audioResourcesRef.current.synth.dispose();
-            }
         };
     }, [onComplete]);
 
