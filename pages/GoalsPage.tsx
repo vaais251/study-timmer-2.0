@@ -671,11 +671,11 @@ const ActivityLog: React.FC<{ projectId: string, tasks: Task[] }> = ({ projectId
     );
 };
 
-const priorityBorderColors: { [key: number]: string } = {
-    1: 'border-red-500',
-    2: 'border-amber-500',
-    3: 'border-sky-500',
-    4: 'border-slate-500',
+const priorityLeftBorderColors: { [key: number]: string } = {
+    1: 'border-l-red-500',
+    2: 'border-l-amber-500',
+    3: 'border-l-sky-500',
+    4: 'border-l-slate-500',
 };
 
 const DaySelector: React.FC<{ selectedDays: number[], onDayToggle: (dayIndex: number) => void }> = ({ selectedDays, onDayToggle }) => {
@@ -839,15 +839,19 @@ const ProjectItem: React.FC<ProjectItemProps> = ({ project, tasks, onUpdateProje
         );
     }
     
-    const priorityClass = `border-l-4 ${priorityBorderColors[project.priority as number] ?? 'border-l-transparent'}`;
+    const priorityClass = project.priority && !isComplete
+        ? priorityLeftBorderColors[project.priority]
+        : 'border-l-transparent';
     const bgColor = isSelected ? 'bg-slate-700/50' : isComplete ? 'bg-slate-800/60' : isDue ? 'bg-red-900/50' : 'bg-slate-800/40 backdrop-blur-sm';
 
     return (
-        <div className={`rounded-xl ${priorityClass} ${bgColor} transition-all duration-300 border border-slate-700/60 hover:border-slate-600 ${isComplete ? 'opacity-60' : ''} ${isSelected ? 'ring-2 ring-cyan-400' : ''}`}>
+        <div className={`rounded-xl border-l-4 ${priorityClass} ${bgColor} border border-slate-700/60 transition-colors duration-300 ${isComplete ? 'opacity-60' : ''} ${isSelected ? 'ring-2 ring-cyan-400' : ''}`}>
             <div className="p-4 cursor-pointer" onClick={onSelect}>
                 <div className="flex justify-between items-start gap-2">
                     <div className="flex-grow min-w-0">
-                         <h4 className={`font-bold text-lg ${isComplete ? 'line-through text-white/60' : 'text-white'}`}>{project.name}</h4>
+                        <div className="flex items-center gap-2">
+                            <h4 className={`font-bold text-lg ${isComplete ? 'line-through text-white/60' : 'text-white'}`}>{project.name}</h4>
+                        </div>
                         <p className="text-xs text-white/50 mt-0.5">{getProjectDurationText(project)}</p>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
@@ -1034,7 +1038,9 @@ const TargetItem: React.FC<TargetItemProps> = ({ target, onUpdateTarget, onDelet
         bgColor = 'bg-red-900/50';
         textColor = 'text-red-300';
     }
-    const priorityClass = `border-l-4 ${priorityBorderColors[target.priority as number] ?? 'border-l-transparent'}`;
+    const priorityClass = target.priority && !isCompleted
+        ? priorityLeftBorderColors[target.priority]
+        : 'border-l-transparent';
 
     const isTimeBased = target.completion_mode === 'focus_minutes';
     const progress = isTimeBased ? Math.min(100, ((target.progress_minutes || 0) / (target.target_minutes || 1)) * 100) : 0;
@@ -1042,7 +1048,7 @@ const TargetItem: React.FC<TargetItemProps> = ({ target, onUpdateTarget, onDelet
     const isEditable = !isCompleted && !isOld;
 
     return (
-        <li className={`rounded-lg transition-all border border-slate-700/60 hover:border-slate-600 ${bgColor} ${priorityClass} ${isSelected ? 'ring-2 ring-cyan-400' : ''}`}>
+        <li className={`rounded-lg transition-colors ${bgColor} border-l-4 ${priorityClass} border border-slate-700/60 ${isSelected ? 'ring-2 ring-cyan-400' : ''}`}>
             <div className="p-4 cursor-pointer" onClick={onSelect}>
                 <div className="flex items-start justify-between gap-3">
                     <div className="flex items-start gap-3 flex-grow min-w-0">
