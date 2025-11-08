@@ -573,116 +573,119 @@ const AICoachPage: React.FC<AICoachPageProps> = (props) => {
 
 
     return (
-        <div>
-            <div className="bg-slate-800/50 rounded-xl border border-slate-700/80 flex flex-col h-[calc(100vh-10rem)] max-h-[800px]">
-                <div className="p-4 border-b border-slate-700/80 flex justify-between items-center">
-                    <h2 className="text-xl font-bold text-white">🤖 AI Coach</h2>
-                    <button
-                        onClick={() => setIsMemoryBankVisible(v => !v)}
-                        className="flex items-center gap-2 text-sm text-slate-300 hover:text-white bg-slate-700/50 px-3 py-2 rounded-lg transition-colors"
-                        aria-expanded={isMemoryBankVisible}
-                    >
-                        <BrainIcon />
-                        <span>{isMemoryBankVisible ? 'Hide Memory' : 'Show Memory'}</span>
-                    </button>
-                </div>
-                {/* Context Header */}
-                <div className="relative p-3 bg-slate-900/30 border-b border-slate-700/80 z-10">
-                    <div className="flex justify-center gap-1 mb-2 bg-black/20 p-1 rounded-full max-w-md mx-auto text-sm">
-                        {(['all', 'week', 'month', 'range'] as FilterMode[]).map(mode => (
+        <>
+            <div className={`grid grid-cols-1 ${isMemoryBankVisible ? 'lg:grid-cols-3 lg:gap-6' : ''}`}>
+                <div className={`${isMemoryBankVisible ? 'lg:col-span-2' : ''}`}>
+                    <div className="bg-slate-800/50 rounded-xl border border-slate-700/80 flex flex-col h-[calc(100vh-10rem)] max-h-[800px]">
+                        <div className="p-4 border-b border-slate-700/80 flex justify-between items-center">
+                            <h2 className="text-xl font-bold text-white">🤖 AI Coach</h2>
                             <button
-                                key={mode}
-                                onClick={() => setFilterMode(mode)}
-                                className={`flex-1 p-2 rounded-full font-bold transition-colors ${filterMode === mode ? 'bg-white/20 text-white' : 'text-white/60 hover:bg-white/10'}`}
+                                onClick={() => setIsMemoryBankVisible(v => !v)}
+                                className="flex items-center gap-2 text-sm text-slate-300 hover:text-white bg-slate-700/50 px-3 py-2 rounded-lg transition-colors"
+                                aria-expanded={isMemoryBankVisible}
                             >
-                                {mode === 'all' ? 'All Time' : mode === 'week' ? 'This Week' : mode === 'month' ? 'This Month' : 'Range'}
+                                <BrainIcon />
+                                <span>{isMemoryBankVisible ? 'Hide Memory' : 'Show Memory'}</span>
                             </button>
-                        ))}
-                    </div>
-                    {filterMode === 'range' && (
-                        <div className="flex items-center justify-center gap-2 mt-2 animate-fadeIn">
-                            <input type="date" value={dateRange.start} onChange={e => setDateRange(p => ({ ...p, start: e.target.value }))} className="bg-white/10 border border-white/20 rounded-lg p-2 text-white/80 text-sm text-center" style={{colorScheme: 'dark'}} />
-                            <span className="text-white/70">to</span>
-                            <input type="date" value={dateRange.end} onChange={e => setDateRange(p => ({ ...p, end: e.target.value }))} className="bg-white/10 border border-white/20 rounded-lg p-2 text-white/80 text-sm text-center" style={{colorScheme: 'dark'}} />
                         </div>
-                    )}
-                    {isDataLoading && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-teal-400 animate-pulse"></div>}
+                        {/* Context Header */}
+                        <div className="relative p-3 bg-slate-900/30 border-b border-slate-700/80 z-10">
+                            <div className="flex justify-center gap-1 mb-2 bg-black/20 p-1 rounded-full max-w-md mx-auto text-sm">
+                                {(['all', 'week', 'month', 'range'] as FilterMode[]).map(mode => (
+                                    <button
+                                        key={mode}
+                                        onClick={() => setFilterMode(mode)}
+                                        className={`flex-1 p-2 rounded-full font-bold transition-colors ${filterMode === mode ? 'bg-white/20 text-white' : 'text-white/60 hover:bg-white/10'}`}
+                                    >
+                                        {mode === 'all' ? 'All Time' : mode === 'week' ? 'This Week' : mode === 'month' ? 'This Month' : 'Range'}
+                                    </button>
+                                ))}
+                            </div>
+                            {filterMode === 'range' && (
+                                <div className="flex items-center justify-center gap-2 mt-2 animate-fadeIn">
+                                    <input type="date" value={dateRange.start} onChange={e => setDateRange(p => ({ ...p, start: e.target.value }))} className="bg-white/10 border border-white/20 rounded-lg p-2 text-white/80 text-sm text-center" style={{colorScheme: 'dark'}} />
+                                    <span className="text-white/70">to</span>
+                                    <input type="date" value={dateRange.end} onChange={e => setDateRange(p => ({ ...p, end: e.target.value }))} className="bg-white/10 border border-white/20 rounded-lg p-2 text-white/80 text-sm text-center" style={{colorScheme: 'dark'}} />
+                                </div>
+                            )}
+                            {isDataLoading && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-teal-400 animate-pulse"></div>}
+                        </div>
+                        
+                        {/* Chat History */}
+                        <div className="flex-grow overflow-y-auto p-4 space-y-6">
+                            {chatMessages.map((msg, index) => {
+                                if (msg.role === 'user') {
+                                    return (
+                                        <div key={index} className="flex items-end gap-3 justify-end animate-slideUp">
+                                            <div className="max-w-sm md:max-w-lg lg:max-w-xl p-3 rounded-b-xl rounded-tl-xl text-white shadow-md bg-teal-600">
+                                                <div className="prose prose-sm prose-invert" dangerouslySetInnerHTML={{ __html: formatAIResponse(msg.text) }} />
+                                            </div>
+                                            <div className="w-8 h-8 rounded-full bg-slate-600 flex items-center justify-center shadow-lg flex-shrink-0 text-lg">👤</div>
+                                        </div>
+                                    );
+                                }
+                                return (
+                                    <div key={index} className="flex items-start gap-3 animate-slideUp">
+                                        <div className="w-8 h-8 rounded-full bg-teal-500/80 flex items-center justify-center shadow-lg flex-shrink-0 text-lg">🤖</div>
+                                        <div className="max-w-sm md:max-w-lg lg:max-w-xl p-3 rounded-b-xl rounded-tr-xl text-white shadow-md bg-slate-700">
+                                            <div className="prose prose-sm prose-invert" dangerouslySetInnerHTML={{ __html: formatAIResponse(msg.text) }} />
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                            {isAgentLoading && (
+                                <div className="flex items-start gap-3 animate-slideUp">
+                                    <div className="w-8 h-8 rounded-full bg-teal-500/80 flex items-center justify-center shadow-lg flex-shrink-0 text-lg">🤖</div>
+                                    <div className="p-3 rounded-b-xl rounded-tr-xl bg-slate-700 text-white">
+                                        <div className="flex items-center gap-1.5">
+                                            <span className="w-2.5 h-2.5 bg-white/70 rounded-full animate-bounce-dots" style={{ animationDelay: '0s' }}></span>
+                                            <span className="w-2.5 h-2.5 bg-white/70 rounded-full animate-bounce-dots" style={{ animationDelay: '0.2s' }}></span>
+                                            <span className="w-2.5 h-2.5 bg-white/70 rounded-full animate-bounce-dots" style={{ animationDelay: '0.4s' }}></span>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                            <div ref={chatEndRef} />
+                        </div>
+
+                        {/* Input Form */}
+                        <div className="p-4 bg-slate-900/50 border-t border-slate-700/80">
+                            <form onSubmit={handleAgentSubmit} className="relative flex items-end gap-2">
+                                <textarea
+                                    ref={textareaRef}
+                                    value={userInput}
+                                    onChange={e => setUserInput(e.target.value)}
+                                    onKeyDown={handleKeyDown}
+                                    placeholder="Message your AI Coach..."
+                                    rows={1}
+                                    disabled={isAgentLoading || isDataLoading}
+                                    className="flex-grow bg-slate-700/50 border border-slate-600 rounded-2xl py-3 px-4 text-white placeholder:text-white/50 focus:outline-none focus:ring-2 focus:ring-teal-400 transition resize-none max-h-40 overflow-y-auto"
+                                />
+                                <button
+                                    type="submit"
+                                    disabled={isAgentLoading || isDataLoading || !userInput.trim()}
+                                    className="w-12 h-12 flex-shrink-0 bg-gradient-to-br from-teal-500 to-cyan-600 text-white rounded-full flex items-center justify-center transition-transform hover:scale-110 disabled:opacity-50 disabled:scale-100 disabled:cursor-not-allowed"
+                                    aria-label="Send message"
+                                >
+                                    <SendIcon />
+                                </button>
+                            </form>
+                            <p className="text-center text-xs text-slate-500 mt-2 px-2">Use <code>@personal</code> to save key info. E.g., <code>@personal My main goal is to finish my thesis.</code></p>
+                        </div>
+                    </div>
                 </div>
                 
-                {/* Chat History */}
-                <div className="flex-grow overflow-y-auto p-4 space-y-6">
-                    {chatMessages.map((msg, index) => {
-                        if (msg.role === 'user') {
-                            return (
-                                <div key={index} className="flex items-start gap-3 justify-end animate-slideUp">
-                                    <div className="max-w-xs md:max-w-md lg:max-w-lg p-3 rounded-b-xl rounded-tl-xl text-white shadow-md bg-teal-600">
-                                        <div className="prose prose-sm prose-invert" dangerouslySetInnerHTML={{ __html: formatAIResponse(msg.text) }} />
-                                    </div>
-                                    <div className="w-8 h-8 rounded-full bg-slate-600 flex items-center justify-center shadow-lg flex-shrink-0 text-lg">👤</div>
-                                </div>
-                            );
-                        }
-                        return (
-                            <div key={index} className="flex items-start gap-3 animate-slideUp">
-                                <div className="w-8 h-8 rounded-full bg-teal-500/80 flex items-center justify-center shadow-lg flex-shrink-0 text-lg">🤖</div>
-                                <div className="max-w-xs md:max-w-md lg:max-w-lg p-3 rounded-b-xl rounded-tr-xl text-white shadow-md bg-slate-700">
-                                    <div className="prose prose-sm prose-invert" dangerouslySetInnerHTML={{ __html: formatAIResponse(msg.text) }} />
-                                </div>
-                            </div>
-                        );
-                    })}
-                    {isAgentLoading && (
-                         <div className="flex items-start gap-3 animate-slideUp">
-                            <div className="w-8 h-8 rounded-full bg-teal-500/80 flex items-center justify-center shadow-lg flex-shrink-0 text-lg">🤖</div>
-                            <div className="p-3 rounded-b-xl rounded-tr-xl bg-slate-700 text-white">
-                                <div className="flex items-center gap-1.5">
-                                    <span className="w-2.5 h-2.5 bg-white/70 rounded-full animate-bounce-dots" style={{ animationDelay: '0s' }}></span>
-                                    <span className="w-2.5 h-2.5 bg-white/70 rounded-full animate-bounce-dots" style={{ animationDelay: '0.2s' }}></span>
-                                    <span className="w-2.5 h-2.5 bg-white/70 rounded-full animate-bounce-dots" style={{ animationDelay: '0.4s' }}></span>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-                    <div ref={chatEndRef} />
-                </div>
-
-                {/* Input Form */}
-                 <div className="p-4 bg-slate-900/50 border-t border-slate-700/80">
-                     <form onSubmit={handleAgentSubmit} className="relative flex items-end gap-2">
-                        <textarea
-                            ref={textareaRef}
-                            value={userInput}
-                            onChange={e => setUserInput(e.target.value)}
-                            onKeyDown={handleKeyDown}
-                            placeholder="Message your AI Coach..."
-                            rows={1}
-                            disabled={isAgentLoading || isDataLoading}
-                            className="flex-grow bg-slate-700/50 border border-slate-600 rounded-2xl py-3 px-4 text-white placeholder:text-white/50 focus:outline-none focus:ring-2 focus:ring-teal-400 transition resize-none max-h-40 overflow-y-auto"
-                        />
-                        <button
-                            type="submit"
-                            disabled={isAgentLoading || isDataLoading || !userInput.trim()}
-                            className="w-12 h-12 flex-shrink-0 bg-gradient-to-br from-teal-500 to-cyan-600 text-white rounded-full flex items-center justify-center transition-transform hover:scale-110 disabled:opacity-50 disabled:scale-100 disabled:cursor-not-allowed"
-                            aria-label="Send message"
-                        >
-                            <SendIcon />
-                        </button>
-                    </form>
-                    <p className="text-center text-xs text-slate-500 mt-2 px-2">Use <code>@personal</code> to save key info. E.g., <code>@personal My main goal is to finish my thesis.</code></p>
-                 </div>
+                {isMemoryBankVisible && (
+                    <div className="mt-6 lg:mt-0 lg:col-span-1 animate-slideUp">
+                        <AiMemoryManager memories={aiMemories} onDelete={handleDeleteMemory} />
+                    </div>
+                )}
             </div>
-             <style>{`
+            <style>{`
               .prose-invert ul { margin-top: 0.5em; margin-bottom: 0.5em; }
               .prose-invert li { margin-top: 0.2em; margin-bottom: 0.2em; }
             `}</style>
-            
-            {isMemoryBankVisible && (
-                <div className="mt-6 animate-slideUp">
-                    <AiMemoryManager memories={aiMemories} onDelete={handleDeleteMemory} />
-                </div>
-            )}
-            
-        </div>
+        </>
     );
 };
 

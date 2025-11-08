@@ -2250,6 +2250,9 @@ const FocusQualityTab: React.FC<{
         half_focus: 'Half Focus',
         none_focus: 'None Focus',
     };
+    
+    const [categoryChartView, setCategoryChartView] = useState<'absolute' | 'normalized'>('absolute');
+
 
     // --- Chart 1: Overall Focus Distribution (Pie) ---
     const focusDistributionData = useMemo(() => {
@@ -2340,7 +2343,7 @@ const FocusQualityTab: React.FC<{
         none_focus: true,
     });
 
-    const focusByCategoryData = useMemo(() => {
+    const { focusByCategoryData, normalizedFocusByCategoryData } = useMemo(() => {
         const taskMap = new Map<string, Task>(allTasks.map(t => [t.id, t]));
         const categoryMap = new Map<string, any>();
         pomodoroHistory.forEach(h => {
@@ -2357,7 +2360,21 @@ const FocusQualityTab: React.FC<{
         });
         const fullData = Array.from(categoryMap.values());
         fullData.sort((a,b) => (b.complete_focus + b.half_focus + b.none_focus) - (a.complete_focus + a.half_focus + a.none_focus));
-        return fullData;
+
+        const normalizedData = fullData.map(category => {
+            const total = category.complete_focus + category.half_focus + category.none_focus;
+            if (total === 0) {
+                return { ...category, complete_focus_pct: 0, half_focus_pct: 0, none_focus_pct: 0 };
+            }
+            return {
+                ...category,
+                complete_focus_pct: (category.complete_focus / total) * 100,
+                half_focus_pct: (category.half_focus / total) * 100,
+                none_focus_pct: (category.none_focus / total) * 100,
+            };
+        });
+
+        return { focusByCategoryData: fullData, normalizedFocusByCategoryData: normalizedData };
     }, [pomodoroHistory, allTasks]);
 
     useEffect(() => {
@@ -2389,8 +2406,9 @@ const FocusQualityTab: React.FC<{
     
     const handleCategoryBarLegendClick = (o: any) => {
         const { dataKey } = o;
-        if (dataKey in visibleCategoryBars) {
-            setVisibleCategoryBars(prev => ({ ...prev, [dataKey as keyof typeof visibleCategoryBars]: !prev[dataKey as keyof typeof visibleCategoryBars] }));
+        if (dataKey.startsWith('complete_focus') || dataKey.startsWith('half_focus') || dataKey.startsWith('none_focus')) {
+            const baseKey = dataKey.split('_pct')[0];
+            setVisibleCategoryBars(prev => ({ ...prev, [baseKey as keyof typeof visibleCategoryBars]: !prev[baseKey as keyof typeof visibleCategoryBars] }));
         }
     };
 
@@ -2398,19 +2416,67 @@ const FocusQualityTab: React.FC<{
         return focusByCategoryData.filter(d => selectedFocusCategories.includes(d.name));
     }, [focusByCategoryData, selectedFocusCategories]);
 
+    const visibleNormalizedCategoryData = useMemo(() => {
+        return normalizedFocusByCategoryData.filter(d => selectedFocusCategories.includes(d.name));
+    }, [normalizedFocusByCategoryData, selectedFocusCategories]);
+    
+    const NormalizedTooltip = ({ active, payload, label }: any) => {
+        if (active && payload && payload.length) {
+            const { complete_focus, half_focus, none_focus } = payload[0].payload;
+            const total = complete_focus + half_focus + none_focus;
+            return (
+                <div className="bg-slate-900/90 backdrop-blur-sm border border-slate-700 p-3 rounded-lg shadow-lg text-sm">
+                    <p className="font-bold text-white mb-2">{label}</p>
+                    <div className="space-y-1">
+                        {payload.map((pld: any) => {
+                             const rawValue = pld.dataKey === 'complete_focus_pct' ? complete_focus
+                               : pld.dataKey === 'half_focus_pct' ? half_focus
+                               : none_focus;
+                            return (
+                                <p key={pld.dataKey} style={{ color: pld.fill }}>
+                                    {`${pld.name}: `}
+                                    <span className="font-semibold">{`${pld.value.toFixed(1)}% (${rawValue} sessions)`}</span>
+                                </p>
+                            )
+                        })}
+                        <p className="text-white/70 border-t border-slate-700 pt-1 mt-1">Total: {total} sessions</p>
+                    </div>
+                </div>
+            );
+        }
+        return null;
+    };
+
     const focusByCategoryElement = (
-        <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={visibleCategoryData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.2)" />
-                <XAxis dataKey="name" stroke="rgba(255,255,255,0.7)" tick={{ fontSize: 10 }} />
-                <YAxis stroke="rgba(255,255,255,0.7)" allowDecimals={false} />
-                <Tooltip contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }} itemStyle={{ color: 'white' }} labelStyle={{ color: 'white', fontWeight: 'bold' }} />
-                <Legend wrapperStyle={{fontSize: "12px", cursor: 'pointer'}} onClick={handleCategoryBarLegendClick} />
-                <Bar dataKey="complete_focus" stackId="a" name={FOCUS_NAMES.complete_focus} fill={FOCUS_COLORS.complete_focus} hide={!visibleCategoryBars.complete_focus} />
-                <Bar dataKey="half_focus" stackId="a" name={FOCUS_NAMES.half_focus} fill={FOCUS_COLORS.half_focus} hide={!visibleCategoryBars.half_focus} />
-                <Bar dataKey="none_focus" stackId="a" name={FOCUS_NAMES.none_focus} fill={FOCUS_COLORS.none_focus} hide={!visibleCategoryBars.none_focus} />
-            </BarChart>
-        </ResponsiveContainer>
+        <>
+            {categoryChartView === 'absolute' ? (
+                <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={visibleCategoryData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.2)" />
+                        <XAxis dataKey="name" stroke="rgba(255,255,255,0.7)" tick={{ fontSize: 10 }} />
+                        <YAxis stroke="rgba(255,255,255,0.7)" allowDecimals={false} />
+                        <Tooltip contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }} itemStyle={{ color: 'white' }} labelStyle={{ color: 'white', fontWeight: 'bold' }} />
+                        <Legend wrapperStyle={{fontSize: "12px", cursor: 'pointer'}} onClick={handleCategoryBarLegendClick} />
+                        <Bar dataKey="complete_focus" stackId="a" name={FOCUS_NAMES.complete_focus} fill={FOCUS_COLORS.complete_focus} hide={!visibleCategoryBars.complete_focus} />
+                        <Bar dataKey="half_focus" stackId="a" name={FOCUS_NAMES.half_focus} fill={FOCUS_COLORS.half_focus} hide={!visibleCategoryBars.half_focus} />
+                        <Bar dataKey="none_focus" stackId="a" name={FOCUS_NAMES.none_focus} fill={FOCUS_COLORS.none_focus} hide={!visibleCategoryBars.none_focus} />
+                    </BarChart>
+                </ResponsiveContainer>
+            ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={visibleNormalizedCategoryData} layout="vertical">
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.2)" />
+                        <XAxis type="number" domain={[0, 100]} stroke="rgba(255,255,255,0.7)" unit="%" />
+                        <YAxis dataKey="name" type="category" stroke="rgba(255,255,255,0.7)" tick={{ fontSize: 10 }} width={80} interval={0} />
+                        <Tooltip content={<NormalizedTooltip />} cursor={{ fill: 'rgba(255,255,255,0.1)' }}/>
+                        <Legend wrapperStyle={{fontSize: "12px", cursor: 'pointer'}} onClick={handleCategoryBarLegendClick} />
+                        <Bar dataKey="complete_focus_pct" stackId="a" name={FOCUS_NAMES.complete_focus} fill={FOCUS_COLORS.complete_focus} hide={!visibleCategoryBars.complete_focus} />
+                        <Bar dataKey="half_focus_pct" stackId="a" name={FOCUS_NAMES.half_focus} fill={FOCUS_COLORS.half_focus} hide={!visibleCategoryBars.half_focus} />
+                        <Bar dataKey="none_focus_pct" stackId="a" name={FOCUS_NAMES.none_focus} fill={FOCUS_COLORS.none_focus} hide={!visibleCategoryBars.none_focus} />
+                    </BarChart>
+                </ResponsiveContainer>
+            )}
+        </>
     );
 
     return (
@@ -2434,39 +2500,45 @@ const FocusQualityTab: React.FC<{
                 ) : <p className="h-72 flex items-center justify-center text-white/60">No focus quality data recorded in this period.</p>}
             </div>
             <div>
-                 <div className="flex justify-between items-center gap-2 mb-2">
+                 <div className="flex flex-col sm:flex-row justify-between items-center gap-2 mb-4">
                      <div className="flex items-center gap-2">
                         <h3 className="text-lg font-semibold text-white">Focus Level by Category</h3>
                         <button onClick={() => openInsightModal('Focus Level by Category', focusByCategoryData, <div className="h-72">{focusByCategoryElement}</div>)} className="p-1 text-purple-400 hover:text-purple-300 transition" title="Get AI Insights"><SparklesIcon /></button>
                      </div>
-                     <div className="relative" ref={focusCategoryFilterRef}>
-                        <button onClick={() => setIsFocusCategoryFilterOpen(o => !o)} className="bg-white/10 hover:bg-white/20 text-white font-semibold py-2 px-4 rounded-lg inline-flex items-center text-xs">
-                            <span>Filter Categories ({selectedFocusCategories.length}/{focusByCategoryData.length})</span>
-                            <svg className="fill-current h-4 w-4 ml-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
-                        </button>
-                        {isFocusCategoryFilterOpen && (
-                            <div className="absolute z-10 mt-2 w-64 bg-slate-800 border border-slate-700 rounded-lg shadow-xl right-0">
-                                <ul className="max-h-60 overflow-y-auto p-2">
-                                    {focusByCategoryData.map(cat => (
-                                        <li key={cat.name}>
-                                            <label className="inline-flex items-center w-full p-2 rounded-md hover:bg-slate-700/50 cursor-pointer">
-                                                <input
-                                                    type="checkbox"
-                                                    className="h-4 w-4 rounded bg-slate-600 border-slate-500 text-teal-400 focus:ring-teal-400/50"
-                                                    checked={selectedFocusCategories.includes(cat.name)}
-                                                    onChange={() => handleFocusCategorySelection(cat.name)}
-                                                />
-                                                <span className="ml-3 text-sm text-white">{cat.name}</span>
-                                            </label>
-                                        </li>
-                                    ))}
-                                </ul>
-                            </div>
-                        )}
-                    </div>
+                     <div className="flex items-center gap-2">
+                        <div className="flex justify-center gap-1 bg-black/20 p-1 rounded-full text-xs">
+                            <button onClick={() => setCategoryChartView('absolute')} className={`px-3 py-1 rounded-full font-bold transition-colors ${categoryChartView === 'absolute' ? 'bg-white/20 text-white' : 'text-white/60 hover:bg-white/10'}`}>Count</button>
+                            <button onClick={() => setCategoryChartView('normalized')} className={`px-3 py-1 rounded-full font-bold transition-colors ${categoryChartView === 'normalized' ? 'bg-white/20 text-white' : 'text-white/60 hover:bg-white/10'}`}>Percent</button>
+                        </div>
+                        <div className="relative" ref={focusCategoryFilterRef}>
+                            <button onClick={() => setIsFocusCategoryFilterOpen(o => !o)} className="bg-white/10 hover:bg-white/20 text-white font-semibold py-2 px-4 rounded-lg inline-flex items-center text-xs">
+                                <span>Filter ({selectedFocusCategories.length}/{focusByCategoryData.length})</span>
+                                <svg className="fill-current h-4 w-4 ml-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
+                            </button>
+                            {isFocusCategoryFilterOpen && (
+                                <div className="absolute z-10 mt-2 w-64 bg-slate-800 border border-slate-700 rounded-lg shadow-xl right-0">
+                                    <ul className="max-h-60 overflow-y-auto p-2">
+                                        {focusByCategoryData.map(cat => (
+                                            <li key={cat.name}>
+                                                <label className="inline-flex items-center w-full p-2 rounded-md hover:bg-slate-700/50 cursor-pointer">
+                                                    <input
+                                                        type="checkbox"
+                                                        className="h-4 w-4 rounded bg-slate-600 border-slate-500 text-teal-400 focus:ring-teal-400/50"
+                                                        checked={selectedFocusCategories.includes(cat.name)}
+                                                        onChange={() => handleFocusCategorySelection(cat.name)}
+                                                    />
+                                                    <span className="ml-3 text-sm text-white">{cat.name}</span>
+                                                </label>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            )}
+                        </div>
+                     </div>
                 </div>
                 {focusByCategoryData.length > 0 ? (
-                    <div className="h-72">{focusByCategoryElement}</div>
+                    <div className="h-96">{focusByCategoryElement}</div>
                 ) : <p className="h-72 flex items-center justify-center text-white/60">No focus quality data for tagged tasks in this period.</p>}
             </div>
         </>
