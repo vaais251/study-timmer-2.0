@@ -92,6 +92,48 @@
         from { text-shadow: 0 0 6px #fff, 0 0 12px #c084fc, 0 0 20px #c084fc; }
         to { text-shadow: 0 0 12px #fff, 0 0 24px #c084fc, 0 0 40px #c084fc; }
     }
+  
+  /* --- New Celebration Animation Styles --- */
+  @keyframes text-glow {
+    0%, 100% {
+        text-shadow: 0 0 10px #fff, 0 0 20px #ffdd77, 0 0 30px #ffdd77, 0 0 40px #ffc700, 0 0 50px #ffc700;
+    }
+    50% {
+        text-shadow: 0 0 15px #fff, 0 0 25px #ffeeaa, 0 0 35px #ffeeaa, 0 0 45px #ffd54f, 0 0 55px #ffd54f;
+    }
+  }
+  @keyframes text-slide-in {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+  }
+
+  .celebration-title {
+    background: linear-gradient(120deg, #fef08a, #facc15, #eab308);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: text-glow 2.5s ease-in-out infinite, text-slide-in 1s ease-out forwards;
+  }
+
+  .celebration-message {
+    opacity: 0; /* Start hidden for animation */
+    animation: text-slide-in 1s ease-out 0.5s forwards; /* Delayed start */
+  }
+  
+  @keyframes fadeInOverlay {
+      from { opacity: 0; }
+      to { opacity: 1; }
+  }
+  .celebration-overlay {
+      background: radial-gradient(ellipse at center, rgba(45, 212, 191, 0.15) 0%, rgba(15, 23, 42, 0) 70%);
+      animation: fadeInOverlay 0.5s ease-out forwards;
+  }
+
   /* --- Animation Classes --- */
   .animate-fadeIn { animation: fadeIn 0.4s ease-out forwards; }
   .animate-slideUp { animation: slideUp 0.4s ease-out forwards; }
@@ -135,6 +177,7 @@
 </head>
 <body class="transition-colors duration-500 ease-in-out">
     <div id="root"></div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
     <script type="module" src="/index.tsx"></script>
 
     <!-- PWA Service Worker Registration -->

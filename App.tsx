@@ -21,6 +21,7 @@ import GoalsPage from './pages/GoalsPage';
 import CommandPalette from './components/CommandPalette';
 import NotificationPanel from './components/common/NotificationPanel';
 import { BellIcon } from './components/common/Icons';
+import CelebrationAnimation from './components/common/CelebrationAnimation';
 
 // Reads from localStorage to initialize the timer state synchronously.
 const getInitialAppState = (): { initialState: AppState; initialPhaseEndTime: number | null; wasRestored: boolean } => {
@@ -99,6 +100,15 @@ const augmentTargetsWithStatus = (targets: Target[]): Target[] => {
     });
 };
 
+// Custom hook to get the previous value of a prop or state
+function usePrevious<T>(value: T): T | undefined {
+  const ref = useRef<T>();
+  useEffect(() => {
+    ref.current = value;
+  });
+  return ref.current;
+}
+
 const App: React.FC = () => {
     const [session, setSession] = useState<Session | null>(null);
     const [isLoading, setIsLoading] = useState(true);
@@ -147,6 +157,9 @@ const App: React.FC = () => {
     // State for PWA installation prompt
     const [isStandalone, setIsStandalone] = useState(false);
     const [installPrompt, setInstallPrompt] = useState<any>(null);
+
+    // New state for celebration animations
+    const [celebration, setCelebration] = useState<{ message: string } | null>(null);
 
 
     const timerInterval = useRef<number | null>(null);
@@ -230,6 +243,63 @@ const App: React.FC = () => {
 
         return { dailyLog: newDailyLog, historicalLogs: newHistoricalLogs };
     }, [allPomodoroHistory]);
+
+    // --- Celebration Logic ---
+    const triggerCelebration = useCallback((message: string) => {
+        if (!celebration) {
+            setCelebration({ message });
+        }
+    }, [celebration]);
+
+    const prevProjects = usePrevious(projects);
+    useEffect(() => {
+        if (prevProjects && prevProjects.length > 0 && projects.length > 0) {
+            const prevCompletedIds = new Set(prevProjects.filter(p => p.completed_at).map(p => p.id));
+            const newlyCompletedProject = projects.find(p => p.completed_at && !prevCompletedIds.has(p.id));
+            if (newlyCompletedProject) {
+                triggerCelebration(`Project Complete: ${newlyCompletedProject.name}!`);
+            }
+        }
+    }, [projects, prevProjects, triggerCelebration]);
+
+    const prevTargets = usePrevious(targets);
+    useEffect(() => {
+        if (prevTargets && prevTargets.length > 0 && targets.length > 0) {
+            const prevCompletedIds = new Set(prevTargets.filter(t => t.completed_at).map(t => t.id));
+            const newlyCompletedTarget = targets.find(t => t.completed_at && !prevCompletedIds.has(t.id));
+            if (newlyCompletedTarget) {
+                triggerCelebration(`Target Achieved: ${newlyCompletedTarget.text}!`);
+            }
+        }
+    }, [targets, prevTargets, triggerCelebration]);
+
+    const prevTasksTodayLength = usePrevious(tasksToday.length);
+    useEffect(() => {
+        if (
+            prevTasksTodayLength !== undefined &&
+            prevTasksTodayLength > 0 &&
+            tasksToday.length === 0 &&
+            dailyLog.total_focus_minutes > 1
+        ) {
+            triggerCelebration("All daily tasks complete! Great job today! 🎉");
+        }
+    }, [tasksToday.length, prevTasksTodayLength, dailyLog.total_focus_minutes, triggerCelebration]);
+    
+    const prevDailyLog = usePrevious(dailyLog);
+    useEffect(() => {
+        if (prevDailyLog && dailyLog.total_focus_minutes > prevDailyLog.total_focus_minutes) {
+            const otherDaysMaxFocus = historicalLogs
+                .filter(log => log.date !== todayString)
+                .reduce((max, log) => Math.max(max, log.total_focus_minutes), 0);
+    
+            if (dailyLog.total_focus_minutes > otherDaysMaxFocus && prevDailyLog.total_focus_minutes <= otherDaysMaxFocus) {
+                 if (otherDaysMaxFocus > 0 || prevDailyLog.total_focus_minutes > 0) {
+                    triggerCelebration(`New Daily Record! ${dailyLog.total_focus_minutes} minutes of focus! 🔥`);
+                }
+            }
+        }
+    }, [dailyLog, prevDailyLog, historicalLogs, todayString, triggerCelebration]);
+    // --- End Celebration Logic ---
 
 
     useEffect(() => {
@@ -1025,7 +1095,7 @@ const App: React.FC = () => {
         const optimisticTasks = optimisticUpdatedTask 
             ? tasks.map(t => t.id === optimisticUpdatedTask!.id ? optimisticUpdatedTask! : t)
             : tasks;
-            
+        
         const nextMode = modalContent.nextMode;
         const currentSessionNumber = appState.currentSession;
         const sessionsPerCycle = settings.sessionsPerCycle;
@@ -1821,6 +1891,7 @@ const App: React.FC = () => {
 
     return (
         <div className="bg-slate-900 text-slate-200 min-h-screen" style={{fontFamily: `'Inter', sans-serif`}}>
+            {celebration && <CelebrationAnimation message={celebration.message} onComplete={() => setCelebration(null)} />}
             {toastNotification && <ToastNotification message={toastNotification} onDismiss={() => setToastNotification(null)} />}
             {isSyncing && <SyncIndicator />}
             <Navbar 
