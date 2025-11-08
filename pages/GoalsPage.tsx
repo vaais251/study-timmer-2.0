@@ -119,6 +119,43 @@ const DeadlineItemCard: React.FC<{ item: (Project & { itemType: 'project' }) | (
         };
     }, [item]);
     
+    const { workProgress, workProgressText, isProgressTrackable } = useMemo(() => {
+        if (item.itemType === 'project' && item.completion_criteria_type !== 'manual' && item.completion_criteria_value) {
+            const progress = (item.progress_value / item.completion_criteria_value) * 100;
+            const unit = item.completion_criteria_type === 'task_count' ? 'tasks' : 'min';
+            return {
+                workProgress: Math.min(100, progress),
+                workProgressText: `${item.progress_value}/${item.completion_criteria_value} ${unit}`,
+                isProgressTrackable: true,
+            };
+        }
+        if (item.itemType === 'target' && item.completion_mode === 'focus_minutes' && item.target_minutes) {
+            const progress = (item.progress_minutes / item.target_minutes) * 100;
+            return {
+                workProgress: Math.min(100, progress),
+                workProgressText: `${item.progress_minutes}/${item.target_minutes} min`,
+                isProgressTrackable: true,
+            };
+        }
+        return { workProgress: 0, workProgressText: '', isProgressTrackable: false };
+    }, [item]);
+
+    const workProgressColor = useMemo(() => {
+        if (!isProgressTrackable) return 'bg-green-500';
+        
+        if (timeProgress <= 0) return 'bg-green-500';
+
+        const difference = timeProgress - workProgress;
+
+        if (difference > 25) { // At Risk
+            return 'bg-red-500';
+        } else if (difference > 5) { // Falling behind
+            return 'bg-amber-500';
+        } else { // On track or ahead
+            return 'bg-green-500';
+        }
+    }, [workProgress, timeProgress, isProgressTrackable]);
+    
     const name = item.itemType === 'project' ? item.name : item.text;
 
     let urgencyClass = 'border-l-cyan-400';
@@ -140,7 +177,7 @@ const DeadlineItemCard: React.FC<{ item: (Project & { itemType: 'project' }) | (
     const badgeClass = item.itemType === 'project' ? 'bg-blue-500/30 text-blue-300' : 'bg-purple-500/30 text-purple-300';
 
     return (
-        <div className={`bg-slate-800/40 backdrop-blur-sm border border-slate-700/60 rounded-lg p-4 border-l-4 ${urgencyClass} space-y-3`}>
+        <div className={`bg-slate-800/40 backdrop-blur-sm border border-slate-700/60 rounded-lg p-4 border-l-4 ${urgencyClass} space-y-4 transition-all duration-300 hover:shadow-lg hover:border-slate-500`}>
             <div className="flex justify-between items-start gap-4">
                 <div className="flex-grow">
                     <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${badgeClass}`}>{item.itemType}</span>
@@ -151,17 +188,34 @@ const DeadlineItemCard: React.FC<{ item: (Project & { itemType: 'project' }) | (
                     <div className="text-xs text-slate-400">Deadline: {new Date(item.deadline + 'T00:00:00').toLocaleDateString()}</div>
                 </div>
             </div>
-            <div>
-                 <div className="flex justify-between items-center mb-1 text-xs text-slate-400">
-                    <span>Timeline</span>
-                    <span>{timeProgress.toFixed(0)}% elapsed</span>
+            <div className="space-y-3">
+                <div>
+                     <div className="flex justify-between items-center mb-1 text-xs text-slate-400">
+                        <span>Timeline</span>
+                        <span>{timeProgress.toFixed(0)}% elapsed</span>
+                    </div>
+                    <div className="w-full bg-black/30 rounded-full h-2.5 shadow-inner">
+                        <div
+                            className={`h-2.5 rounded-full transition-all duration-500 ${isOverdue ? 'bg-red-500' : daysLeft <= 3 ? 'bg-amber-500' : 'bg-cyan-500'}`}
+                            style={{ width: `${timeProgress}%` }}
+                        ></div>
+                    </div>
                 </div>
-                <div className="w-full bg-black/30 rounded-full h-2.5 shadow-inner">
-                    <div
-                        className={`h-2.5 rounded-full transition-all duration-500 ${isOverdue ? 'bg-red-500' : daysLeft <= 3 ? 'bg-amber-500' : 'bg-cyan-500'}`}
-                        style={{ width: `${timeProgress}%` }}
-                    ></div>
-                </div>
+                
+                {isProgressTrackable && (
+                    <div className="animate-fadeIn">
+                        <div className="flex justify-between items-center mb-1 text-xs text-slate-400">
+                            <span>Progress</span>
+                            <span className="font-semibold text-white">{workProgressText}</span>
+                        </div>
+                        <div className="w-full bg-black/30 rounded-full h-2.5 shadow-inner">
+                            <div
+                                className={`h-2.5 rounded-full transition-all duration-500 ${workProgressColor}`}
+                                style={{ width: `${workProgress}%` }}
+                            ></div>
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );
