@@ -524,15 +524,24 @@ const App: React.FC = () => {
         if (appState.isRunning) return;
 
         const currentTask = tasksToday[0];
-        const isCurrentStopwatch = currentTask?.total_poms < 0;
-
+        
         // If a session (countdown or stopwatch chunk) is paused mid-way, don't reset it.
         if (appState.timeRemaining > 0 && appState.timeRemaining < appState.sessionTotalTime) return;
         
         // Sync a pristine timer with the current task.
         if (appState.mode === 'focus') {
-            const newTime = isCurrentStopwatch ? 0 : (currentTask?.custom_focus_duration || settings.focusDuration) * 60;
-            const newTotalTime = isCurrentStopwatch ? (currentTask?.custom_focus_duration || settings.focusDuration) * 60 : newTime;
+            let newTime;
+            let newTotalTime;
+
+            if (tasksToday.length === 0) {
+                newTime = 0;
+                newTotalTime = 0;
+            } else {
+                const isCurrentStopwatch = currentTask?.total_poms < 0;
+                newTime = isCurrentStopwatch ? 0 : (currentTask?.custom_focus_duration || settings.focusDuration) * 60;
+                newTotalTime = isCurrentStopwatch ? (currentTask?.custom_focus_duration || settings.focusDuration) * 60 : newTime;
+            }
+
 
             if (appState.timeRemaining !== newTime || appState.sessionTotalTime !== newTotalTime) {
                 setAppState(prev => ({
@@ -885,22 +894,29 @@ const App: React.FC = () => {
         }));
     }, [stopTimer, settings.focusDuration, tasksToday]);
 
+    const playStartSound = useCallback(() => {
+         if (appState.mode === 'focus') playFocusStartSound(); else playBreakStartSound();
+    }, [appState.mode]);
+
     // Start Timer Logic
     const startTimer = useCallback(async () => {
         if (appState.isRunning) return;
+
+        if (appState.mode === 'focus' && tasksToday.length === 0) {
+            setToastNotification("Please add a task to start a focus session.");
+            return;
+        }
+        
         resumeAudioContext();
+        playStartSound();
         
         if (!isStopwatchMode) {
             setPhaseEndTime(Date.now() + appState.timeRemaining * 1000);
         }
         
         setAppState(prev => ({ ...prev, isRunning: true }));
-    }, [appState.isRunning, appState.timeRemaining, isStopwatchMode]);
+    }, [appState.isRunning, appState.timeRemaining, isStopwatchMode, appState.mode, tasksToday, playStartSound]);
     
-    const playStartSound = useCallback(() => {
-         if (appState.mode === 'focus') playFocusStartSound(); else playBreakStartSound();
-    }, [appState.mode]);
-
     // Phase Completion Logic
     const completePhase = useCallback(async () => {
         stopTimer();
@@ -1012,7 +1028,6 @@ const App: React.FC = () => {
     // --- END STATE PERSISTENCE LOGIC ---
 
     const handleStartClick = () => {
-        playStartSound();
         startTimer();
     }
     
@@ -1124,30 +1139,38 @@ const App: React.FC = () => {
         
         let newTime;
         let newTotalTime;
+        let isNextStopwatch = false;
     
         if (nextMode === 'break') {
             newTime = (taskJustWorkedOn?.custom_break_duration || settings.breakDuration) * 60;
             newTotalTime = newTime;
         } else { // focus
-            const isNextStopwatch = nextTaskForTimer?.total_poms < 0;
-            if (isNextStopwatch) {
+            if (!nextTaskForTimer) {
                 newTime = 0;
-                newTotalTime = (nextTaskForTimer?.custom_focus_duration || settings.focusDuration) * 60;
+                newTotalTime = 0;
             } else {
-                newTime = (nextTaskForTimer?.custom_focus_duration || settings.focusDuration) * 60;
-                newTotalTime = newTime;
+                isNextStopwatch = nextTaskForTimer.total_poms < 0;
+                if (isNextStopwatch) {
+                    newTime = 0;
+                    newTotalTime = (nextTaskForTimer.custom_focus_duration || settings.focusDuration) * 60;
+                } else {
+                    newTime = (nextTaskForTimer.custom_focus_duration || settings.focusDuration) * 60;
+                    newTotalTime = newTime;
+                }
             }
         }
         
-        const newEndTime = nextMode === 'break' ? Date.now() + newTime * 1000 : null;
-    
+        const shouldBeRunning = nextMode === 'break' || !!nextTaskForTimer;
+        // For countdowns (break or focus), phase end time is needed. For stopwatch, it's not.
+        const newEndTime = shouldBeRunning && !isNextStopwatch ? Date.now() + newTime * 1000 : null;
+
         setAppState(prev => ({
             ...prev,
             mode: nextMode,
             currentSession: newCurrentSession,
             timeRemaining: newTime,
             sessionTotalTime: newTotalTime,
-            isRunning: true,
+            isRunning: shouldBeRunning,
         }));
         setPhaseEndTime(newEndTime);
         setTasks(optimisticTasks);
@@ -1808,7 +1831,7 @@ const App: React.FC = () => {
                     tasksToday={tasksToday}
                     completedToday={completedToday}
                     dailyLog={dailyLog}
-                    startTimer={handleStartClick}
+                    startTimer={startTimer}
                     stopTimer={stopTimer}
                     resetTimer={resetTimer}
                     navigateToSettings={() => setPage('settings')}
@@ -1886,10 +1909,10 @@ const App: React.FC = () => {
                 return <SettingsPage 
                     settings={settings} 
                     onSave={handleSaveSettings}
+                    onTestCelebration={() => triggerCelebration("This is a test celebration! 🥳")}
                     canInstall={!!installPrompt}
                     onInstall={handleInstallClick}
                     isStandalone={isStandalone}
-                    onTestCelebration={triggerCelebration}
                 />;
             default:
                 return <div>Page not found</div>;

@@ -1,4 +1,5 @@
 
+
 import React, { useMemo } from 'react';
 import { AppState, Settings, Task, DbDailyLog, PomodoroHistory } from '../types';
 import SessionInfo from '../components/SessionInfo';
@@ -69,6 +70,16 @@ const TimerPage: React.FC<TimerPageProps> = (props) => {
     }, [isStopwatchMode, currentTask, appState.mode, todaysHistory]);
 
     const displayTime = isStopwatchMode ? stopwatchBaseTime + appState.timeRemaining : appState.timeRemaining;
+
+    const noTaskMessage = useMemo(() => {
+        if (completedToday.length > 0 && tasksToday.length === 0) {
+            return "All tasks for today are complete! 🎉";
+        }
+        if (tasksToday.length === 0) {
+            return "Add a task in the 'Plan' tab to begin.";
+        }
+        return "No task selected"; // Fallback
+    }, [tasksToday.length, completedToday.length]);
     
     return (
         <div className="flex flex-col gap-6">
@@ -90,7 +101,7 @@ const TimerPage: React.FC<TimerPageProps> = (props) => {
                             {currentTask.text}
                         </p>
                     ) : (
-                        <p className="text-slate-400 italic">No task selected</p>
+                        <p className="text-slate-400 italic">{noTaskMessage}</p>
                     )}
                 </div>
 
