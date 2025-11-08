@@ -483,7 +483,21 @@ interface CategoryTimelineChartProps {
 
 const CategoryTimelineChart = React.memo(({ tasks, history, historyRange, openInsightModal }: CategoryTimelineChartProps) => {
     const [view, setView] = useState<'month' | 'week' | 'custom'>('week');
-    const [visibleTags, setVisibleTags] = useState<string[]>([]);
+    const [movingAveragePeriod, setMovingAveragePeriod] = useState(7);
+    const [visibility, setVisibility] = useState<{ [key: string]: boolean }>({});
+    const [showAverages, setShowAverages] = useState<{ [key: string]: boolean }>({});
+    const [isAvgDropdownOpen, setIsAvgDropdownOpen] = useState(false);
+    const avgDropdownRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (avgDropdownRef.current && !avgDropdownRef.current.contains(event.target as Node)) {
+                setIsAvgDropdownOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
 
     const { data, tags, top4Tags, overallCompletionRateData } = useMemo(() => {
         // 1. Determine Date Range
@@ -622,23 +636,47 @@ const CategoryTimelineChart = React.memo(({ tasks, history, historyRange, openIn
             .sort((a, b) => b[1] - a[1])
             .slice(0, 4)
             .map(([tag]) => tag);
+        
+        // 7. Calculate moving average
+        const finalDataWithAvg = finalFocusData.map(d => ({ ...d }));
+        for (let i = 0; i < finalDataWithAvg.length; i++) {
+            const windowData = finalDataWithAvg.slice(Math.max(0, i - (movingAveragePeriod - 1)), i + 1);
+            
+            sortedTags.forEach(tag => {
+                const sum = windowData.reduce((acc, day) => acc + ((day[tag] as number) || 0), 0);
+                const avg = windowData.length > 0 ? sum / windowData.length : 0;
+                (finalDataWithAvg[i] as any)[`${tag}_avg`] = avg;
+            });
+        }
 
-        return { data: finalFocusData, tags: sortedTags, top4Tags, overallCompletionRateData };
-    }, [view, tasks, history, historyRange]);
+        return { data: finalDataWithAvg, tags: sortedTags, top4Tags, overallCompletionRateData };
+    }, [view, tasks, history, historyRange, movingAveragePeriod]);
     
     useEffect(() => {
-        setVisibleTags(top4Tags);
-    }, [top4Tags]);
+        const newVisibility: { [key: string]: boolean } = {};
+        tags.forEach(tag => {
+            newVisibility[tag] = top4Tags.includes(tag);
+            newVisibility[`${tag}_avg`] = false;
+        });
+        setVisibility(newVisibility);
+        // Do not reset showAverages here, let it persist across re-renders
+    }, [tags, top4Tags]);
 
     const handleLegendClick = (o: any) => {
         const { dataKey } = o;
-        if (tags.includes(dataKey)) {
-            setVisibleTags(prev => 
-                prev.includes(dataKey) 
-                    ? prev.filter(t => t !== dataKey) 
-                    : [...prev, dataKey]
-            );
+        if (dataKey in visibility) {
+            setVisibility(prev => ({
+                ...prev,
+                [dataKey]: !prev[dataKey],
+            }));
         }
+    };
+
+    const handleToggleAverage = (tag: string) => {
+        setShowAverages(prev => ({
+            ...prev,
+            [tag]: !prev[tag]
+        }));
     };
 
     const generateColorFromString = (str: string) => {
@@ -658,20 +696,45 @@ const CategoryTimelineChart = React.memo(({ tasks, history, historyRange, openIn
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.2)" />
                 <XAxis dataKey="date" stroke="rgba(255,255,255,0.7)" tick={{ fontSize: 10 }} />
                 <YAxis stroke="rgba(255,255,255,0.7)" unit="m" />
-                <Tooltip contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }} itemStyle={{ color: 'white' }} labelStyle={{ color: 'white', fontWeight: 'bold' }} />
+                <Tooltip 
+                    contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }} 
+                    itemStyle={{ color: 'white' }} 
+                    labelStyle={{ color: 'white', fontWeight: 'bold' }}
+                    formatter={(value: number, name: string) => {
+                        if (name.includes('(Avg)')) {
+                            return [value.toFixed(1) + 'm', name];
+                        }
+                        return [value + 'm', name];
+                    }}
+                />
                 <Legend wrapperStyle={{fontSize: "12px", cursor: 'pointer'}} onClick={handleLegendClick}/>
                 {tags.map((tag) => (
-                    <Line 
-                        key={tag} 
-                        type="monotone" 
-                        dataKey={tag} 
-                        name={tag.charAt(0).toUpperCase() + tag.slice(1)}
-                        stroke={generateColorFromString(tag)} 
-                        strokeWidth={2}
-                        dot={{ r: 2 }}
-                        activeDot={{ r: 6 }}
-                        hide={!visibleTags.includes(tag)}
-                    />
+                    <React.Fragment key={tag}>
+                        <Line 
+                            type="monotone" 
+                            dataKey={tag} 
+                            name={tag.charAt(0).toUpperCase() + tag.slice(1)}
+                            stroke={generateColorFromString(tag)} 
+                            strokeWidth={2}
+                            dot={{ r: 2 }}
+                            activeDot={{ r: 6 }}
+                            hide={!visibility[tag]}
+                        />
+                        {showAverages[tag] && (
+                            <Line 
+                                key={`${tag}_avg`}
+                                type="monotone" 
+                                dataKey={`${tag}_avg`} 
+                                name={`${tag.charAt(0).toUpperCase() + tag.slice(1)} (Avg)`}
+                                stroke={generateColorFromString(tag)} 
+                                strokeDasharray="5 5"
+                                strokeWidth={2}
+                                dot={false}
+                                activeDot={{ r: 6 }}
+                                hide={!visibility[`${tag}_avg`]}
+                            />
+                        )}
+                    </React.Fragment>
                 ))}
             </LineChart>
         </ResponsiveContainer>
@@ -707,7 +770,7 @@ const CategoryTimelineChart = React.memo(({ tasks, history, historyRange, openIn
                         <SparklesIcon />
                     </button>
                 </div>
-                 <div className="flex justify-center gap-2 mb-4 bg-black/20 p-1 rounded-full max-w-md mx-auto">
+                 <div className="flex justify-center gap-2 mb-2 bg-black/20 p-1 rounded-full max-w-md mx-auto">
                     <button 
                         onClick={() => setView('week')} 
                         className={`flex-1 p-2 text-sm rounded-full font-bold transition-colors ${view === 'week' ? 'bg-white/20 text-white' : 'text-white/60 hover:bg-white/10'}`}
@@ -726,6 +789,45 @@ const CategoryTimelineChart = React.memo(({ tasks, history, historyRange, openIn
                     >
                         Align to Range
                     </button>
+                </div>
+                <div className="flex justify-center items-center gap-4 mb-4">
+                    <div className="flex items-center gap-2">
+                        <label htmlFor="moving-avg-period" className="text-sm text-white/70">Moving Avg:</label>
+                        <input
+                            id="moving-avg-period"
+                            type="number"
+                            value={movingAveragePeriod}
+                            onChange={e => setMovingAveragePeriod(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                            min="1"
+                            className="w-16 bg-slate-700/50 border border-slate-600 rounded-lg py-1 px-2 text-white focus:outline-none focus:ring-2 focus:ring-teal-400"
+                        />
+                    </div>
+                     <div className="relative" ref={avgDropdownRef}>
+                        <button onClick={() => setIsAvgDropdownOpen(prev => !prev)} className="bg-slate-700/50 border border-slate-600 rounded-lg py-1 px-3 text-white text-sm font-semibold flex items-center gap-1.5 hover:bg-slate-700">
+                            Show Averages
+                            <svg className={`w-4 h-4 transform transition-transform ${isAvgDropdownOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
+                        </button>
+                        {isAvgDropdownOpen && (
+                            <div className="absolute top-full right-0 mt-2 w-48 bg-slate-800 border border-slate-700 rounded-lg shadow-xl z-20 animate-scaleIn">
+                                <ul className="max-h-60 overflow-y-auto p-2 space-y-1">
+                                    {tags.map(tag => (
+                                        <li key={tag}>
+                                            <label className="flex items-center gap-2 cursor-pointer p-1.5 rounded-md hover:bg-slate-700/50">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={showAverages[tag] || false}
+                                                    onChange={() => handleToggleAverage(tag)}
+                                                    className="h-4 w-4 rounded bg-slate-600 border-slate-500 text-teal-400 focus:ring-teal-400/50"
+                                                />
+                                                <span className="text-sm text-white">{tag.charAt(0).toUpperCase() + tag.slice(1)}</span>
+                                            </label>
+                                        </li>
+                                    ))}
+                                    {tags.length === 0 && <li className="text-center text-xs text-white/60 p-2">No categories found.</li>}
+                                </ul>
+                            </div>
+                        )}
+                    </div>
                 </div>
                 {data.length > 0 && tags.length > 0 ? (
                      <div className="h-96 mt-4">
