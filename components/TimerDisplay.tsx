@@ -40,18 +40,15 @@ const TimerDisplay: React.FC<TimerDisplayProps> = ({ timeRemaining, totalTime, i
 
     return (
         <div className="relative h-80 sm:h-96 flex items-center justify-center my-4">
-            {/* LASER ANIMATION CONTAINER */}
+            {/* RIPPLE ANIMATION CONTAINER */}
             {isFocus && (
                 <div
-                    className="laser-container text-teal-400"
-                    style={{ opacity: isRunning ? 0.8 : 0 }}
+                    className="ripple-container text-teal-400"
+                    style={{ opacity: isRunning ? 0.4 : 0 }}
                 >
-                    <div className="laser-beam-rotator" style={{ animation: 'rotate-laser 22s linear infinite' }}>
-                        <div className="laser-beam"></div>
-                    </div>
-                    <div className="laser-beam-rotator" style={{ animation: 'rotate-laser 30s linear infinite reverse' }}>
-                        <div className="laser-beam" style={{ transform: 'rotate(90deg)' }}></div>
-                    </div>
+                    <div className="ripple" style={{ animationDelay: '0s' }}></div>
+                    <div className="ripple" style={{ animationDelay: '1.3s' }}></div>
+                    <div className="ripple" style={{ animationDelay: '2.6s' }}></div>
                 </div>
             )}
             <svg

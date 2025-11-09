@@ -134,40 +134,42 @@
       animation: fadeInOverlay 0.5s ease-out forwards;
   }
 
-  /* --- Laser Focus Animation --- */
-  @keyframes rotate-laser {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
+  /* --- Ripple Animation --- */
+  @keyframes ripple-effect {
+    from {
+      transform: scale(0.3);
+      opacity: 0.8;
+      border-width: 4px;
+    }
+    to {
+      transform: scale(1.4);
+      opacity: 0;
+      border-width: 1px;
+    }
   }
-  @keyframes pulse-laser-glow {
-      from { opacity: 0.6; box-shadow: 0 0 2px currentColor; }
-      to { opacity: 1; box-shadow: 0 0 6px currentColor; }
-  }
-  .laser-container {
+
+  .ripple-container {
     position: absolute;
     width: 100%;
     height: 100%;
-    transition: opacity 0.5s ease-in-out;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     pointer-events: none;
-    overflow: hidden; /* Prevent scrollbars */
+    transition: opacity 0.5s ease-in-out;
   }
-  .laser-beam-rotator { /* The wrapper for rotation */
+
+  .ripple {
     position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
+    width: 75%;
+    padding-bottom: 75%;
+    height: 0;
+    border-radius: 50%;
+    border-style: solid;
+    border-color: currentColor;
+    animation: ripple-effect 4s ease-out infinite;
   }
-  .laser-beam {
-    position: absolute;
-    top: 50%;
-    left: -50%;
-    width: 200%;
-    height: 2px;
-    background: linear-gradient(90deg, transparent, currentColor 45%, currentColor 55%, transparent);
-    transform-origin: center;
-    animation: pulse-laser-glow 1.8s ease-in-out infinite alternate;
-  }
+
 
   /* --- Animation Classes --- */
   .animate-fadeIn { animation: fadeIn 0.4s ease-out forwards; }
