@@ -616,9 +616,51 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasksToday, tasksForTomorrow,
     const dragOverItemToday = React.useRef<number | null>(null);
     const [taskToDuplicateAndEdit, setTaskToDuplicateAndEdit] = useState<Task | null>(null);
 
+    const [isTodayExpanded, setIsTodayExpanded] = useState(false);
+    const [isTomorrowExpanded, setIsTomorrowExpanded] = useState(false);
+    const [isFutureExpanded, setIsFutureExpanded] = useState(false);
+
     const allTasks = useMemo(() => [...tasksToday, ...tasksForTomorrow, ...tasksFuture, ...completedToday], [tasksToday, tasksForTomorrow, tasksFuture, completedToday]);
     const [justAddedTaskId, setJustAddedTaskId] = useState<string | null>(null);
     const prevTasksCount = useRef(allTasks.length);
+
+    const today = new Date();
+    const dayOfWeekToday = today.getDay(); // 0=Sun, 6=Sat
+    const todayString = getTodayDateString(today);
+
+    const tomorrow = new Date();
+    tomorrow.setDate(today.getDate() + 1);
+    const dayOfWeekTomorrow = tomorrow.getDay();
+    const tomorrowString = getTodayDateString(tomorrow);
+
+    // Calculation for TODAY's projects
+    const activeProjectsToday = useMemo(() => {
+        return projects.filter(p => 
+            p.status === 'active' &&
+            (!p.start_date || p.start_date <= todayString) &&
+            (!p.active_days || p.active_days.length === 0 || p.active_days.includes(dayOfWeekToday))
+        );
+    }, [projects, todayString, dayOfWeekToday]);
+
+    const activeProjectsTodayIds = useMemo(() => new Set(activeProjectsToday.map(p => p.id)), [activeProjectsToday]);
+    const associatedTasksTodayCount = useMemo(() => {
+        return tasksToday.filter(t => t.project_id && activeProjectsTodayIds.has(t.project_id)).length;
+    }, [tasksToday, activeProjectsTodayIds]);
+
+    // Calculation for TOMORROW's projects
+    const activeProjectsTomorrow = useMemo(() => {
+        return projects.filter(p => 
+            p.status === 'active' &&
+            (!p.start_date || p.start_date <= tomorrowString) &&
+            (!p.active_days || p.active_days.length === 0 || p.active_days.includes(dayOfWeekTomorrow))
+        );
+    }, [projects, tomorrowString, dayOfWeekTomorrow]);
+
+    const activeProjectsTomorrowIds = useMemo(() => new Set(activeProjectsTomorrow.map(p => p.id)), [activeProjectsTomorrow]);
+    const associatedTasksTomorrowCount = useMemo(() => {
+        return tasksForTomorrow.filter(t => t.project_id && activeProjectsTomorrowIds.has(t.project_id)).length;
+    }, [tasksForTomorrow, activeProjectsTomorrowIds]);
+
 
     useEffect(() => {
         if (allTasks.length > prevTasksCount.current) {
@@ -652,7 +694,9 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasksToday, tasksForTomorrow,
         setTaskToDuplicateAndEdit(task);
     };
 
+    const todayTasksCount = tasksToday.length;
     const tomorrowTasksCount = tasksForTomorrow.length;
+    const futureTasksCount = tasksFuture.length;
 
     return (
         <div className="space-y-6">
@@ -674,16 +718,27 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasksToday, tasksForTomorrow,
             <div className="bg-slate-800/50 backdrop-blur-md rounded-xl p-4 sm:p-6 border border-slate-700/80 animate-slideUp">
                 <div className="flex justify-between items-center mb-2">
                     <h2 className="text-2xl font-bold text-white">Today's Focus</h2>
-                    <button
-                        onClick={() => onSortTodayByChange(todaySortBy === 'default' ? 'priority' : 'default')}
-                        className="text-xs text-cyan-300 hover:text-cyan-200 font-semibold px-3 py-1 rounded-full hover:bg-white/10 transition"
-                        aria-label={`Sort tasks by ${todaySortBy === 'default' ? 'priority' : 'default order'}`}
-                    >
-                        Sort by: {todaySortBy === 'default' ? 'Default' : 'Priority'}
-                    </button>
+                    <div className="flex items-center gap-4">
+                        {todayTasksCount > 5 && (
+                            <button
+                                onClick={() => setIsTodayExpanded(prev => !prev)}
+                                className="text-xs text-cyan-300 hover:text-cyan-200 font-semibold px-3 py-1 rounded-full hover:bg-white/10 transition"
+                                aria-expanded={isTodayExpanded}
+                            >
+                                {isTodayExpanded ? 'Collapse' : 'Expand'}
+                            </button>
+                        )}
+                        <button
+                            onClick={() => onSortTodayByChange(todaySortBy === 'default' ? 'priority' : 'default')}
+                            className="text-xs text-cyan-300 hover:text-cyan-200 font-semibold px-3 py-1 rounded-full hover:bg-white/10 transition"
+                            aria-label={`Sort tasks by ${todaySortBy === 'default' ? 'priority' : 'default order'}`}
+                        >
+                            Sort by: {todaySortBy === 'default' ? 'Default' : 'Priority'}
+                        </button>
+                    </div>
                 </div>
                 <CategoryFocusDropdown tasks={tasksToday} settings={settings} title="Est. Focus by Category" />
-                <ul className="max-h-96 overflow-y-auto pr-2" onDragOver={(e) => e.preventDefault()}>
+                <ul className={isTodayExpanded ? 'pr-2' : 'max-h-96 overflow-y-auto pr-2 custom-scrollbar'} onDragOver={(e) => e.preventDefault()}>
                     {tasksToday.map((task) => (
                         <TaskItem 
                             key={task.id} 
@@ -706,6 +761,11 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasksToday, tasksForTomorrow,
                     ))}
                     {tasksToday.length === 0 && completedToday.length === 0 && <p className="text-center text-white/60 p-4">All done! Add a new task to get started.</p>}
                 </ul>
+                 {activeProjectsToday.length > 0 && (
+                    <div className="text-center text-xs text-slate-400 mt-4 border-t border-slate-700/60 pt-3">
+                        ⚡️ {activeProjectsToday.length} project{activeProjectsToday.length > 1 ? 's' : ''} active today with {associatedTasksTodayCount} associated task{associatedTasksTodayCount !== 1 ? 's' : ''}.
+                    </div>
+                )}
                 {completedToday.length > 0 && (
                     <details className="group mt-4 pt-4 border-t border-slate-700">
                         <summary className="cursor-pointer text-slate-400 hover:text-white font-semibold list-none">
@@ -737,9 +797,20 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasksToday, tasksForTomorrow,
 
             {/* "Tomorrow" Panel */}
             <div className="bg-slate-800/50 backdrop-blur-md rounded-xl p-4 sm:p-6 border border-slate-700/80 animate-slideUp">
-                <h3 className="text-xl font-bold text-white mb-2">Tomorrow</h3>
+                <div className="flex justify-between items-center mb-2">
+                    <h3 className="text-xl font-bold text-white">Tomorrow</h3>
+                    {tomorrowTasksCount > 3 && (
+                        <button
+                            onClick={() => setIsTomorrowExpanded(prev => !prev)}
+                            className="text-xs text-cyan-300 hover:text-cyan-200 font-semibold px-3 py-1 rounded-full hover:bg-white/10 transition"
+                            aria-expanded={isTomorrowExpanded}
+                        >
+                            {isTomorrowExpanded ? 'Collapse' : 'Expand'}
+                        </button>
+                    )}
+                </div>
                 {tomorrowTasksCount > 0 && <CategoryFocusDropdown tasks={tasksForTomorrow} settings={settings} title="Est. Focus by Category" />}
-                <ul className="max-h-48 overflow-y-auto pr-2">
+                <ul className={isTomorrowExpanded ? '' : 'max-h-48 overflow-y-auto pr-2 custom-scrollbar'}>
                     {tasksForTomorrow.map((task) => (
                         <TaskItem 
                            key={task.id} 
@@ -757,12 +828,28 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasksToday, tasksForTomorrow,
                     ))}
                     {tasksForTomorrow.length === 0 && <p className="text-center text-white/60 p-4">No tasks planned for tomorrow.</p>}
                 </ul>
+                 {activeProjectsTomorrow.length > 0 && (
+                    <div className="text-center text-xs text-slate-400 mt-3">
+                        ⚡️ {activeProjectsTomorrow.length} project{activeProjectsTomorrow.length > 1 ? 's' : ''} active tomorrow with {associatedTasksTomorrowCount} associated task{associatedTasksTomorrowCount !== 1 ? 's' : ''}.
+                    </div>
+                )}
             </div>
 
             {/* "Future" Panel */}
             <div className="bg-slate-800/50 backdrop-blur-md rounded-xl p-4 sm:p-6 border border-slate-700/80 animate-slideUp">
-                <h3 className="text-xl font-bold text-white mb-2">Future</h3>
-                <ul className="max-h-48 overflow-y-auto pr-2">
+                 <div className="flex justify-between items-center mb-2">
+                    <h3 className="text-xl font-bold text-white">Future</h3>
+                    {futureTasksCount > 3 && (
+                        <button
+                            onClick={() => setIsFutureExpanded(prev => !prev)}
+                            className="text-xs text-cyan-300 hover:text-cyan-200 font-semibold px-3 py-1 rounded-full hover:bg-white/10 transition"
+                            aria-expanded={isFutureExpanded}
+                        >
+                            {isFutureExpanded ? 'Collapse' : 'Expand'}
+                        </button>
+                    )}
+                </div>
+                <ul className={isFutureExpanded ? '' : 'max-h-48 overflow-y-auto pr-2 custom-scrollbar'}>
                     {tasksFuture.map((task) => (
                         <TaskItem 
                            key={task.id} 
