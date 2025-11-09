@@ -40,6 +40,20 @@ const TimerDisplay: React.FC<TimerDisplayProps> = ({ timeRemaining, totalTime, i
 
     return (
         <div className="relative h-80 sm:h-96 flex items-center justify-center my-4">
+            {/* LASER ANIMATION CONTAINER */}
+            {isFocus && (
+                <div
+                    className="laser-container text-teal-400"
+                    style={{ opacity: isRunning ? 0.8 : 0 }}
+                >
+                    <div className="laser-beam-rotator" style={{ animation: 'rotate-laser 22s linear infinite' }}>
+                        <div className="laser-beam"></div>
+                    </div>
+                    <div className="laser-beam-rotator" style={{ animation: 'rotate-laser 30s linear infinite reverse' }}>
+                        <div className="laser-beam" style={{ transform: 'rotate(90deg)' }}></div>
+                    </div>
+                </div>
+            )}
             <svg
                 className={`absolute w-72 h-72 sm:w-80 sm:h-80 transition-transform duration-500 ${isRunning ? 'timer-running scale-105' : 'scale-100'}`}
                 viewBox="0 0 220 220"
@@ -76,7 +90,7 @@ const TimerDisplay: React.FC<TimerDisplayProps> = ({ timeRemaining, totalTime, i
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center">
                 <div className={`text-lg font-semibold uppercase tracking-widest ${isFocus ? 'text-teal-400' : 'text-purple-400'}`}>
-                    {isStopwatchMode && isFocus ? 'Stopwatch' : isFocus ? 'Focus' : 'Break'}
+                    {isStopwatchMode && isFocus ? 'Stopwatch' : isFocus ? 'Laser Focus' : 'Break'}
                 </div>
                 <div className={`relative text-7xl sm:text-8xl font-light tracking-wider ${theme.text} ${isRunning ? (isFocus ? 'timer-text-glow-focus' : 'timer-text-glow-break') : ''}`} style={{ fontVariantNumeric: 'tabular-nums' }}>
                     {minutes}:{seconds}

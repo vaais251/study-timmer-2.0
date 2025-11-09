@@ -134,6 +134,41 @@
       animation: fadeInOverlay 0.5s ease-out forwards;
   }
 
+  /* --- Laser Focus Animation --- */
+  @keyframes rotate-laser {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+  @keyframes pulse-laser-glow {
+      from { opacity: 0.6; box-shadow: 0 0 2px currentColor; }
+      to { opacity: 1; box-shadow: 0 0 6px currentColor; }
+  }
+  .laser-container {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    transition: opacity 0.5s ease-in-out;
+    pointer-events: none;
+    overflow: hidden; /* Prevent scrollbars */
+  }
+  .laser-beam-rotator { /* The wrapper for rotation */
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+  }
+  .laser-beam {
+    position: absolute;
+    top: 50%;
+    left: -50%;
+    width: 200%;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, currentColor 45%, currentColor 55%, transparent);
+    transform-origin: center;
+    animation: pulse-laser-glow 1.8s ease-in-out infinite alternate;
+  }
+
   /* --- Animation Classes --- */
   .animate-fadeIn { animation: fadeIn 0.4s ease-out forwards; }
   .animate-slideUp { animation: slideUp 0.4s ease-out forwards; }
