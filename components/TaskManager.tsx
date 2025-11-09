@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Task, Project, Settings } from '../types';
 import { PostponeIcon, DuplicateIcon, MoreVerticalIcon, UndoIcon, EditIcon, BringForwardIcon, CalendarIcon, TrashIcon } from './common/Icons';
@@ -276,7 +277,7 @@ const TaskItem = React.memo(React.forwardRef<HTMLLIElement, TaskItemProps>(({ ta
                     </button>
                 )}
                 {isCompleted && onDuplicateForTomorrowWithEdit && (
-                    <button onClick={() => { if (window.confirm('Are you sure you want to redo this task for tomorrow? You can edit it before adding.')) onDuplicateForTomorrowWithEdit(task); }} className="p-2 rounded-full text-cyan-400 hover:text-cyan-300 hover:bg-slate-700/50 transition" title="Redo Tomorrow">
+                    <button onClick={() => onDuplicateForTomorrowWithEdit(task)} className="p-2 rounded-full text-cyan-400 hover:text-cyan-300 hover:bg-slate-700/50 transition" title="Redo Tomorrow">
                         <DuplicateIcon />
                     </button>
                 )}
@@ -648,9 +649,7 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasksToday, tasksForTomorrow,
     };
     
     const handleDuplicateForTomorrowWithEdit = (task: Task) => {
-        if (window.confirm('Are you sure you want to redo this task for tomorrow? You can edit it before adding.')) {
-            setTaskToDuplicateAndEdit(task);
-        }
+        setTaskToDuplicateAndEdit(task);
     };
 
     const tomorrowTasksCount = tasksForTomorrow.length;
