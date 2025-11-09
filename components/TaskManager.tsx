@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Task, Project, Settings } from '../types';
 import { PostponeIcon, DuplicateIcon, MoreVerticalIcon, UndoIcon, EditIcon, BringForwardIcon, CalendarIcon, TrashIcon } from './common/Icons';
@@ -86,12 +87,13 @@ interface TaskItemProps {
     isTomorrowTask?: boolean;
     displayDate?: string;
     onBringTaskForward?: (id: string) => void;
+    onDuplicateForTomorrowWithEdit?: (task: Task) => void;
     dragProps?: object;
     ref?: React.Ref<HTMLLIElement>;
     isJustAdded?: boolean;
 }
 
-const TaskItem = React.memo(React.forwardRef<HTMLLIElement, TaskItemProps>(({ task, isCompleted, settings, projects, onDelete, onMove, onUpdateTaskTimers, onUpdateTask, onMarkTaskIncomplete, dragProps, isTomorrowTask, onBringTaskForward, displayDate, isJustAdded }, ref) => {
+const TaskItem = React.memo(React.forwardRef<HTMLLIElement, TaskItemProps>(({ task, isCompleted, settings, projects, onDelete, onMove, onUpdateTaskTimers, onUpdateTask, onMarkTaskIncomplete, dragProps, isTomorrowTask, onBringTaskForward, displayDate, onDuplicateForTomorrowWithEdit, isJustAdded }, ref) => {
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
     const [editText, setEditText] = useState(task.text);
@@ -144,10 +146,12 @@ const TaskItem = React.memo(React.forwardRef<HTMLLIElement, TaskItemProps>(({ ta
     };
 
     const handleDelete = () => {
-        setIsDeleting(true);
-        setTimeout(() => {
-            onDelete(task.id);
-        }, 400); // Corresponds to animation duration
+        if (window.confirm('Are you sure you want to delete this task? This action cannot be undone.')) {
+            setIsDeleting(true);
+            setTimeout(() => {
+                onDelete(task.id);
+            }, 400); // Corresponds to animation duration
+        }
     };
     
     if (isEditing) {
@@ -250,14 +254,14 @@ const TaskItem = React.memo(React.forwardRef<HTMLLIElement, TaskItemProps>(({ ta
             </span>
             <div className={`transition-opacity duration-200 ${isDraggable ? 'sm:opacity-0 sm:group-hover:opacity-100' : ''}`}>
                 {isTomorrowTask && onBringTaskForward && (
-                    <button onClick={() => onBringTaskForward(task.id)} className="p-2 rounded-full text-green-400 hover:text-green-300 hover:bg-slate-700/50 transition" title="Move to Today">
+                    <button onClick={() => { if (window.confirm('Are you sure you want to move this task to today?')) onBringTaskForward(task.id); }} className="p-2 rounded-full text-green-400 hover:text-green-300 hover:bg-slate-700/50 transition" title="Move to Today">
                         <BringForwardIcon />
                     </button>
                 )}
                 {onMove && (
                     <>
-                        <button onClick={() => onMove(task.id, 'postpone')} className="p-2 rounded-full text-amber-400 hover:text-amber-300 hover:bg-slate-700/50 transition" title="Postpone to Tomorrow"><PostponeIcon /></button>
-                        <button onClick={() => onMove(task.id, 'duplicate')} className="p-2 rounded-full text-amber-400 hover:text-amber-300 hover:bg-slate-700/50 transition" title="Duplicate for Tomorrow"><DuplicateIcon /></button>
+                        <button onClick={() => { if (window.confirm('Are you sure you want to postpone this task to tomorrow?')) onMove(task.id, 'postpone'); }} className="p-2 rounded-full text-amber-400 hover:text-amber-300 hover:bg-slate-700/50 transition" title="Postpone to Tomorrow"><PostponeIcon /></button>
+                        <button onClick={() => { if (window.confirm('Are you sure you want to duplicate this task for tomorrow?')) onMove(task.id, 'duplicate'); }} className="p-2 rounded-full text-amber-400 hover:text-amber-300 hover:bg-slate-700/50 transition" title="Duplicate for Tomorrow"><DuplicateIcon /></button>
                     </>
                 )}
                  {!isCompleted && (
@@ -267,8 +271,13 @@ const TaskItem = React.memo(React.forwardRef<HTMLLIElement, TaskItemProps>(({ ta
                     </>
                 )}
                 {isCompleted && onMarkTaskIncomplete && (
-                    <button onClick={() => onMarkTaskIncomplete(task.id)} className="p-2 rounded-full text-amber-400 hover:text-amber-300 hover:bg-slate-700/50 transition" title="Mark as Incomplete">
+                    <button onClick={() => { if (window.confirm('Are you sure you want to mark this task as incomplete?')) onMarkTaskIncomplete(task.id); }} className="p-2 rounded-full text-amber-400 hover:text-amber-300 hover:bg-slate-700/50 transition" title="Mark as Incomplete">
                         <UndoIcon />
+                    </button>
+                )}
+                {isCompleted && onDuplicateForTomorrowWithEdit && (
+                    <button onClick={() => { if (window.confirm('Are you sure you want to redo this task for tomorrow? You can edit it before adding.')) onDuplicateForTomorrowWithEdit(task); }} className="p-2 rounded-full text-cyan-400 hover:text-cyan-300 hover:bg-slate-700/50 transition" title="Redo Tomorrow">
+                        <DuplicateIcon />
                     </button>
                 )}
                 <button onClick={handleDelete} className="p-2 rounded-full text-red-400 hover:text-red-300 hover:bg-slate-700/50 transition" title="Delete Task"><TrashIcon/></button>
@@ -486,6 +495,100 @@ const CategoryFocusDropdown: React.FC<CategoryFocusDropdownProps> = ({ tasks, se
     );
 };
 
+interface DuplicateTaskModalProps {
+    task: Task;
+    projects: Project[];
+    onClose: () => void;
+    onSave: (text: string, poms: number, projectId: string | null, tags: string[], priority: number | null) => void;
+}
+
+const DuplicateTaskModal: React.FC<DuplicateTaskModalProps> = ({ task, projects, onClose, onSave }) => {
+    const [editText, setEditText] = useState(task.text);
+    const [editTags, setEditTags] = useState(task.tags?.join(', ') || '');
+    const [editPoms, setEditPoms] = useState(Math.abs(task.total_poms).toString());
+    const [editIsStopwatch, setEditIsStopwatch] = useState(task.total_poms < 0);
+    const [editProjectId, setEditProjectId] = useState<string>(task.project_id || 'none');
+    const [editPriority, setEditPriority] = useState<number>(task.priority ?? 3);
+
+    const handleSave = () => {
+        if (editText.trim() === '') {
+            alert("Task text cannot be empty.");
+            return;
+        }
+        const newPoms = editIsStopwatch ? -1 : parseInt(editPoms, 10);
+        if (isNaN(newPoms) || (!editIsStopwatch && newPoms <= 0)) {
+            alert("Pomodoros must be a positive number for regular tasks.");
+            return;
+        }
+
+        const newTags = editTags.split(',').map(t => t.trim()).filter(Boolean);
+        const finalProjectId = editProjectId === 'none' ? null : editProjectId;
+        onSave(editText.trim(), newPoms, finalProjectId, newTags, editPriority);
+    };
+
+    const today = new Date();
+    const dayOfWeek = today.getDay();
+    const todayString = getTodayDateString(today);
+    const activeProjects = projects.filter(p => p.status === 'active' && (!p.start_date || p.start_date <= todayString) && (!p.active_days || p.active_days.length === 0 || p.active_days.includes(dayOfWeek)));
+
+    return (
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex justify-center items-center z-50 animate-fadeIn" onClick={onClose}>
+            <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 max-w-lg w-11/12 shadow-2xl animate-slideUp space-y-4" onClick={e => e.stopPropagation()}>
+                <h2 className="text-xl font-bold text-white">Add Task for Tomorrow</h2>
+                
+                <input
+                    type="text"
+                    value={editText}
+                    onChange={e => setEditText(e.target.value)}
+                    className="w-full bg-slate-900/50 border-2 border-slate-700 rounded-lg p-3 text-white placeholder:text-slate-400 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400"
+                    aria-label="Edit task text"
+                />
+                <input
+                    type="text"
+                    value={editTags}
+                    onChange={e => setEditTags(e.target.value)}
+                    placeholder="Tags (comma-separated)"
+                    className="w-full bg-slate-900/50 border-2 border-slate-700 rounded-lg p-3 text-white placeholder:text-slate-400 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400"
+                    aria-label="Edit task tags"
+                />
+                <select value={editProjectId} onChange={e => setEditProjectId(e.target.value)} className="w-full bg-slate-900/50 border-2 border-slate-700 rounded-lg p-3 text-white focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400">
+                    <option value="none" className="bg-slate-900">No Project</option>
+                    {activeProjects.map(p => <option key={p.id} value={p.id} className="bg-slate-900">{p.name}</option>)}
+                </select>
+                 <div className="flex justify-between items-center gap-2 text-sm mt-2">
+                    <div className="flex items-center gap-4">
+                        <label htmlFor={`edit-poms-${task.id}`} className="text-slate-300">Poms:</label>
+                        <input
+                            id={`edit-poms-${task.id}`}
+                            type="number"
+                            value={editPoms}
+                            onChange={e => setEditPoms(e.target.value)}
+                            title="Number of Pomodoros"
+                            className="w-20 text-center bg-slate-900/50 border-2 border-slate-700 rounded-lg p-2 text-white placeholder:text-slate-400 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 disabled:opacity-50"
+                            aria-label="Edit pomodoros"
+                            disabled={editIsStopwatch}
+                        />
+                        <label className="flex items-center gap-2 text-slate-300 cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={editIsStopwatch}
+                                onChange={e => setEditIsStopwatch(e.target.checked)}
+                                className="h-4 w-4 rounded bg-slate-600 border-slate-500 text-teal-400 focus:ring-teal-400/50"
+                            />
+                            Stopwatch
+                        </label>
+                    </div>
+                    <PrioritySelector priority={editPriority} setPriority={setEditPriority} />
+                </div>
+                 <div className="flex justify-end gap-2 mt-4">
+                    <button onClick={onClose} className="p-2 px-6 rounded-lg font-bold text-white transition-transform hover:scale-105 bg-slate-600 hover:bg-slate-700">Cancel</button>
+                    <button onClick={handleSave} className="p-2 px-6 rounded-lg font-bold text-white transition-transform hover:scale-105 bg-cyan-600 hover:bg-cyan-700">Add to Tomorrow</button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 interface TaskManagerProps {
     tasksToday: Task[];
     tasksForTomorrow: Task[];
@@ -510,6 +613,7 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasksToday, tasksForTomorrow,
     
     const dragItemToday = React.useRef<number | null>(null);
     const dragOverItemToday = React.useRef<number | null>(null);
+    const [taskToDuplicateAndEdit, setTaskToDuplicateAndEdit] = useState<Task | null>(null);
 
     const allTasks = useMemo(() => [...tasksToday, ...tasksForTomorrow, ...tasksFuture, ...completedToday], [tasksToday, tasksForTomorrow, tasksFuture, completedToday]);
     const [justAddedTaskId, setJustAddedTaskId] = useState<string | null>(null);
@@ -541,6 +645,12 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasksToday, tasksForTomorrow,
         dragItemToday.current = null;
         dragOverItemToday.current = null;
         onReorderTasks(reordered);
+    };
+    
+    const handleDuplicateForTomorrowWithEdit = (task: Task) => {
+        if (window.confirm('Are you sure you want to redo this task for tomorrow? You can edit it before adding.')) {
+            setTaskToDuplicateAndEdit(task);
+        }
     };
 
     const tomorrowTasksCount = tasksForTomorrow.length;
@@ -605,7 +715,7 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasksToday, tasksForTomorrow,
                         </summary>
                         <ul className="mt-2 space-y-2">
                             {completedToday.map(task => (
-                                <TaskItem key={task.id} task={task} isCompleted={true} settings={settings} projects={projects} onDelete={onDeleteTask} onUpdateTaskTimers={onUpdateTaskTimers} onUpdateTask={onUpdateTask} onMarkTaskIncomplete={onMarkTaskIncomplete} />
+                                <TaskItem key={task.id} task={task} isCompleted={true} settings={settings} projects={projects} onDelete={onDeleteTask} onUpdateTaskTimers={onUpdateTaskTimers} onUpdateTask={onUpdateTask} onMarkTaskIncomplete={onMarkTaskIncomplete} onDuplicateForTomorrowWithEdit={handleDuplicateForTomorrowWithEdit} />
                             ))}
                         </ul>
                     </details>
@@ -673,6 +783,20 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasksToday, tasksForTomorrow,
                     {tasksFuture.length === 0 && <p className="text-center text-white/60 p-4">No future tasks scheduled.</p>}
                 </ul>
             </div>
+            {taskToDuplicateAndEdit && (
+                <DuplicateTaskModal
+                    task={taskToDuplicateAndEdit}
+                    projects={projects}
+                    onClose={() => setTaskToDuplicateAndEdit(null)}
+                    onSave={(text, poms, projectId, tags, priority) => {
+                        const tomorrowDate = new Date();
+                        tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+                        const tomorrowString = getTodayDateString(tomorrowDate);
+                        onAddTask(text, poms, tomorrowString, projectId, tags, priority);
+                        setTaskToDuplicateAndEdit(null);
+                    }}
+                />
+            )}
         </div>
     );
 };
