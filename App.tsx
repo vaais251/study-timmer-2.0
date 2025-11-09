@@ -167,6 +167,54 @@ const App: React.FC = () => {
     const notificationInterval = useRef<number | null>(null);
     const wakeLock = useRef<any | null>(null);
     const isInitialLoad = useRef(true);
+    const timerWorker = useRef<Worker | null>(null);
+    const completePhaseCallbackRef = useRef<() => void>();
+
+
+    useEffect(() => {
+        completePhaseCallbackRef.current = completePhase;
+    });
+
+    // Initialize Web Worker for reliable background timer
+    useEffect(() => {
+        const workerScript = `
+          let timer = null;
+          self.onmessage = (e) => {
+            const { command, duration } = e.data;
+            if (command === 'start') {
+              if (timer) {
+                clearTimeout(timer);
+              }
+              if (duration > 0) {
+                timer = setTimeout(() => {
+                  self.postMessage('complete');
+                }, duration);
+              }
+            } else if (command === 'stop') {
+              if (timer) {
+                clearTimeout(timer);
+                timer = null;
+              }
+            }
+          };
+        `;
+        const blob = new Blob([workerScript], { type: 'application/javascript' });
+        const worker = new Worker(URL.createObjectURL(blob));
+        
+        const messageHandler = (e: MessageEvent) => {
+            if (e.data === 'complete') {
+                completePhaseCallbackRef.current?.();
+            }
+        };
+
+        worker.addEventListener('message', messageHandler);
+        timerWorker.current = worker;
+
+        return () => {
+            worker.removeEventListener('message', messageHandler);
+            worker.terminate();
+        };
+    }, []); // Run only once on mount
 
     // Derived state for tasks
     const todayString = getTodayDateString();
@@ -868,6 +916,7 @@ const App: React.FC = () => {
         if (!isStopwatchMode) {
             setPhaseEndTime(null);
         }
+        timerWorker.current?.postMessage({ command: 'stop' });
     }, [isStopwatchMode]);
 
     // Reset Timer Logic
@@ -912,13 +961,21 @@ const App: React.FC = () => {
         
         if (!isStopwatchMode) {
             setPhaseEndTime(Date.now() + appState.timeRemaining * 1000);
+            timerWorker.current?.postMessage({ command: 'start', duration: appState.timeRemaining * 1000 });
+        } else {
+            const duration = appState.sessionTotalTime - appState.timeRemaining;
+            if (duration > 0) {
+                timerWorker.current?.postMessage({ command: 'start', duration: duration * 1000 });
+            }
         }
         
         setAppState(prev => ({ ...prev, isRunning: true }));
-    }, [appState.isRunning, appState.timeRemaining, isStopwatchMode, appState.mode, tasksToday, playStartSound]);
+    }, [appState.isRunning, appState.timeRemaining, isStopwatchMode, appState.mode, tasksToday, playStartSound, appState.sessionTotalTime]);
     
     // Phase Completion Logic
     const completePhase = useCallback(async () => {
+        if (isModalVisible) return;
+
         stopTimer();
         notificationInterval.current = window.setInterval(playAlertLoop, 3000);
         playAlertLoop();
@@ -939,13 +996,13 @@ const App: React.FC = () => {
             setModalContent({ title: '⏰ Break Over!', message: nextTaskMessage, nextMode: 'focus', showCommentBox: false });
         }
         setIsModalVisible(true);
-    }, [appState, settings, stopTimer, tasksToday]);
+    }, [appState, settings, stopTimer, tasksToday, isModalVisible]);
     
     useEffect(() => {
         const currentTask = tasksToday[0];
         const isCurrentTaskStopwatch = appState.mode === 'focus' && currentTask?.total_poms < 0;
 
-        if (appState.isRunning) {
+        if (appState.isRunning && !isModalVisible) {
             if (!isCurrentTaskStopwatch && appState.timeRemaining <= 0) {
                 completePhase();
             } else if (isCurrentTaskStopwatch && appState.sessionTotalTime > 0 && appState.timeRemaining >= appState.sessionTotalTime) {
@@ -962,7 +1019,7 @@ const App: React.FC = () => {
         }
 
         document.title = `${Math.floor(totalTimeForTitle / 60).toString().padStart(2, '0')}:${(totalTimeForTitle % 60).toString().padStart(2, '0')} - ${appState.mode === 'focus' ? 'Focus' : 'Break'} | FocusFlow`;
-    }, [appState, settings.focusDuration, completePhase, tasksToday, todaysHistory]);
+    }, [appState, settings.focusDuration, completePhase, tasksToday, todaysHistory, isModalVisible]);
     
     // --- STATE PERSISTENCE LOGIC ---
     // Save state to localStorage whenever it changes
@@ -1174,6 +1231,11 @@ const App: React.FC = () => {
         }));
         setPhaseEndTime(newEndTime);
         setTasks(optimisticTasks);
+
+        if (shouldBeRunning) {
+            const duration = isNextStopwatch ? newTotalTime * 1000 : newTime * 1000;
+            timerWorker.current?.postMessage({ command: 'start', duration });
+        }
     
         const performAllUpdatesInBackground = async () => {
             try {
