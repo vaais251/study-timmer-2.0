@@ -222,7 +222,7 @@ const TaskItem = React.memo(React.forwardRef<HTMLLIElement, TaskItemProps>(({ ta
     return (
     <li
         ref={ref}
-        className={`group relative flex flex-col sm:flex-row items-start sm:items-center justify-between gap-x-4 gap-y-2 p-4 rounded-xl mb-2 transition-all duration-200 border-l-4 ${priorityClass} ${
+        className={`group relative flex flex-col sm:flex-row items-start sm:items-center justify-between gap-x-4 gap-y-2 p-4 rounded-xl mb-2 transition-all duration-200 border-l-4 ${priorityClass} ${isSettingsOpen ? 'z-10' : ''} ${
             isCompleted
                 ? 'bg-slate-800/20 text-slate-500 border border-slate-800/30'
                 : 'bg-slate-800/40 backdrop-blur-sm border border-slate-700/60 hover:border-slate-600'
