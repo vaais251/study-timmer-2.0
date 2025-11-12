@@ -90,6 +90,13 @@ export interface Task {
     custom_focus_duration: number | null;
     custom_break_duration: number | null;
     priority: number | null;
+    // New fields for recurrence
+    is_recurring?: boolean;
+    recurring_days?: number[] | null;
+    recurring_end_date?: string | null;
+    template_task_id?: string | null;
+    stop_on_project_completion?: boolean;
+    is_active?: boolean;
 }
 
 // Corresponds to the `settings` table (without user_id)

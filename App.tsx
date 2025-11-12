@@ -1,5 +1,3 @@
-
-
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
@@ -129,6 +127,7 @@ const App: React.FC = () => {
     });
 
     const [tasks, setTasks] = useState<Task[]>([]);
+    const [recurringTasks, setRecurringTasks] = useState<Task[]>([]);
     const [projects, setProjects] = useState<Project[]>([]);
     const [goals, setGoals] = useState<Goal[]>([]);
     const [targets, setTargets] = useState<Target[]>([]);
@@ -465,8 +464,9 @@ const App: React.FC = () => {
         if (!session) return;
         if (showLoading) setIsLoading(true);
         try {
-            // Fetch raw data sources first
-            const [userSettings, userTasks, userProjects, userGoals, userTargets, userCommitments, allPomodoroHistoryForRange, userAiMemories, userNotifications] = await Promise.all([
+            const newTasksCreatedFromRecurring = await dbService.processRecurringTasks();
+
+            const [userSettings, userTasks, userProjects, userGoals, userTargets, userCommitments, allPomodoroHistoryForRange, userAiMemories, userNotifications, userRecurringTasks] = await Promise.all([
                 dbService.getSettings(),
                 dbService.getTasks(),
                 dbService.getProjects(),
@@ -475,15 +475,21 @@ const App: React.FC = () => {
                 dbService.getCommitments(),
                 dbService.getPomodoroHistory(getTodayDateString(new Date(Date.now() - 13 * 24 * 60 * 60 * 1000)), getTodayDateString()),
                 dbService.getAiMemories(),
-                dbService.getNotifications()
+                dbService.getNotifications(),
+                dbService.getRecurringTasks(),
             ]);
-
-            // --- Process Pomodoro History to generate authoritative logs ---
+            
+            if (userRecurringTasks) setRecurringTasks(userRecurringTasks);
             processAndSetHistoryData(allPomodoroHistoryForRange || []);
 
-            // Set other state from fetched data
             if (userSettings) setSettings(userSettings);
-            if (userTasks) setTasks(userTasks);
+
+            if (newTasksCreatedFromRecurring) {
+                const refreshedUserTasks = await dbService.getTasks();
+                if (refreshedUserTasks) setTasks(refreshedUserTasks);
+            } else if (userTasks) {
+                setTasks(userTasks);
+            }
             
             const updatedProjects = await dbService.checkAndUpdateDueProjects();
             if (updatedProjects) {
@@ -509,7 +515,8 @@ const App: React.FC = () => {
             if (userNotifications) setNotifications(userNotifications);
             
             if (showLoading && !didRestoreFromStorage) {
-                const firstTask = userTasks?.filter(t => t.due_date === getTodayDateString() && !t.completed_at)[0];
+                const initialTasks = newTasksCreatedFromRecurring ? await dbService.getTasks() : userTasks;
+                const firstTask = initialTasks?.filter(t => t.due_date === getTodayDateString() && !t.completed_at)[0];
                 const isStopwatch = firstTask?.total_poms < 0;
                 const initialFocusTime = isStopwatch ? 0 : (firstTask?.custom_focus_duration || userSettings?.focusDuration || 25) * 60;
                 const initialTotalTime = isStopwatch ? (firstTask?.custom_focus_duration || userSettings?.focusDuration || 25) * 60 : initialFocusTime;
@@ -547,6 +554,7 @@ const App: React.FC = () => {
             setDidRestoreFromStorage(false);
             setSettings({ focusDuration: 25, breakDuration: 5, sessionsPerCycle: 2, todaySortBy: 'default' });
             setTasks([]);
+            setRecurringTasks([]);
             setProjects([]);
             setGoals([]);
             setTargets([]);
@@ -866,7 +874,7 @@ const App: React.FC = () => {
                 messageParts.push(`Projects: ${projectsToday.join(', ')}.`);
             }
             if (timeTargets.length > 0) {
-                messageParts.push(`Targets: ${timeTargets.join(', ')}.`);
+                messageParts.push(`Targets: ${timeTargets.join(' ')}.`);
             }
     
             if (messageParts.length > 0) {
@@ -1490,6 +1498,82 @@ const App: React.FC = () => {
         }
     };
 
+    // --- Recurring Task Handlers ---
+    const handleAddRecurringTask = async (taskData: Partial<Task>) => {
+        setIsSyncing(true);
+        try {
+            const newTask = await dbService.addRecurringTask(taskData);
+            if (newTask) {
+                const refreshed = await dbService.getRecurringTasks();
+                if (refreshed) setRecurringTasks(refreshed);
+                
+                const created = await dbService.processRecurringTasks();
+                if (created) {
+                    await refreshTasks();
+                }
+                setToastNotification('Recurring task created!');
+            } else {
+                throw new Error("Failed to create recurring task.");
+            }
+        } catch (error) {
+            console.error("Sync Error: handleAddRecurringTask", error);
+            setToastNotification("⚠️ Add recurring task failed.");
+        } finally {
+            setIsSyncing(false);
+        }
+    };
+    
+    const handleUpdateRecurringTask = async (id: string, updates: Partial<Task>) => {
+        const recurringTasksSnapshot = [...recurringTasks];
+        setRecurringTasks(current => current.map(t => t.id === id ? { ...t, ...updates } as Task : t));
+        setIsSyncing(true);
+    
+        try {
+            await dbService.updateRecurringTask(id, updates);
+            setToastNotification('Recurring task updated!');
+        } catch (error) {
+            console.error("Sync Error: handleUpdateRecurringTask", error);
+            setToastNotification("⚠️ Update failed! Reverting.");
+            setRecurringTasks(recurringTasksSnapshot);
+        } finally {
+            setIsSyncing(false);
+        }
+    };
+    
+    const handleDeleteRecurringTask = async (id: string) => {
+        const recurringTasksSnapshot = [...recurringTasks];
+        setRecurringTasks(current => current.filter(t => t.id !== id));
+        setIsSyncing(true);
+    
+        try {
+            await dbService.deleteRecurringTask(id);
+            setToastNotification('Recurring task automation deleted.');
+        } catch (error) {
+            console.error("Sync Error: handleDeleteRecurringTask", error);
+            setToastNotification("⚠️ Delete failed! Reverting.");
+            setRecurringTasks(recurringTasksSnapshot);
+        } finally {
+            setIsSyncing(false);
+        }
+    };
+    
+    const handleSetRecurringTaskActive = async (id: string, isActive: boolean) => {
+        const recurringTasksSnapshot = [...recurringTasks];
+        setRecurringTasks(current => current.map(t => t.id === id ? { ...t, is_active: isActive } as Task : t));
+        setIsSyncing(true);
+    
+        try {
+            await dbService.updateRecurringTask(id, { is_active: isActive });
+            setToastNotification(`Automation ${isActive ? 'resumed' : 'paused'}.`);
+        } catch (error) {
+            console.error("Sync Error: handleSetRecurringTaskActive", error);
+            setToastNotification("⚠️ Update failed! Reverting.");
+            setRecurringTasks(recurringTasksSnapshot);
+        } finally {
+            setIsSyncing(false);
+        }
+    };
+
     // --- Project Handlers ---
     const handleAddProject = async (name: string, description: string | null = null, startDate: string | null = null, deadline: string | null = null, criteria: {type: Project['completion_criteria_type'], value: number | null} = {type: 'manual', value: null}, priority: number | null = null, activeDays: number[] | null = null): Promise<string | null> => {
         setIsSyncing(true);
@@ -1922,6 +2006,11 @@ const App: React.FC = () => {
                     onMarkTaskIncomplete={handleMarkTaskIncomplete}
                     todaySortBy={settings.todaySortBy}
                     onSortTodayByChange={handleSortChange}
+                    recurringTasks={recurringTasks}
+                    onAddRecurringTask={handleAddRecurringTask}
+                    onUpdateRecurringTask={handleUpdateRecurringTask}
+                    onDeleteRecurringTask={handleDeleteRecurringTask}
+                    onSetRecurringTaskActive={handleSetRecurringTaskActive}
                 />;
             case 'stats':
                 return <StatsPage />;
@@ -1971,7 +2060,6 @@ const App: React.FC = () => {
                 return <SettingsPage 
                     settings={settings} 
                     onSave={handleSaveSettings}
-                    onTestCelebration={() => triggerCelebration("This is a test celebration! 🥳")}
                     canInstall={!!installPrompt}
                     onInstall={handleInstallClick}
                     isStandalone={isStandalone}

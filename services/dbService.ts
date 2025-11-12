@@ -1,4 +1,3 @@
-
 import { supabase } from './supabaseClient';
 import { Settings, Task, DbDailyLog, Project, Goal, Target, PomodoroHistory, Commitment, ProjectUpdate, AiMemory, AppNotification, FocusLevel } from '../types';
 import { getTodayDateString } from '../utils/date';
@@ -255,8 +254,7 @@ export const getTasks = async (): Promise<Task[] | null> => {
         .from('tasks')
         .select('*, projects(name)')
         .eq('user_id', user.id)
-        // Fetch all tasks, completed or not, and let the client filter them.
-        // This is crucial for the Plan page to show completed tasks for today.
+        .eq('is_recurring', false) // Only get concrete, non-template tasks
         .order('due_date', { ascending: true })
         .order('task_order', { ascending: true, nullsFirst: true })
         .order('created_at', { ascending: true });
@@ -416,12 +414,18 @@ export const updateTaskOrder = async (tasksToUpdate: { id: string, task_order: n
 export const deleteTask = async (id: string): Promise<boolean> => {
     const { data: taskToDelete, error: fetchError } = await supabase
         .from('tasks')
-        .select('project_id, tags, user_id')
+        .select('project_id, tags, user_id, is_recurring')
         .eq('id', id)
         .single();
 
     if (fetchError || !taskToDelete) {
         console.error("Error finding task to delete:", fetchError);
+        return false;
+    }
+
+    // SAFETY CHECK: Do not delete recurring templates via this function
+    if (taskToDelete.is_recurring) {
+        console.error("Attempted to delete a recurring template via deleteTask. Aborting.");
         return false;
     }
 
@@ -569,6 +573,150 @@ export const markTaskIncomplete = async (id: string): Promise<boolean> => {
     return true;
 };
 
+// --- Recurring Tasks ---
+
+export const getRecurringTasks = async (): Promise<Task[] | null> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    const { data, error } = await supabase
+        .from('tasks')
+        .select('*, projects(name)')
+        .eq('user_id', user.id)
+        .eq('is_recurring', true)
+        .order('created_at', { ascending: true });
+
+    if (error) {
+        console.error("Error fetching recurring tasks:", error);
+        return null;
+    }
+    return data;
+};
+
+export const processRecurringTasks = async (): Promise<boolean> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return false;
+
+    const today = getTodayDateString();
+    const dayOfWeek = new Date(`${today}T12:00:00`).getDay();
+
+    const { data: templates, error: templateError } = await supabase
+        .from('tasks')
+        .select('*, projects(status)')
+        .eq('user_id', user.id)
+        .eq('is_recurring', true)
+        .eq('is_active', true); // Only process active templates
+
+    if (templateError) {
+        console.error("Error fetching templates for processing:", templateError);
+        return false;
+    }
+    if (!templates || templates.length === 0) {
+        return false;
+    }
+    
+    const templateIds = templates.map(t => t.id);
+    const { data: existingTodayTasks, error: existingTasksError } = await supabase
+        .from('tasks')
+        .select('template_task_id')
+        .in('template_task_id', templateIds)
+        .eq('due_date', today);
+    
+    if (existingTasksError) {
+        console.error("Error checking for existing recurring tasks for today:", existingTasksError);
+        return false;
+    }
+    
+    const existingTemplateIdsToday = new Set(existingTodayTasks?.map(t => t.template_task_id));
+    const newTasksToCreate = [];
+
+    for (const template of templates) {
+        if (existingTemplateIdsToday.has(template.id)) continue;
+        if (template.recurring_end_date && template.recurring_end_date < today) continue;
+
+        const recurringDays = template.recurring_days;
+        if (recurringDays && recurringDays.length > 0 && !recurringDays.includes(dayOfWeek)) {
+            continue;
+        }
+
+        if (template.stop_on_project_completion && template.project_id && template.projects?.status === 'completed') {
+            continue;
+        }
+
+        const { id, created_at, is_recurring, recurring_days, recurring_end_date, stop_on_project_completion, is_active, projects, ...rest } = template;
+        
+        newTasksToCreate.push({
+            ...rest,
+            due_date: today,
+            is_recurring: false,
+            template_task_id: template.id,
+            completed_at: null,
+            completed_poms: 0,
+            comments: [],
+            task_order: null,
+        });
+    }
+
+    if (newTasksToCreate.length > 0) {
+        const { error: insertError } = await supabase.from('tasks').insert(newTasksToCreate);
+        if (insertError) {
+            console.error("Error creating daily recurring tasks:", insertError);
+            return false;
+        }
+        return true;
+    }
+    
+    return false;
+};
+
+export const addRecurringTask = async (taskData: Partial<Task>): Promise<Task | null> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    const { data, error } = await supabase
+        .from('tasks')
+        .insert({
+            ...taskData,
+            is_recurring: true,
+            is_active: true, // New automations are active by default
+            user_id: user.id,
+        })
+        .select()
+        .single();
+    
+    if (error) {
+        console.error("Error adding recurring task:", error);
+        return null;
+    }
+    return data;
+};
+
+export const updateRecurringTask = async (id: string, updates: Partial<Task>): Promise<Task | null> => {
+    const { error } = await supabase
+        .from('tasks')
+        .update(updates)
+        .eq('id', id);
+
+    if (error) {
+        console.error("Error updating recurring task:", error);
+        return null;
+    }
+    return { id, ...updates } as Task;
+};
+
+export const deleteRecurringTask = async (id: string): Promise<boolean> => {
+    const { error } = await supabase
+        .from('tasks')
+        .delete()
+        .eq('id', id)
+        .eq('is_recurring', true);
+    
+    if (error) {
+        console.error("Error deleting recurring task:", error);
+        return false;
+    }
+    return true;
+};
 
 // --- Projects ---
 
@@ -653,15 +801,28 @@ export const updateProject = async (id: string, updates: Partial<Project>): Prom
 }
 
 export const deleteProject = async (id: string): Promise<{ success: boolean; error: string | null }> => {
-    // Unlink tasks first
+    // Unlink non-recurring tasks
     const { error: unlinkError } = await supabase
         .from('tasks')
         .update({ project_id: null })
-        .eq('project_id', id);
-
+        .eq('project_id', id)
+        .eq('is_recurring', false);
+        
     if (unlinkError) {
         console.error("Error unlinking tasks from project:", unlinkError);
         return { success: false, error: "Failed to unlink tasks from project." };
+    }
+
+    // Unlink recurring task templates
+    const { error: unlinkRecurringError } = await supabase
+        .from('tasks')
+        .update({ project_id: null })
+        .eq('project_id', id)
+        .eq('is_recurring', true);
+
+    if (unlinkRecurringError) {
+        console.error("Error unlinking recurring tasks from project:", unlinkRecurringError);
+        // This is not a critical failure, so we can proceed
     }
 
     // Then delete the project

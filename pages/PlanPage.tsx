@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Task, Project, Settings } from '../types';
 import TaskManager from '../components/TaskManager';
 import ExpertiseTracker from '../components/ExpertiseTracker';
+import AutomationsManager from '../components/AutomationsManager';
 
 interface PlanPageProps {
     tasksToday: Task[];
@@ -21,16 +22,21 @@ interface PlanPageProps {
     onMarkTaskIncomplete: (id: string) => void;
     todaySortBy: 'default' | 'priority';
     onSortTodayByChange: (sortBy: 'default' | 'priority') => void;
+    recurringTasks: Task[];
+    onAddRecurringTask: (taskData: Partial<Task>) => void;
+    onUpdateRecurringTask: (id: string, updates: Partial<Task>) => void;
+    onDeleteRecurringTask: (id: string) => void;
+    onSetRecurringTaskActive: (id: string, isActive: boolean) => void;
 }
 
 const PlanPage: React.FC<PlanPageProps> = (props) => {
-    const [activeTab, setActiveTab] = useState<'planner' | 'mastery'>('planner');
+    const [activeTab, setActiveTab] = useState<'planner' | 'mastery' | 'automations'>('planner');
 
     return (
         <>
             <h1 className="text-3xl font-bold text-white mb-6 animate-slideInFromLeft">Plan Your Success</h1>
             {/* Tab Navigation */}
-            <div className="mb-6 flex justify-center gap-2 bg-slate-800/50 p-1 rounded-full max-w-sm mx-auto">
+            <div className="mb-6 flex justify-center gap-2 bg-slate-800/50 p-1 rounded-full max-w-md mx-auto">
                 <button
                     onClick={() => setActiveTab('planner')}
                     className={`flex-1 p-2 text-sm rounded-full font-bold transition-colors ${
@@ -50,6 +56,16 @@ const PlanPage: React.FC<PlanPageProps> = (props) => {
                     }`}
                 >
                     Mastery Tracker
+                </button>
+                 <button
+                    onClick={() => setActiveTab('automations')}
+                    className={`flex-1 p-2 text-sm rounded-full font-bold transition-colors ${
+                        activeTab === 'automations'
+                            ? 'bg-slate-700 text-white shadow-inner'
+                            : 'text-slate-400 hover:bg-slate-700/50 hover:text-white'
+                    }`}
+                >
+                    Automations
                 </button>
             </div>
             
@@ -78,6 +94,17 @@ const PlanPage: React.FC<PlanPageProps> = (props) => {
                 )}
                 {activeTab === 'mastery' && (
                     <ExpertiseTracker />
+                )}
+                {activeTab === 'automations' && (
+                     <AutomationsManager
+                        recurringTasks={props.recurringTasks}
+                        projects={props.projects}
+                        onAddProject={props.onAddProject}
+                        onAddRecurringTask={props.onAddRecurringTask}
+                        onUpdateRecurringTask={props.onUpdateRecurringTask}
+                        onDeleteRecurringTask={props.onDeleteRecurringTask}
+                        onSetRecurringTaskActive={props.onSetRecurringTaskActive}
+                    />
                 )}
             </div>
         </>
