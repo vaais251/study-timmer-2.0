@@ -287,9 +287,13 @@ const AutomationsManager: React.FC<AutomationsManagerProps> = ({ recurringTasks,
                             <input type="text" value={tags} onChange={(e) => setTags(e.target.value)} placeholder="Tags (e.g., 'learning, japanese')" className="w-full bg-slate-800/80 border-2 border-slate-600 rounded-lg p-3 text-white placeholder:text-slate-400 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400" />
                         </div>
                         {projectId !== 'none' && (
-                             <label className="flex items-center gap-2 text-white/80 cursor-pointer text-sm p-2 bg-black/20 rounded-md animate-fadeIn">
+                            <label className="flex items-center gap-2 text-white/80 cursor-pointer text-sm p-2 bg-black/20 rounded-md animate-fadeIn">
                                 <input type="checkbox" checked={stopOnProjectCompletion} onChange={e => setStopOnProjectCompletion(e.target.checked)} className="h-4 w-4 rounded bg-slate-600 border-slate-500 text-teal-400 focus:ring-teal-400/50" />
-                                Stop this automation when project is complete
+                                Stop when project is complete or due
+                                <ExplanationTooltip 
+                                    title="Stop on Project End" 
+                                    content="If checked, this recurring task will automatically stop being created once its associated project is marked as <strong>complete</strong> or becomes <strong>due</strong> (past its deadline)." 
+                                />
                             </label>
                         )}
                         <div className="space-y-2 text-center">

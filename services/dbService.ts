@@ -639,7 +639,7 @@ export const processRecurringTasks = async (): Promise<boolean> => {
             continue;
         }
 
-        if (template.stop_on_project_completion && template.project_id && template.projects?.status === 'completed') {
+        if (template.stop_on_project_completion && template.project_id && (template.projects?.status === 'completed' || template.projects?.status === 'due')) {
             continue;
         }
 
