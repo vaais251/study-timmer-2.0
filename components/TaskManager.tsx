@@ -1,8 +1,6 @@
-
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Task, Project, Settings } from '../types';
-import { PostponeIcon, DuplicateIcon, MoreVerticalIcon, UndoIcon, EditIcon, BringForwardIcon, CalendarIcon, TrashIcon } from './common/Icons';
+import { PostponeIcon, DuplicateIcon, MoreVerticalIcon, UndoIcon, EditIcon, BringForwardIcon, CalendarIcon, TrashIcon, RescheduleIcon } from './common/Icons';
 import { getTodayDateString } from '../utils/date';
 import PrioritySelector from './common/PrioritySelector';
 import ExplanationTooltip from './common/ExplanationTooltip';
@@ -85,6 +83,7 @@ interface TaskItemProps {
     onUpdateTaskTimers: (id: string, newTimers: { focus: number | null, break: number | null }) => void;
     onUpdateTask: (id: string, newText: string, newTags: string[], newPoms: number, projectId: string | null, priority: number | null) => void;
     onMarkTaskIncomplete?: (id: string) => void;
+    onSetTaskToAutomate: (task: Task) => void;
     isTomorrowTask?: boolean;
     displayDate?: string;
     onBringTaskForward?: (id: string) => void;
@@ -94,7 +93,7 @@ interface TaskItemProps {
     isJustAdded?: boolean;
 }
 
-const TaskItem = React.memo(React.forwardRef<HTMLLIElement, TaskItemProps>(({ task, isCompleted, settings, projects, onDelete, onMove, onUpdateTaskTimers, onUpdateTask, onMarkTaskIncomplete, dragProps, isTomorrowTask, onBringTaskForward, displayDate, onDuplicateForTomorrowWithEdit, isJustAdded }, ref) => {
+const TaskItem = React.memo(React.forwardRef<HTMLLIElement, TaskItemProps>(({ task, isCompleted, settings, projects, onDelete, onMove, onUpdateTaskTimers, onUpdateTask, onMarkTaskIncomplete, onSetTaskToAutomate, dragProps, isTomorrowTask, onBringTaskForward, displayDate, onDuplicateForTomorrowWithEdit, isJustAdded }, ref) => {
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
     const [editText, setEditText] = useState(task.text);
@@ -265,8 +264,9 @@ const TaskItem = React.memo(React.forwardRef<HTMLLIElement, TaskItemProps>(({ ta
                         <button onClick={() => { if (window.confirm('Are you sure you want to duplicate this task for tomorrow?')) onMove(task.id, 'duplicate'); }} className="p-2 rounded-full text-amber-400 hover:text-amber-300 hover:bg-slate-700/50 transition" title="Duplicate for Tomorrow"><DuplicateIcon /></button>
                     </>
                 )}
-                 {!isCompleted && (
+                 {!isCompleted && !task.is_recurring && !task.template_task_id && (
                     <>
+                        <button onClick={() => onSetTaskToAutomate(task)} className="p-2 rounded-full text-teal-400 hover:text-teal-300 hover:bg-slate-700/50 transition" title="Automate / Make Recurring"><RescheduleIcon /></button>
                         <button onClick={() => setIsEditing(true)} className="p-2 rounded-full text-sky-400 hover:text-sky-300 hover:bg-slate-700/50 transition" title="Edit Task"><EditIcon /></button>
                         <button onClick={() => setIsSettingsOpen(o => !o)} className="p-2 rounded-full text-cyan-400 hover:text-cyan-300 hover:bg-slate-700/50 transition" title="Custom Timers"><MoreVerticalIcon /></button>
                     </>
@@ -616,9 +616,10 @@ interface TaskManagerProps {
     onMarkTaskIncomplete: (id: string) => void;
     todaySortBy: 'default' | 'priority';
     onSortTodayByChange: (sortBy: 'default' | 'priority') => void;
+    onSetTaskToAutomate: (task: Task) => void;
 }
 
-const TaskManager: React.FC<TaskManagerProps> = ({ tasksToday, tasksForTomorrow, tasksFuture, completedToday, projects, settings, onAddTask, onAddProject, onDeleteTask, onMoveTask, onBringTaskForward, onReorderTasks, onUpdateTaskTimers, onUpdateTask, onMarkTaskIncomplete, todaySortBy, onSortTodayByChange }) => {
+const TaskManager: React.FC<TaskManagerProps> = ({ tasksToday, tasksForTomorrow, tasksFuture, completedToday, projects, settings, onAddTask, onAddProject, onDeleteTask, onMoveTask, onBringTaskForward, onReorderTasks, onUpdateTaskTimers, onUpdateTask, onMarkTaskIncomplete, onSetTaskToAutomate, todaySortBy, onSortTodayByChange }) => {
     
     const dragItemToday = React.useRef<number | null>(null);
     const dragOverItemToday = React.useRef<number | null>(null);
@@ -758,6 +759,7 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasksToday, tasksForTomorrow,
                             onMove={onMoveTask}
                             onUpdateTaskTimers={onUpdateTaskTimers}
                             onUpdateTask={onUpdateTask}
+                            onSetTaskToAutomate={onSetTaskToAutomate}
                             isJustAdded={task.id === justAddedTaskId}
                             dragProps={todaySortBy === 'default' ? { 
                                 draggable: true, 
@@ -782,7 +784,7 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasksToday, tasksForTomorrow,
                         </summary>
                         <ul className="mt-2 space-y-2">
                             {completedToday.map(task => (
-                                <TaskItem key={task.id} task={task} isCompleted={true} settings={settings} projects={projects} onDelete={onDeleteTask} onUpdateTaskTimers={onUpdateTaskTimers} onUpdateTask={onUpdateTask} onMarkTaskIncomplete={onMarkTaskIncomplete} onDuplicateForTomorrowWithEdit={handleDuplicateForTomorrowWithEdit} />
+                                <TaskItem key={task.id} task={task} isCompleted={true} settings={settings} projects={projects} onDelete={onDeleteTask} onUpdateTaskTimers={onUpdateTaskTimers} onUpdateTask={onUpdateTask} onMarkTaskIncomplete={onMarkTaskIncomplete} onSetTaskToAutomate={onSetTaskToAutomate} onDuplicateForTomorrowWithEdit={handleDuplicateForTomorrowWithEdit} />
                             ))}
                         </ul>
                     </details>
@@ -829,6 +831,7 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasksToday, tasksForTomorrow,
                            onDelete={onDeleteTask} 
                            onUpdateTaskTimers={onUpdateTaskTimers}
                            onUpdateTask={onUpdateTask}
+                           onSetTaskToAutomate={onSetTaskToAutomate}
                            isTomorrowTask={true}
                            isJustAdded={task.id === justAddedTaskId}
                            onBringTaskForward={onBringTaskForward}
@@ -868,6 +871,7 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasksToday, tasksForTomorrow,
                            onDelete={onDeleteTask} 
                            onUpdateTaskTimers={onUpdateTaskTimers}
                            onUpdateTask={onUpdateTask}
+                           onSetTaskToAutomate={onSetTaskToAutomate}
                            isTomorrowTask={true}
                            displayDate={task.due_date}
                            isJustAdded={task.id === justAddedTaskId}

@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Task, Project } from '../types';
 import Panel from './common/Panel';
 import PrioritySelector from './common/PrioritySelector';
 import DaySelector from './common/DaySelector';
 import { EditIcon, TrashIcon, PlayIcon, PauseIcon } from './common/Icons';
 import ExplanationTooltip from './common/ExplanationTooltip';
+import { getTodayDateString } from '../utils/date';
 
 interface AutomationsManagerProps {
     recurringTasks: Task[];
@@ -14,6 +15,8 @@ interface AutomationsManagerProps {
     onUpdateRecurringTask: (id: string, updates: Partial<Task>) => void;
     onDeleteRecurringTask: (id: string) => void;
     onSetRecurringTaskActive: (id: string, isActive: boolean) => void;
+    taskToAutomate: Task | null;
+    onClearTaskToAutomate: () => void;
 }
 
 interface RecurringTaskItemProps {
@@ -35,34 +38,44 @@ const RecurringTaskItem: React.FC<RecurringTaskItemProps> = ({ task, projects, o
     const [editRecurringDays, setEditRecurringDays] = useState<number[]>(task.recurring_days || []);
     const [editRecurringEndDate, setEditRecurringEndDate] = useState(task.recurring_end_date || '');
     const [editStopOnProjectCompletion, setEditStopOnProjectCompletion] = useState(task.stop_on_project_completion ?? true);
+    
+    useEffect(() => {
+        if (!isEditing) {
+            setEditText(task.text);
+            setEditPoms(Math.abs(task.total_poms).toString());
+            setEditIsStopwatch(task.total_poms < 0);
+            setEditProjectId(task.project_id || 'none');
+            setEditTags(task.tags?.join(', ') || '');
+            setEditPriority(task.priority ?? 3);
+            setEditRecurringDays(task.recurring_days || []);
+            setEditRecurringEndDate(task.recurring_end_date || '');
+            setEditStopOnProjectCompletion(task.stop_on_project_completion ?? true);
+        }
+    }, [isEditing, task]);
 
     const handleSave = () => {
         const pomsInt = editIsStopwatch ? -1 : parseInt(editPoms, 10);
-        if (!editText.trim() || isNaN(pomsInt)) {
-            alert('Task text and a valid pomodoro number are required.');
+        if (!editText.trim() || isNaN(pomsInt) || (!editIsStopwatch && pomsInt <= 0)) {
+            alert('Task text and a valid positive pomodoro number are required.');
             return;
         }
         
         const updates: Partial<Task> = {
             text: editText.trim(),
             total_poms: pomsInt,
-            project_id: editProjectId === 'none' ? null : editProjectId,
-            tags: editTags.split(',').map(t => t.trim()).filter(Boolean),
-            priority: editPriority,
-            recurring_days: editRecurringDays.length > 0 ? editRecurringDays : null,
-            recurring_end_date: editRecurringEndDate || null,
-            stop_on_project_completion: editProjectId !== 'none' ? editStopOnProjectCompletion : false,
         };
 
         onUpdate(task.id, updates);
         setIsEditing(false);
     };
 
+    const handleCancel = () => {
+        setIsEditing(false);
+    };
+
     const handleToggleActive = () => {
         const isActive = task.is_active ?? true;
-        if (!isActive || window.confirm("Are you sure you want to pause this automation? It will stop creating new tasks until you resume it.")) {
-            onSetTaskActive(task.id, !isActive);
-        }
+        onSetTaskActive(task.id, !isActive);
     };
 
     const dayMap = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -71,24 +84,83 @@ const RecurringTaskItem: React.FC<RecurringTaskItemProps> = ({ task, projects, o
         : 'Every day';
 
     if (isEditing) {
+        const todayString = getTodayDateString();
+        const activeProjects = projects.filter(p => p.status === 'active' && (!p.start_date || p.start_date <= todayString));
+        
+        const currentProject = projects.find(p => p.id === task.project_id);
+        const selectableProjects = [...activeProjects];
+        if (currentProject && !selectableProjects.some(p => p.id === currentProject.id)) {
+            selectableProjects.unshift(currentProject);
+        }
+
         return (
              <div className="bg-slate-700/80 p-4 rounded-xl ring-2 ring-cyan-400 space-y-3">
-                <input type="text" value={editText} onChange={e => setEditText(e.target.value)} placeholder="Task Text" className="w-full bg-slate-800/80 border border-slate-600 rounded-lg p-2 text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-400" />
-                <select value={editProjectId} onChange={(e) => setEditProjectId(e.target.value)} className="w-full bg-slate-800/80 border border-slate-600 rounded-lg p-2 text-white focus:outline-none focus:ring-2 focus:ring-cyan-400">
-                    <option value="none" className="bg-slate-900">No Project</option>
-                    {projects.map(p => <option key={p.id} value={p.id} className="bg-slate-900">{p.name}</option>)}
-                </select>
-                {editProjectId !== 'none' && (
-                    <label className="flex items-center gap-2 text-white/80 cursor-pointer text-sm p-2 bg-black/20 rounded-md">
-                        <input type="checkbox" checked={editStopOnProjectCompletion} onChange={e => setEditStopOnProjectCompletion(e.target.checked)} className="h-4 w-4 rounded bg-slate-600 border-slate-500 text-teal-400 focus:ring-teal-400/50" />
-                        Stop when project is complete
-                    </label>
-                )}
-                <DaySelector selectedDays={editRecurringDays} onDayToggle={(day) => setEditRecurringDays(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day])} />
-                <input type="date" value={editRecurringEndDate} onChange={e => setEditRecurringEndDate(e.target.value)} className="bg-slate-800/80 border border-slate-600 rounded-lg p-2 text-white/80 w-full text-center" style={{colorScheme: 'dark'}} />
+                {/* Editable Fields */}
+                <div>
+                    <label className="text-xs text-slate-300 mb-1 block">Task Name</label>
+                    <input type="text" value={editText} onChange={e => setEditText(e.target.value)} placeholder="Task Text" className="w-full bg-slate-800/80 border border-slate-600 rounded-lg p-2 text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-400" />
+                </div>
 
-                <div className="flex justify-end gap-2 text-sm">
-                    <button onClick={() => setIsEditing(false)} className="p-2 px-4 rounded-md font-bold text-white transition hover:scale-105 bg-slate-600 hover:bg-slate-700">Cancel</button>
+                <div className="flex items-center gap-4 border border-slate-600 p-3 rounded-lg">
+                    <label htmlFor={`edit-poms-${task.id}`} className="text-slate-300 text-sm">Poms:</label>
+                    <input
+                        id={`edit-poms-${task.id}`}
+                        type="number"
+                        value={editPoms}
+                        onChange={e => setEditPoms(e.target.value)}
+                        className="w-20 text-center bg-slate-800 border border-slate-600 rounded-lg p-2 text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-400 disabled:opacity-50"
+                        disabled={editIsStopwatch}
+                    />
+                    <label className="flex items-center gap-2 text-slate-300 cursor-pointer text-sm">
+                        <input
+                            type="checkbox"
+                            checked={editIsStopwatch}
+                            onChange={e => setEditIsStopwatch(e.target.checked)}
+                            className="h-4 w-4 rounded bg-slate-600 border-slate-500 text-teal-400 focus:ring-teal-400/50"
+                        />
+                        Stopwatch
+                    </label>
+                </div>
+
+                {/* Disabled Fields */}
+                <div className="space-y-3 opacity-60">
+                    <p className="text-xs text-center text-slate-400 pt-2">To change schedule, project, or tags, please create a new automation.</p>
+                    
+                    <div>
+                        <label className="text-xs text-slate-300 mb-1 block">Project</label>
+                         <select value={editProjectId} disabled className="w-full bg-slate-800/80 border border-slate-600 rounded-lg p-2 text-white focus:outline-none focus:ring-2 focus:ring-cyan-400 disabled:cursor-not-allowed">
+                            <option value="none" className="bg-slate-900">No Project</option>
+                            {selectableProjects.map(p => <option key={p.id} value={p.id} className="bg-slate-900">{p.name}</option>)}
+                        </select>
+                    </div>
+
+                    <div>
+                        <label className="text-xs text-slate-300 mb-1 block">Tags</label>
+                        <input type="text" value={editTags} disabled className="w-full bg-slate-800/80 border border-slate-600 rounded-lg p-2 text-white placeholder:text-slate-400 disabled:cursor-not-allowed" />
+                    </div>
+                    
+                    <div className="flex justify-between items-center">
+                        <label className="text-xs text-slate-300">Priority</label>
+                        <div className="pointer-events-none">
+                            <PrioritySelector priority={editPriority} setPriority={() => {}} />
+                        </div>
+                    </div>
+
+                    <div className="space-y-2 text-center">
+                        <label className="text-xs text-slate-300">Repeat On</label>
+                        <div className="pointer-events-none">
+                             <DaySelector selectedDays={editRecurringDays} onDayToggle={() => {}} />
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="text-xs text-slate-300 mb-1 block">End Date</label>
+                        <input type="date" value={editRecurringEndDate} disabled className="bg-slate-800/80 border border-slate-600 rounded-lg p-2 text-white/80 w-full text-center disabled:cursor-not-allowed" style={{colorScheme: 'dark'}} />
+                    </div>
+                </div>
+
+                <div className="flex justify-end gap-2 text-sm pt-2">
+                    <button onClick={handleCancel} className="p-2 px-4 rounded-md font-bold text-white transition hover:scale-105 bg-slate-600 hover:bg-slate-700">Cancel</button>
                     <button onClick={handleSave} className="p-2 px-4 rounded-md font-bold text-white transition hover:scale-105 bg-cyan-600 hover:bg-cyan-700">Save</button>
                 </div>
             </div>
@@ -113,14 +185,18 @@ const RecurringTaskItem: React.FC<RecurringTaskItemProps> = ({ task, projects, o
                         {isActive ? <PauseIcon /> : <PlayIcon />}
                     </button>
                     <button onClick={() => setIsEditing(true)} className="p-2 rounded-full text-sky-300 hover:bg-sky-500/20 transition"><EditIcon /></button>
-                    <button onClick={() => onDelete(task.id)} className="p-2 rounded-full text-red-400 hover:bg-red-500/20 transition"><TrashIcon /></button>
+                    <button onClick={() => {
+                        if (window.confirm("Are you sure you want to delete this automation? This cannot be undone.")) {
+                            onDelete(task.id)
+                        }
+                    }} className="p-2 rounded-full text-red-400 hover:bg-red-500/20 transition"><TrashIcon /></button>
                 </div>
             </div>
         </li>
     );
 };
 
-const AutomationsManager: React.FC<AutomationsManagerProps> = ({ recurringTasks, projects, onAddProject, onAddRecurringTask, onUpdateRecurringTask, onDeleteRecurringTask, onSetRecurringTaskActive }) => {
+const AutomationsManager: React.FC<AutomationsManagerProps> = ({ recurringTasks, projects, onAddProject, onAddRecurringTask, onUpdateRecurringTask, onDeleteRecurringTask, onSetRecurringTaskActive, taskToAutomate, onClearTaskToAutomate }) => {
     const [isFormVisible, setIsFormVisible] = useState(false);
     const [text, setText] = useState('');
     const [poms, setPoms] = useState('1');
@@ -131,6 +207,27 @@ const AutomationsManager: React.FC<AutomationsManagerProps> = ({ recurringTasks,
     const [recurringDays, setRecurringDays] = useState<number[]>([]);
     const [recurringEndDate, setRecurringEndDate] = useState('');
     const [stopOnProjectCompletion, setStopOnProjectCompletion] = useState(true);
+
+    useEffect(() => {
+        if (taskToAutomate) {
+            setIsFormVisible(true);
+            setText(taskToAutomate.text);
+            setPoms(Math.abs(taskToAutomate.total_poms).toString());
+            setIsStopwatch(taskToAutomate.total_poms < 0);
+            setProjectId(taskToAutomate.project_id || 'none');
+            setTags(taskToAutomate.tags?.join(', ') || '');
+            setPriority(taskToAutomate.priority ?? 3);
+            
+            // Reset schedule-specific fields
+            setRecurringDays([]);
+            setRecurringEndDate('');
+            
+            // Scroll to the top of the form for better UX
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            
+            onClearTaskToAutomate();
+        }
+    }, [taskToAutomate, onClearTaskToAutomate]);
 
     const handleAdd = () => {
         const pomsInt = isStopwatch ? -1 : parseInt(poms, 10);
@@ -164,6 +261,9 @@ const AutomationsManager: React.FC<AutomationsManagerProps> = ({ recurringTasks,
                 : [...prev, dayIndex]
         );
     };
+    
+    const todayString = getTodayDateString();
+    const activeProjects = projects.filter(p => p.status === 'active' && (!p.start_date || p.start_date <= todayString));
 
     return (
         <div className="space-y-6">
@@ -182,7 +282,7 @@ const AutomationsManager: React.FC<AutomationsManagerProps> = ({ recurringTasks,
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                             <select value={projectId} onChange={(e) => setProjectId(e.target.value)} className="w-full bg-slate-800/80 border-2 border-slate-600 rounded-lg p-3 text-white focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400">
                                 <option value="none" className="bg-slate-900">No Project</option>
-                                {projects.map(p => <option key={p.id} value={p.id} className="bg-slate-900">{p.name}</option>)}
+                                {activeProjects.map(p => <option key={p.id} value={p.id} className="bg-slate-900">{p.name}</option>)}
                             </select>
                             <input type="text" value={tags} onChange={(e) => setTags(e.target.value)} placeholder="Tags (e.g., 'learning, japanese')" className="w-full bg-slate-800/80 border-2 border-slate-600 rounded-lg p-3 text-white placeholder:text-slate-400 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400" />
                         </div>
@@ -215,7 +315,7 @@ const AutomationsManager: React.FC<AutomationsManagerProps> = ({ recurringTasks,
                             <PrioritySelector priority={priority} setPriority={setPriority} />
                         </div>
                         <div className="flex items-center justify-end gap-2">
-                            <button onClick={() => setIsFormVisible(false)} className="h-12 px-6 rounded-lg font-bold text-slate-300 hover:text-white transition bg-slate-600 hover:bg-slate-700">Cancel</button>
+                            <button onClick={() => { setIsFormVisible(false); onClearTaskToAutomate(); }} className="h-12 px-6 rounded-lg font-bold text-slate-300 hover:text-white transition bg-slate-600 hover:bg-slate-700">Cancel</button>
                             <button onClick={handleAdd} className="h-12 px-6 rounded-lg font-bold text-white transition hover:scale-105 bg-gradient-to-br from-cyan-500 to-sky-600">Create Automation</button>
                         </div>
                     </div>

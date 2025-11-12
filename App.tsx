@@ -161,6 +161,9 @@ const App: React.FC = () => {
     // New state for celebration animations
     const [celebration, setCelebration] = useState<{ message: string } | null>(null);
 
+    // New state to handle converting a task to a recurring template
+    const [taskToAutomate, setTaskToAutomate] = useState<Task | null>(null);
+
 
     const timerInterval = useRef<number | null>(null);
     const notificationInterval = useRef<number | null>(null);
@@ -1574,6 +1577,11 @@ const App: React.FC = () => {
         }
     };
 
+    const handleSetTaskToAutomate = (task: Task) => {
+        setTaskToAutomate(task);
+        setPage('plan'); // Switch to plan page
+    };
+
     // --- Project Handlers ---
     const handleAddProject = async (name: string, description: string | null = null, startDate: string | null = null, deadline: string | null = null, criteria: {type: Project['completion_criteria_type'], value: number | null} = {type: 'manual', value: null}, priority: number | null = null, activeDays: number[] | null = null): Promise<string | null> => {
         setIsSyncing(true);
@@ -2011,6 +2019,9 @@ const App: React.FC = () => {
                     onUpdateRecurringTask={handleUpdateRecurringTask}
                     onDeleteRecurringTask={handleDeleteRecurringTask}
                     onSetRecurringTaskActive={handleSetRecurringTaskActive}
+                    onSetTaskToAutomate={handleSetTaskToAutomate}
+                    taskToAutomate={taskToAutomate}
+                    onClearTaskToAutomate={() => setTaskToAutomate(null)}
                 />;
             case 'stats':
                 return <StatsPage />;

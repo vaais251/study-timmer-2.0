@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Task, Project, Settings } from '../types';
 import TaskManager from '../components/TaskManager';
 import ExpertiseTracker from '../components/ExpertiseTracker';
@@ -27,10 +27,19 @@ interface PlanPageProps {
     onUpdateRecurringTask: (id: string, updates: Partial<Task>) => void;
     onDeleteRecurringTask: (id: string) => void;
     onSetRecurringTaskActive: (id: string, isActive: boolean) => void;
+    taskToAutomate: Task | null;
+    onClearTaskToAutomate: () => void;
+    onSetTaskToAutomate: (task: Task) => void;
 }
 
 const PlanPage: React.FC<PlanPageProps> = (props) => {
     const [activeTab, setActiveTab] = useState<'planner' | 'mastery' | 'automations'>('planner');
+
+    useEffect(() => {
+        if (props.taskToAutomate) {
+            setActiveTab('automations');
+        }
+    }, [props.taskToAutomate]);
 
     return (
         <>
@@ -90,6 +99,7 @@ const PlanPage: React.FC<PlanPageProps> = (props) => {
                         onMarkTaskIncomplete={props.onMarkTaskIncomplete}
                         todaySortBy={props.todaySortBy}
                         onSortTodayByChange={props.onSortTodayByChange}
+                        onSetTaskToAutomate={props.onSetTaskToAutomate}
                     />
                 )}
                 {activeTab === 'mastery' && (
@@ -104,6 +114,8 @@ const PlanPage: React.FC<PlanPageProps> = (props) => {
                         onUpdateRecurringTask={props.onUpdateRecurringTask}
                         onDeleteRecurringTask={props.onDeleteRecurringTask}
                         onSetRecurringTaskActive={props.onSetRecurringTaskActive}
+                        taskToAutomate={props.taskToAutomate}
+                        onClearTaskToAutomate={props.onClearTaskToAutomate}
                     />
                 )}
             </div>
