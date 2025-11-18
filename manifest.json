@@ -10,13 +10,13 @@
   "theme_color": "#1e293b",
   "icons": [
     {
-      "src": "/icon.svg",
+      "src": "./icon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any"
     },
     {
-      "src": "/icon-maskable.svg",
+      "src": "./icon-maskable.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "maskable"
@@ -27,22 +27,22 @@
       "name": "Start Focus Session",
       "short_name": "Focus",
       "description": "Start a new Pomodoro focus session",
-      "url": "/?action=start-focus",
-      "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+      "url": "./?action=start-focus",
+      "icons": [{ "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml" }]
     },
     {
       "name": "View Plan",
       "short_name": "Plan",
       "description": "View and manage your tasks",
-      "url": "/?page=plan",
-      "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+      "url": "./?page=plan",
+      "icons": [{ "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml" }]
     },
     {
       "name": "AI Coach",
       "short_name": "AI Coach",
       "description": "Chat with your AI productivity coach",
-      "url": "/?page=ai",
-      "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+      "url": "./?page=ai",
+      "icons": [{ "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml" }]
     }
   ]
 }
