@@ -105,6 +105,8 @@ export interface Settings {
     breakDuration: number;
     sessionsPerCycle: number;
     todaySortBy: 'default' | 'priority';
+    dailyFocusTarget: number | null;
+    dailyFocusTargetsByDay: { [key: number]: number | null } | null;
 }
 export interface DbSettings extends Settings {
     user_id: string;

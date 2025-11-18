@@ -124,6 +124,8 @@ const App: React.FC = () => {
         breakDuration: 5,
         sessionsPerCycle: 2,
         todaySortBy: 'default',
+        dailyFocusTarget: null,
+        dailyFocusTargetsByDay: null,
     });
 
     const [tasks, setTasks] = useState<Task[]>([]);
@@ -555,7 +557,7 @@ const App: React.FC = () => {
             setAppState(initialState);
             setPhaseEndTime(null);
             setDidRestoreFromStorage(false);
-            setSettings({ focusDuration: 25, breakDuration: 5, sessionsPerCycle: 2, todaySortBy: 'default' });
+            setSettings({ focusDuration: 25, breakDuration: 5, sessionsPerCycle: 2, todaySortBy: 'default', dailyFocusTarget: null, dailyFocusTargetsByDay: null });
             setTasks([]);
             setRecurringTasks([]);
             setProjects([]);
@@ -1364,6 +1366,35 @@ const App: React.FC = () => {
     const handleAddTask = async (text: string, poms: number, dueDate: string, projectId: string | null, tags: string[], priority: number | null) => {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
+        
+        if (dueDate === todayString || dueDate === tomorrowString) {
+            const dayOfWeek = new Date(dueDate + 'T00:00:00').getDay();
+            const daySpecificTarget = settings.dailyFocusTargetsByDay?.[dayOfWeek];
+
+            const limit = (daySpecificTarget !== null && daySpecificTarget !== undefined && daySpecificTarget > 0)
+                ? daySpecificTarget
+                : (settings.dailyFocusTarget && settings.dailyFocusTarget > 0)
+                ? settings.dailyFocusTarget
+                : null;
+            
+            if (limit) {
+                const tasksForDay = tasks.filter(t => t.due_date === dueDate && !t.completed_at && t.total_poms > 0);
+                const currentFocusMinutes = tasksForDay.reduce((total, task) => {
+                    const remainingPoms = task.total_poms - task.completed_poms;
+                    const focusDuration = task.custom_focus_duration || settings.focusDuration;
+                    return total + (remainingPoms * focusDuration);
+                }, 0);
+                
+                const newTaskFocusMinutes = poms > 0 ? poms * settings.focusDuration : 0;
+
+                if (currentFocusMinutes + newTaskFocusMinutes > limit) {
+                    if (!window.confirm(`Adding this task will exceed your daily focus limit of ${limit} minutes for this day. Do you want to add it anyway?`)) {
+                        setToastNotification("Task not added to respect daily focus limit.");
+                        return;
+                    }
+                }
+            }
+        }
 
         const optimisticTask: Task = {
             id: crypto.randomUUID(),
