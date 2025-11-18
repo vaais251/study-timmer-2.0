@@ -1,12 +1,12 @@
 const CACHE_NAME = 'focusflow-cache-v1';
 const URLS_TO_CACHE = [
-  './',
-  './index.html',
-  './manifest.json',
-  './icon.svg',
-  './icon-maskable.svg',
-  './index.tsx',
-  './App.tsx'
+  '/',
+  '/index.html',
+  '/manifest.json',
+  '/icon.svg',
+  '/icon-maskable.svg',
+  '/index.tsx',
+  '/App.tsx'
 ];
 // Note: This cache list is minimal. For full offline functionality,
 // all imported components and assets should be added.

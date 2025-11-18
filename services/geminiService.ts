@@ -5,12 +5,10 @@ import { Goal, Target, Project, Commitment, Task, AiMemory, PomodoroHistory } fr
 
 /**
  * Initializes and returns a GoogleGenAI client instance.
- * It uses a hardcoded API key as requested.
- * Note: Hardcoding API keys in client-side code is a security risk.
+ * It uses an environment variable for the API key.
  */
 const getAiClient = (): GoogleGenAI => {
-    const apiKey = "AIzaSyBT9IN5PiyqaWBdM9NekDg5d-5fWDuhZnE";
-    return new GoogleGenAI({ apiKey });
+    return new GoogleGenAI({ apiKey: process.env.API_KEY });
 };
 
 
