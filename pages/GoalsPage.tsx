@@ -1,4 +1,5 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Goal, Target, Project, Task, PomodoroHistory, ProjectUpdate, Commitment } from '../types';
 import Panel from '../components/common/Panel';
 import { TrashIcon, EditIcon, StarIcon, LockIcon, CheckIcon, TargetIcon, RescheduleIcon, CalendarIcon, FilledStarIcon, LayoutIcon } from '../components/common/Icons';
@@ -1338,6 +1339,106 @@ const CommitmentItem: React.FC<{
     );
 };
 
+interface PromiseTermsModalProps {
+    isOpen: boolean;
+    onClose: () => void;
+    onConfirm: () => void;
+}
+
+const PromiseTermsModal: React.FC<PromiseTermsModalProps> = ({ isOpen, onClose, onConfirm }) => {
+    const [timeLeft, setTimeLeft] = useState(10);
+    const [isChecked, setIsChecked] = useState(false);
+
+    useEffect(() => {
+        if (isOpen) {
+            setTimeLeft(10);
+            setIsChecked(false);
+        }
+    }, [isOpen]);
+
+    useEffect(() => {
+        if (isOpen && timeLeft > 0) {
+            const timer = setTimeout(() => setTimeLeft(prev => prev - 1), 1000);
+            return () => clearTimeout(timer);
+        }
+    }, [isOpen, timeLeft]);
+
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fadeIn">
+            <div className="bg-slate-900 border-2 border-amber-500/50 rounded-2xl shadow-2xl max-w-lg w-full p-6 relative overflow-hidden">
+                <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-amber-600 via-yellow-400 to-amber-600 animate-pulse"></div>
+                
+                <h2 className="text-2xl font-bold text-amber-400 text-center mb-4 tracking-wider uppercase">Divine Covenant</h2>
+                
+                <div className="bg-black/30 p-4 rounded-lg border border-slate-700 mb-6 text-center space-y-4 text-sm sm:text-base text-slate-200 leading-relaxed overflow-y-auto max-h-[60vh]">
+                    <p>You are about to make a solemn promise (Ahd) to <strong>ALLAH (SWT)</strong>.</p>
+                    
+                    <div className="space-y-3 my-4">
+                        <p className="text-amber-200 italic border-l-2 border-amber-500/50 pl-3">
+                            "And fulfill the Covenant of Allah when you have covenanted, and break not the oaths after you have confirmed them, and indeed you have appointed Allah your guarantor. Indeed, Allah knows what you do." <br/>
+                            <span className="text-xs text-slate-400 block mt-1">(Quran 16:91)</span>
+                        </p>
+                        
+                        <p className="text-red-300 italic border-l-2 border-red-500/50 pl-3">
+                            "O you who have believed, why do you say what you do not do? Great is hatred in the sight of Allah that you say what you do not do." <br/>
+                            <span className="text-xs text-slate-400 block mt-1">(Quran 61:2-3)</span>
+                        </p>
+
+                         <p className="text-amber-200 italic border-l-2 border-amber-500/50 pl-3">
+                            "...And fulfill the covenant. Indeed, the covenant will be questioned." <br/>
+                            <span className="text-xs text-slate-400 block mt-1">(Quran 17:34)</span>
+                        </p>
+                    </div>
+
+                    <p>
+                        This is not a simple text entry. It is a witness against your soul. 
+                        Breaking a promise to the Creator carries a heavy spiritual weight.
+                    </p>
+                    <p>
+                        Are you truly ready to uphold this trust with sincerity and determination?
+                    </p>
+                </div>
+
+                <div className="flex items-center gap-3 justify-center mb-6">
+                    <input 
+                        type="checkbox" 
+                        id="confirm-promise"
+                        checked={isChecked}
+                        onChange={(e) => setIsChecked(e.target.checked)}
+                        className="w-5 h-5 rounded border-amber-500 text-amber-500 focus:ring-amber-500/50 bg-slate-800 cursor-pointer"
+                    />
+                    <label htmlFor="confirm-promise" className="text-white text-sm cursor-pointer select-none">
+                        I understand the gravity of this promise.
+                    </label>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-3">
+                    <button 
+                        onClick={onClose}
+                        className="flex-1 py-3 rounded-lg font-bold text-slate-300 bg-slate-800 hover:bg-slate-700 transition border border-slate-700"
+                    >
+                        Cancel
+                    </button>
+                    <button 
+                        onClick={onConfirm}
+                        disabled={timeLeft > 0 || !isChecked}
+                        className={`flex-1 py-3 rounded-lg font-bold text-white transition relative overflow-hidden ${
+                            timeLeft > 0 || !isChecked 
+                                ? 'bg-slate-700 cursor-not-allowed opacity-50' 
+                                : 'bg-gradient-to-r from-amber-600 to-yellow-600 hover:from-amber-500 hover:to-yellow-500 shadow-lg shadow-amber-900/20'
+                        }`}
+                    >
+                        {timeLeft > 0 ? `Wait ${timeLeft}s...` : 'I Promise'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+
 const CommitmentsPanel: React.FC<{
     commitments: Commitment[];
     onAdd: (text: string, dueDate: string | null) => void;
@@ -1349,6 +1450,7 @@ const CommitmentsPanel: React.FC<{
     const [newCommitment, setNewCommitment] = useState('');
     const [newDueDate, setNewDueDate] = useState('');
     const [view, setView] = useState<'active' | 'completed' | 'broken'>('active');
+    const [isTermsModalOpen, setIsTermsModalOpen] = useState(false);
     
     const commitmentCounts = useMemo(() => ({
         active: commitments.filter(c => c.status === 'active').length,
@@ -1356,11 +1458,18 @@ const CommitmentsPanel: React.FC<{
         broken: commitments.filter(c => c.status === 'broken').length,
     }), [commitments]);
 
-    const handleAdd = () => {
+    const handleInitialClick = () => {
+        if (newCommitment.trim()) {
+            setIsTermsModalOpen(true);
+        }
+    };
+
+    const handleConfirmPromise = () => {
         if (newCommitment.trim()) {
             onAdd(newCommitment.trim(), newDueDate || null);
             setNewCommitment('');
             setNewDueDate('');
+            setIsTermsModalOpen(false);
         }
     };
     
@@ -1382,7 +1491,7 @@ const CommitmentsPanel: React.FC<{
                     type="text"
                     value={newCommitment}
                     onChange={e => setNewCommitment(e.target.value)}
-                    onKeyPress={e => e.key === 'Enter' && handleAdd()}
+                    onKeyPress={e => e.key === 'Enter' && handleInitialClick()}
                     placeholder="I commit to..."
                     className="w-full bg-slate-800/80 border-2 border-slate-600 rounded-lg p-3 text-white placeholder:text-slate-400 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400"
                 />
@@ -1398,8 +1507,8 @@ const CommitmentsPanel: React.FC<{
                             style={{colorScheme: 'dark'}}
                         />
                     </div>
-                    <button onClick={handleAdd} className="w-full sm:w-auto h-12 px-6 rounded-lg font-bold text-white transition hover:scale-105 bg-gradient-to-br from-cyan-500 to-sky-600">
-                        Commit
+                    <button onClick={handleInitialClick} className="w-full sm:w-auto h-12 px-6 rounded-lg font-bold text-white transition hover:scale-105 bg-gradient-to-br from-amber-600 to-orange-600 shadow-lg shadow-amber-900/20">
+                        Promise to ALLAH
                     </button>
                 </div>
             </div>
@@ -1418,6 +1527,12 @@ const CommitmentsPanel: React.FC<{
                     No {view} commitments.
                 </p>}
             </ul>
+
+            <PromiseTermsModal 
+                isOpen={isTermsModalOpen} 
+                onClose={() => setIsTermsModalOpen(false)} 
+                onConfirm={handleConfirmPromise} 
+            />
         </Panel>
     )
 }
