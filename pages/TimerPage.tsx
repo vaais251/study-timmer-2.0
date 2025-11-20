@@ -10,6 +10,7 @@ import TodayLog from '../components/TodayLog';
 import FocusQueue from '../components/FocusQueue';
 import StatsPanel from '../components/StatsPanel';
 import CategoryFocusPieChart from '../components/CategoryFocusPieChart';
+import { EditIcon } from '../components/common/Icons';
 
 interface TimerPageProps {
     appState: AppState;
@@ -26,6 +27,7 @@ interface TimerPageProps {
     historicalLogs: DbDailyLog[];
     isStopwatchMode: boolean;
     completeStopwatchTask: () => void;
+    onOpenReflection: () => void;
 }
 
 const formatMinutes = (minutes: number): string => {
@@ -43,7 +45,7 @@ const formatMinutes = (minutes: number): string => {
 };
 
 const TimerPage: React.FC<TimerPageProps> = (props) => {
-    const { appState, settings, tasksToday, completedToday, dailyLog, startTimer, stopTimer, resetTimer, navigateToSettings, currentTask, todaysHistory, historicalLogs, isStopwatchMode, completeStopwatchTask } = props;
+    const { appState, settings, tasksToday, completedToday, dailyLog, startTimer, stopTimer, resetTimer, navigateToSettings, currentTask, todaysHistory, historicalLogs, isStopwatchMode, completeStopwatchTask, onOpenReflection } = props;
     
     const allTodaysTasks = useMemo(() => [...tasksToday, ...completedToday], [tasksToday, completedToday]);
     const nextTasks = useMemo(() => tasksToday.slice(1), [tasksToday]);
@@ -139,7 +141,15 @@ const TimerPage: React.FC<TimerPageProps> = (props) => {
             {/* Widgets Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-slideUp" style={{animationDelay: '100ms'}}>
                 <FocusQueue nextTasks={nextTasks} />
-                <TodayLog todaysHistory={todaysHistory} tasks={allTodaysTasks} />
+                <div className="h-full flex flex-col">
+                    <TodayLog todaysHistory={todaysHistory} tasks={allTodaysTasks} />
+                    <button 
+                        onClick={onOpenReflection}
+                        className="mt-2 bg-slate-800/80 hover:bg-slate-700/80 text-white py-2 px-4 rounded-lg flex items-center justify-center gap-2 transition text-sm font-semibold border border-slate-600/50"
+                    >
+                        <EditIcon /> Daily Reflection
+                    </button>
+                </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-slideUp" style={{animationDelay: '200ms'}}>

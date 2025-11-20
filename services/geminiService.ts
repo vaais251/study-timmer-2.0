@@ -1,7 +1,7 @@
 
 
 import { GoogleGenAI, GenerateContentResponse, FunctionDeclaration, Part, Type } from "@google/genai";
-import { Goal, Target, Project, Commitment, Task, AiMemory, PomodoroHistory } from '../types';
+import { Goal, Target, Project, Commitment, Task, AiMemory, PomodoroHistory, DbDailyLog } from '../types';
 
 /**
  * Initializes and returns a GoogleGenAI client instance.
@@ -9,7 +9,7 @@ import { Goal, Target, Project, Commitment, Task, AiMemory, PomodoroHistory } fr
  * Note: Hardcoding API keys in client-side code is a security risk.
  */
 const getAiClient = (): GoogleGenAI => {
-    const apiKey = "AIzaSyBT9IN5PiyqaWBdM9NekDg5d-5fWDuhZnE";
+    const apiKey = process.env.API_KEY;
     return new GoogleGenAI({ apiKey });
 };
 
@@ -43,8 +43,8 @@ export async function getChartInsight(chartTitle: string, chartData: any): Promi
         const ai = getAiClient();
 
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-pro',
-            contents: [{ parts: [{ text: prompt }] }],
+            model: 'gemini-2.5-flash',
+            contents: prompt,
         });
         
         const text = response.text;
@@ -90,8 +90,8 @@ export async function getTabSummary(tabName: string, data: any): Promise<string>
         const ai = getAiClient();
 
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-pro',
-            contents: [{ parts: [{ text: prompt }] }],
+            model: 'gemini-2.5-flash',
+            contents: prompt,
         });
         
         const text = response.text;
@@ -116,8 +116,8 @@ export async function generateContent(prompt: string): Promise<string> {
         const ai = getAiClient();
 
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-pro',
-            contents: [{ parts: [{ text: prompt }] }],
+            model: 'gemini-2.5-flash',
+            contents: prompt,
             config: {
                 // No tools for this simple utility call to avoid complexity.
             },
@@ -147,7 +147,7 @@ export interface AgentContext {
     projects: Pick<Project, 'id' | 'name' | 'description' | 'status' | 'start_date' | 'deadline' | 'completion_criteria_type' | 'completion_criteria_value' | 'progress_value' | 'priority' | 'active_days'>[];
     commitments: Pick<Commitment, 'id' | 'text' | 'due_date'>[];
     tasks: Pick<Task, 'id' | 'text' | 'due_date' | 'completed_at' | 'project_id' | 'completed_poms' | 'total_poms' | 'comments' | 'priority' | 'tags'>[];
-    dailyLogs: { date: string; total_focus_minutes: number; completed_sessions: number }[];
+    dailyLogs: DbDailyLog[];
     pomodoroHistory: Pick<PomodoroHistory, 'id' | 'task_id' | 'ended_at' | 'duration_minutes'>[];
     aiMemories: Pick<AiMemory, 'id' | 'type' | 'content' | 'tags' | 'created_at'>[];
     dateRangeDescription: string;
@@ -263,6 +263,8 @@ You have access to the user's data, structured in the following tables. Use this
     *   \`date\` (date string, YYYY-MM-DD)
     *   \`completed_sessions\` (number)
     *   \`total_focus_minutes\` (number)
+    *   \`challenges\` (text): The user's daily reflection on problems faced.
+    *   \`improvements\` (text): The user's daily reflection on how to improve.
 
 --- CONTEXT DATA (${context.dateRangeDescription}) ---
 The following is a snapshot of the user's data for the specified period.
@@ -296,9 +298,11 @@ ${context.tasks.map(t => {
 == COMMITMENTS ==
 ${context.commitments.map(c => `- ${c.text} (Due: ${c.due_date || 'N/A'}, ID: ${c.id})`).join('\n') || 'No commitments made.'}
 
-== DAILY PERFORMANCE LOGS IN RANGE ==
-This data is a summary derived from the \`pomodoro_history\` table.
-${context.dailyLogs.map(log => `- Date: ${log.date}, Focus Time: ${log.total_focus_minutes} minutes, Pomodoros: ${log.completed_sessions}`).join('\n') || 'No focus sessions recorded in this range.'}
+== DAILY PERFORMANCE LOGS & REFLECTIONS ==
+This data is a summary derived from the \`pomodoro_history\` table and user reflections.
+${context.dailyLogs.map(log => `- Date: ${log.date}, Focus Time: ${log.total_focus_minutes} minutes, Pomodoros: ${log.completed_sessions}
+   ${log.challenges ? `* Challenges: ${log.challenges}` : ''}
+   ${log.improvements ? `* Improvements: ${log.improvements}` : ''}`).join('\n') || 'No focus sessions recorded in this range.'}
 
 == POMODORO HISTORY IN RANGE ==
 This is the raw log of individual focus sessions. Use the \`ended_at\` timestamp for detailed time-of-day analysis.
@@ -308,10 +312,10 @@ ${context.pomodoroHistory.map(p => `- Ended: ${p.ended_at}, Duration: ${p.durati
 Based on this detailed data and schema, answer the user's questions and execute commands with precision.`;
     
     const response = await ai.models.generateContent({
-        model: 'gemini-2.5-pro',
+        model: 'gemini-2.5-flash',
         contents: history,
         config: {
-            systemInstruction: { parts: [{ text: systemInstruction }] },
+            systemInstruction: systemInstruction,
             tools: [{ functionDeclarations: tools }],
         }
     });

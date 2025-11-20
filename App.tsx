@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
@@ -21,6 +22,7 @@ import CommandPalette from './components/CommandPalette';
 import NotificationPanel from './components/common/NotificationPanel';
 import { BellIcon } from './components/common/Icons';
 import CelebrationAnimation from './components/common/CelebrationAnimation';
+import DailyReflectionModal from './components/DailyReflectionModal';
 
 // Reads from localStorage to initialize the timer state synchronously.
 const getInitialAppState = (): { initialState: AppState; initialPhaseEndTime: number | null; wasRestored: boolean } => {
@@ -149,7 +151,8 @@ const App: React.FC = () => {
     const [isModalVisible, setIsModalVisible] = useState(false);
     const [modalContent, setModalContent] = useState({ title: '', message: '', nextMode: 'focus' as Mode, showCommentBox: false });
     const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
-    
+    const [isReflectionModalOpen, setIsReflectionModalOpen] = useState(false);
+
     // New state for in-app notification system
     const [notifications, setNotifications] = useState<AppNotification[]>([]);
     const [isNotificationPanelOpen, setIsNotificationPanelOpen] = useState(false);
@@ -257,6 +260,21 @@ const App: React.FC = () => {
         return allCommitments.filter(c => c.status === 'active' && (!c.due_date || c.due_date >= todayString));
     }, [allCommitments, todayString]);
 
+    // We need a separate state for the actual DB log of today to hold reflection text
+    const [todayDbLog, setTodayDbLog] = useState<DbDailyLog | null>(null);
+
+    useEffect(() => {
+        // Fetch today's log to get challenges/improvements
+        const fetchTodayLog = async () => {
+            if (!session) return;
+            const logs = await dbService.getHistoricalLogs(todayString, todayString);
+            if (logs && logs.length > 0) {
+                setTodayDbLog(logs[0]);
+            }
+        };
+        fetchTodayLog();
+    }, [session, todayString, isSyncing]); // Re-fetch when syncing happens
+
     // DERIVED STATE: Re-calculate daily logs whenever history or task completion status changes.
     const { dailyLog, historicalLogs } = useMemo(() => {
         const today = getTodayDateString();
@@ -292,10 +310,19 @@ const App: React.FC = () => {
         });
 
         const newHistoricalLogs = Array.from(logsByDate.values()).sort((a, b) => a.date.localeCompare(b.date));
-        const newDailyLog = logsByDate.get(today) || { date: today, completed_sessions: 0, total_focus_minutes: 0 };
-
-        return { dailyLog: newDailyLog, historicalLogs: newHistoricalLogs };
-    }, [allPomodoroHistory]);
+        
+        const calculatedTodayLog = logsByDate.get(today) || { date: today, completed_sessions: 0, total_focus_minutes: 0 };
+        
+        // MERGE WITH DB LOG to preserve reflection text
+        const finalTodayLog = {
+            ...calculatedTodayLog,
+            challenges: todayDbLog?.challenges || null,
+            improvements: todayDbLog?.improvements || null,
+        };
+        
+        return { dailyLog: finalTodayLog, historicalLogs: newHistoricalLogs };
+    }, [allPomodoroHistory, todayDbLog]);
+    
 
     // --- Celebration Logic ---
     const triggerCelebration = useCallback((message: string) => {
@@ -1131,6 +1158,12 @@ const App: React.FC = () => {
         });
         setPhaseEndTime(null);
         setIsSyncing(true);
+        
+        // Check if this was the last task for today
+        const remainingTasksToday = optimisticTasks.filter(t => t.due_date === todayString && !t.completed_at);
+        if (remainingTasksToday.length === 0) {
+            setIsReflectionModalOpen(true);
+        }
 
         try {
             if (sessionDurationMinutes > 0) {
@@ -1186,6 +1219,14 @@ const App: React.FC = () => {
         const optimisticTasks = optimisticUpdatedTask 
             ? tasks.map(t => t.id === optimisticUpdatedTask!.id ? optimisticUpdatedTask! : t)
             : tasks;
+            
+        // Check if last task of the day completed
+        if (wasFocusSession && taskJustWorkedOn && optimisticUpdatedTask?.completed_at) {
+            const remainingTasksToday = optimisticTasks.filter(t => t.due_date === todayString && !t.completed_at);
+            if (remainingTasksToday.length === 0) {
+                setIsReflectionModalOpen(true);
+            }
+        }
         
         const nextMode = modalContent.nextMode;
         const currentSessionNumber = appState.currentSession;
@@ -1612,6 +1653,21 @@ const App: React.FC = () => {
         setTaskToAutomate(task);
         setPage('plan'); // Switch to plan page
     };
+    
+    const handleSaveReflection = async (challenges: string, improvements: string) => {
+        setIsSyncing(true);
+        try {
+            await dbService.saveDailyReflection(getTodayDateString(), challenges, improvements);
+            await refreshHistoryAndLogs();
+            setToastNotification('Reflection saved! Great work today.');
+        } catch (error) {
+            console.error("Failed to save reflection:", error);
+            setToastNotification("⚠️ Failed to save reflection.");
+        } finally {
+            setIsSyncing(false);
+            setIsReflectionModalOpen(false);
+        }
+    };
 
     // --- Project Handlers ---
     const handleAddProject = async (name: string, description: string | null = null, startDate: string | null = null, deadline: string | null = null, criteria: {type: Project['completion_criteria_type'], value: number | null} = {type: 'manual', value: null}, priority: number | null = null, activeDays: number[] | null = null): Promise<string | null> => {
@@ -2025,6 +2081,7 @@ const App: React.FC = () => {
                     historicalLogs={historicalLogs}
                     isStopwatchMode={isStopwatchMode}
                     completeStopwatchTask={handleCompleteStopwatchTask}
+                    onOpenReflection={() => setIsReflectionModalOpen(true)}
                 />;
             case 'plan':
                 return <PlanPage
@@ -2154,6 +2211,16 @@ const App: React.FC = () => {
                     showCommentBox={modalContent.showCommentBox}
                     onContinue={handleModalContinue}
                     isSyncing={isSyncing}
+                />
+            )}
+            
+            {isReflectionModalOpen && (
+                <DailyReflectionModal 
+                    isOpen={isReflectionModalOpen}
+                    onClose={() => setIsReflectionModalOpen(false)}
+                    onSave={handleSaveReflection}
+                    initialChallenges={dailyLog.challenges || ''}
+                    initialImprovements={dailyLog.improvements || ''}
                 />
             )}
             

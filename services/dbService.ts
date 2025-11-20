@@ -1263,6 +1263,9 @@ export const upsertDailyLog = async (log: DbDailyLog): Promise<{ error: any }> =
         date: log.date,
         completed_sessions: log.completed_sessions,
         total_focus_minutes: log.total_focus_minutes,
+        // Only include these if they are defined to avoid overwriting with null unnecessarily
+        ...(log.challenges !== undefined && { challenges: log.challenges }),
+        ...(log.improvements !== undefined && { improvements: log.improvements }),
     };
 
     const { data: existingLog, error: selectError } = await supabase
@@ -1280,10 +1283,7 @@ export const upsertDailyLog = async (log: DbDailyLog): Promise<{ error: any }> =
     if (existingLog) {
         const { error: updateError } = await supabase
             .from('daily_logs')
-            .update({
-                completed_sessions: logData.completed_sessions,
-                total_focus_minutes: logData.total_focus_minutes,
-            })
+            .update(logData)
             .eq('id', existingLog.id);
         
         if (updateError) console.error("Error updating daily log:", updateError);
@@ -1295,6 +1295,38 @@ export const upsertDailyLog = async (log: DbDailyLog): Promise<{ error: any }> =
             
         if (insertError) console.error("Error inserting daily log:", insertError);
         return { error: insertError };
+    }
+};
+
+export const saveDailyReflection = async (date: string, challenges: string, improvements: string): Promise<boolean> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return false;
+
+    const { data: existingLog } = await supabase
+        .from('daily_logs')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('date', date)
+        .maybeSingle();
+
+    if (existingLog) {
+        const { error } = await supabase
+            .from('daily_logs')
+            .update({ challenges, improvements })
+            .eq('id', existingLog.id);
+        return !error;
+    } else {
+        const { error } = await supabase
+            .from('daily_logs')
+            .insert({ 
+                user_id: user.id, 
+                date, 
+                challenges, 
+                improvements, 
+                total_focus_minutes: 0, 
+                completed_sessions: 0 
+            });
+        return !error;
     }
 };
 

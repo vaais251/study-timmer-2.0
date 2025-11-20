@@ -120,6 +120,8 @@ export interface DbDailyLog {
     date: string; // YYYY-MM-DD
     completed_sessions: number;
     total_focus_minutes: number;
+    challenges?: string | null;
+    improvements?: string | null;
 }
 
 // New type for focus level
