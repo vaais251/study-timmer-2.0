@@ -1,5 +1,6 @@
 
 
+
 import { GoogleGenAI, GenerateContentResponse, FunctionDeclaration, Part, Type } from "@google/genai";
 import { Goal, Target, Project, Commitment, Task, AiMemory, PomodoroHistory, DbDailyLog } from '../types';
 
@@ -9,7 +10,7 @@ import { Goal, Target, Project, Commitment, Task, AiMemory, PomodoroHistory, DbD
  * Note: Hardcoding API keys in client-side code is a security risk.
  */
 const getAiClient = (): GoogleGenAI => {
-    const apiKey = process.env.API_KEY;
+    const apiKey = "AIzaSyBT9IN5PiyqaWBdM9NekDg5d-5fWDuhZnE";
     return new GoogleGenAI({ apiKey });
 };
 
