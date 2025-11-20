@@ -1,3 +1,4 @@
+
 import React, { useMemo } from 'react';
 import { Mode } from '../types';
 
@@ -18,79 +19,72 @@ const TimerDisplay: React.FC<TimerDisplayProps> = ({ timeRemaining, totalTime, i
         if (totalTime === Infinity || totalTime <= 0) return 0;
         
         if (isStopwatchMode) {
-            // For stopwatch, progress is how far into the current chunk we are.
             return totalTime > 0 ? Math.min(1, timeForProgress / totalTime) : 0;
         } else {
-            // For countdown, it's how much time has passed from the total.
             return totalTime > 0 ? Math.min(1, (totalTime - timeForProgress) / totalTime) : 0;
         }
     }, [timeForProgress, totalTime, isStopwatchMode]);
 
-    const radius = 100;
+    const radius = 120;
     const circumference = 2 * Math.PI * radius;
     const offset = circumference - progress * circumference;
 
     const isFocus = mode === 'focus';
-    const theme = {
-        bgCircle: 'text-slate-700/50',
-        progressCircle: isFocus ? 'text-teal-400' : 'text-purple-400',
-        text: 'text-slate-100',
-        glowColor: isFocus ? 'rgba(45, 212, 191, 0.5)' : 'rgba(167, 139, 250, 0.5)',
-    };
+    
+    // Colors
+    const strokeColor = isFocus ? '#22d3ee' : '#a78bfa'; // Cyan or Purple
+    const glowFilter = isFocus ? 'drop-shadow(0 0 8px rgba(34, 211, 238, 0.6))' : 'drop-shadow(0 0 8px rgba(167, 139, 250, 0.6))';
 
     return (
-        <div className="relative h-80 sm:h-96 flex items-center justify-center my-4">
-            {/* RIPPLE ANIMATION CONTAINER */}
-            {isFocus && (
-                <div
-                    className="ripple-container text-teal-400"
-                    style={{ opacity: isRunning ? 0.4 : 0 }}
-                >
-                    <div className="ripple" style={{ animationDelay: '0s' }}></div>
-                    <div className="ripple" style={{ animationDelay: '1.3s' }}></div>
-                    <div className="ripple" style={{ animationDelay: '2.6s' }}></div>
-                </div>
-            )}
+        <div className="relative h-80 sm:h-[400px] flex items-center justify-center my-6">
+            {/* Background Pulse */}
+            <div className={`absolute inset-0 flex items-center justify-center transition-opacity duration-1000 ${isRunning ? 'opacity-100' : 'opacity-0'}`}>
+                 <div className={`w-64 h-64 rounded-full blur-[80px] ${isFocus ? 'bg-cyan-500/20' : 'bg-purple-500/20'}`}></div>
+            </div>
+
             <svg
-                className={`absolute w-72 h-72 sm:w-80 sm:h-80 transition-transform duration-500 ${isRunning ? 'timer-running scale-105' : 'scale-100'}`}
-                viewBox="0 0 220 220"
-                style={{ '--glow-color': theme.glowColor } as React.CSSProperties}
+                className={`absolute w-full h-full max-w-[350px] max-h-[350px] transition-transform duration-700 ${isRunning ? 'scale-105' : 'scale-100'}`}
+                viewBox="0 0 260 260"
             >
-                {/* Background circle */}
+                {/* Track */}
                 <circle
-                    className={theme.bgCircle}
+                    className="text-white/5"
                     stroke="currentColor"
-                    strokeWidth="16"
+                    strokeWidth="12"
                     fill="transparent"
                     r={radius}
-                    cx="110"
-                    cy="110"
+                    cx="130"
+                    cy="130"
                 />
-                {/* Progress circle */}
+                {/* Progress */}
                 <circle
-                    className={theme.progressCircle}
-                    stroke="currentColor"
-                    strokeWidth="16"
+                    stroke={strokeColor}
+                    strokeWidth="12"
                     strokeDasharray={circumference}
                     strokeDashoffset={offset}
                     strokeLinecap="round"
                     fill="transparent"
                     r={radius}
-                    cx="110"
-                    cy="110"
+                    cx="130"
+                    cy="130"
                     style={{
                         transform: 'rotate(-90deg)',
                         transformOrigin: '50% 50%',
-                        transition: 'stroke-dashoffset 1s cubic-bezier(0.25, 1, 0.5, 1)'
+                        transition: 'stroke-dashoffset 0.5s cubic-bezier(0.4, 0, 0.2, 1)',
+                        filter: isRunning ? glowFilter : 'none'
                     }}
                 />
             </svg>
-            <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <div className={`text-lg font-semibold uppercase tracking-widest ${isFocus ? 'text-teal-400' : 'text-purple-400'}`}>
-                    {isStopwatchMode && isFocus ? 'Stopwatch' : isFocus ? 'Laser Focus' : 'Break'}
+
+            <div className="absolute inset-0 flex flex-col items-center justify-center z-10">
+                <div className={`mb-2 px-4 py-1 rounded-full text-xs font-bold uppercase tracking-widest bg-black/30 backdrop-blur-sm border border-white/10 ${isFocus ? 'text-cyan-300' : 'text-purple-300'}`}>
+                    {isStopwatchMode && isFocus ? 'Stopwatch' : isFocus ? 'Focus Session' : 'Break Time'}
                 </div>
-                <div className={`relative text-7xl sm:text-8xl font-light tracking-wider ${theme.text} ${isRunning ? (isFocus ? 'timer-text-glow-focus' : 'timer-text-glow-break') : ''}`} style={{ fontVariantNumeric: 'tabular-nums' }}>
+                <div className={`text-7xl sm:text-9xl font-bold tabular-nums tracking-tighter transition-all duration-300 ${isRunning ? (isFocus ? 'timer-glow-focus text-white' : 'timer-glow-break text-white') : 'text-slate-300'}`}>
                     {minutes}:{seconds}
+                </div>
+                <div className="mt-4 text-slate-400 text-sm font-medium">
+                    {isRunning ? 'Stay in the zone' : 'Ready to start?'}
                 </div>
             </div>
         </div>

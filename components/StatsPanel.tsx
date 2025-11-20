@@ -1,3 +1,4 @@
+
 import React, { useMemo, useState } from 'react';
 import Panel from './common/Panel';
 import { Task, DbDailyLog, PomodoroHistory } from '../types';
@@ -21,7 +22,7 @@ const StatCard: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 const StatsPanel: React.FC<StatsPanelProps> = ({ completedToday, tasksToday, historicalLogs, todaysHistory, dailyLog }) => {
     const [comparisonPeriod, setComparisonPeriod] = useState<'yesterday' | '7day'>('yesterday');
 
-    const { card1, card2, stats } = useMemo(() => {
+    const statsData = useMemo(() => {
         const todayString = getTodayDateString();
         const today = new Date(todayString + 'T12:00:00');
 
@@ -62,80 +63,88 @@ const StatsPanel: React.FC<StatsPanelProps> = ({ completedToday, tasksToday, his
         previous7DaysEndDate.setDate(today.getDate() - 7);
         const totalFocusPrevious7Days = getRangeTotal(previous7DaysEndDate, 7);
 
-        let card1: { label: string, value: string };
-        let card2Value: React.ReactNode;
+        let card1Label = "Focus Time";
+        let card1Value = `${totalFocusToday}m`;
+        
+        let diff = 0;
+        let hasData = false;
 
         if (comparisonPeriod === 'yesterday') {
-            card1 = { label: "Focus Time", value: `${totalFocusToday}m` };
+            card1Label = "Focus Time";
+            card1Value = `${totalFocusToday}m`;
             
             if (totalFocusToday > 0 || totalFocusYesterday > 0) {
-                const diff = totalFocusToday - totalFocusYesterday;
-                if (diff > 0) {
-                    card2Value = <div className="text-4xl font-bold text-green-400 flex items-center justify-center gap-1"><UpArrowIcon /> {diff}m</div>;
-                } else if (diff < 0) {
-                    card2Value = <div className="text-4xl font-bold text-red-400 flex items-center justify-center gap-1"><DownArrowIcon /> {Math.abs(diff)}m</div>;
-                } else {
-                    card2Value = <div className="text-4xl font-bold text-white">0m</div>;
-                }
-            } else {
-                card2Value = <div className="text-4xl font-bold text-white">-</div>;
+                diff = totalFocusToday - totalFocusYesterday;
+                hasData = true;
             }
         } else { // '7day' which is now 'vs Last Week'
-            card1 = { label: "This Week", value: `${totalFocusRecent7Days}m` };
+            card1Label = "This Week";
+            card1Value = `${totalFocusRecent7Days}m`;
             
-            const diff = totalFocusRecent7Days - totalFocusPrevious7Days;
             if (totalFocusRecent7Days > 0 || totalFocusPrevious7Days > 0) {
-                const color = diff > 0 ? 'text-green-400' : diff < 0 ? 'text-red-400' : 'text-white';
-                const Symbol = diff > 0 ? UpArrowIcon : DownArrowIcon;
-                const text = diff === 0 ? '0m' : <><Symbol /> {Math.abs(diff)}m</>;
-                card2Value = <div className={`text-4xl font-bold ${color} flex items-center justify-center gap-1`}>{text}</div>;
-            } else {
-                card2Value = <div className="text-4xl font-bold text-white">-</div>;
+                diff = totalFocusRecent7Days - totalFocusPrevious7Days;
+                hasData = true;
             }
         }
 
-        const card2Label = (
-             <div className="relative">
-                <select
-                    value={comparisonPeriod}
-                    onChange={(e) => setComparisonPeriod(e.target.value as 'yesterday' | '7day')}
-                    className="bg-transparent text-sm text-white/80 border-0 focus:ring-0 focus:outline-none text-center appearance-none cursor-pointer pr-5"
-                    aria-label="Select comparison period"
-                >
-                    <option value="yesterday" className="bg-slate-800">vs Yesterday</option>
-                    <option value="7day" className="bg-slate-800">vs Last Week</option>
-                </select>
-                <div className="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none">
-                    <svg className="w-4 h-4 fill-current text-white/60" viewBox="0 0 20 20"><path d="M5.516 7.548c.436-.446 1.144-.446 1.584 0L10 10.42l2.9-2.872c.44-.446 1.148-.446 1.584 0 .44.446.44 1.152 0 1.596l-3.7 3.704c-.436.446-1.144.446-1.584 0l-3.7-3.704c-.44-.446-.44-1.152 0-1.596z"/></svg>
-                </div>
-            </div>
-        );
-
         const pomsEst = allTasksForToday.reduce((acc, task) => acc + (task.total_poms > 0 ? task.total_poms : 0), 0);
         const completionPercentage = pomsEst > 0 ? Math.round((pomsDone / pomsEst) * 100) : 0;
-        const stats = { completionPercentage, pomsDone, pomsEst };
         
-        return { card1, card2: { label: card2Label, value: card2Value }, stats };
+        return { 
+            card1Label, 
+            card1Value, 
+            diff, 
+            hasData,
+            completionPercentage, 
+            pomsDone, 
+            pomsEst 
+        };
 
     }, [historicalLogs, comparisonPeriod, completedToday, tasksToday, dailyLog]);
+
+    let card2Value;
+    if (statsData.hasData) {
+        if (statsData.diff > 0) {
+            card2Value = <div className="text-4xl font-bold text-green-400 flex items-center justify-center gap-1"><UpArrowIcon /> {statsData.diff}m</div>;
+        } else if (statsData.diff < 0) {
+            card2Value = <div className="text-4xl font-bold text-red-400 flex items-center justify-center gap-1"><DownArrowIcon /> {Math.abs(statsData.diff)}m</div>;
+        } else {
+            card2Value = <div className="text-4xl font-bold text-white">0m</div>;
+        }
+    } else {
+        card2Value = <div className="text-4xl font-bold text-white">-</div>;
+    }
 
     return (
         <Panel title="Today's Progress" className="h-full">
             <div className="grid grid-cols-2 gap-4">
                 <StatCard>
-                    <div className="text-4xl font-bold text-white">{card1.value}</div>
-                    <div className="text-xs text-slate-400 uppercase tracking-wider mt-1">{card1.label}</div>
+                    <div className="text-4xl font-bold text-white">{statsData.card1Value}</div>
+                    <div className="text-xs text-slate-400 uppercase tracking-wider mt-1">{statsData.card1Label}</div>
                 </StatCard>
                 <StatCard>
-                    {card2.label}
-                    <div className="mt-1">{card2.value}</div>
+                     <div className="relative inline-flex items-center justify-center bg-white/5 hover:bg-white/10 rounded-lg transition-colors group">
+                        <select
+                            value={comparisonPeriod}
+                            onChange={(e) => setComparisonPeriod(e.target.value as 'yesterday' | '7day')}
+                            className="bg-transparent text-sm text-white/80 border-0 focus:ring-0 focus:outline-none text-center appearance-none cursor-pointer py-1 pl-3 pr-7 w-full z-10 relative font-medium"
+                            aria-label="Select comparison period"
+                        >
+                            <option value="yesterday" className="bg-slate-800 text-white">vs Yesterday</option>
+                            <option value="7day" className="bg-slate-800 text-white">vs Last Week</option>
+                        </select>
+                        <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-white/60 group-hover:text-white/80 transition-colors z-0">
+                            <svg className="w-3 h-3 fill-current" viewBox="0 0 20 20"><path d="M5.516 7.548c.436-.446 1.144-.446 1.584 0L10 10.42l2.9-2.872c.44-.446 1.148-.446 1.584 0 .44.446.44 1.152 0 1.596l-3.7 3.704c-.436.446-1.144.446-1.584 0l-3.7-3.704c-.44-.446-.44-1.152 0-1.596z"/></svg>
+                        </div>
+                    </div>
+                    <div className="mt-1">{card2Value}</div>
                 </StatCard>
                 <StatCard>
-                    <div className="text-4xl font-bold text-white">{stats.completionPercentage}%</div>
+                    <div className="text-4xl font-bold text-white">{statsData.completionPercentage}%</div>
                     <div className="text-xs text-slate-400 uppercase tracking-wider mt-1">Completion</div>
                 </StatCard>
                 <StatCard>
-                    <div className="text-4xl font-bold text-white">{`${stats.pomsDone}/${stats.pomsEst}`}</div>
+                    <div className="text-4xl font-bold text-white">{`${statsData.pomsDone}/${statsData.pomsEst}`}</div>
                     <div className="text-xs text-slate-400 uppercase tracking-wider mt-1">Poms Done</div>
                 </StatCard>
             </div>

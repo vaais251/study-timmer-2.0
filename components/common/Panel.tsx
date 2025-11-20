@@ -5,12 +5,18 @@ interface PanelProps {
     title: string;
     children: React.ReactNode;
     className?: string;
+    headerAction?: React.ReactNode;
 }
 
-const Panel: React.FC<PanelProps> = ({ title, children, className = '' }) => {
+const Panel: React.FC<PanelProps> = ({ title, children, className = '', headerAction }) => {
     return (
-        <div className={`bg-[#0B1120]/50 backdrop-blur-lg rounded-2xl p-4 sm:p-6 border border-slate-700/50 ${className} animate-slideUp`}>
-            <h2 className="text-white text-xl font-bold mb-4 tracking-tight">{title}</h2>
+        <div className={`glass-panel rounded-3xl p-6 ${className} animate-slideUp transition-all duration-300 hover:shadow-lg hover:shadow-cyan-500/5`}>
+            <div className="flex justify-between items-center mb-5">
+                <h2 className="text-white/90 text-lg font-bold tracking-tight flex items-center gap-2">
+                    {title}
+                </h2>
+                {headerAction}
+            </div>
             {children}
         </div>
     );

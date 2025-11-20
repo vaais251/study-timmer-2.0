@@ -2,12 +2,12 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>FocusFlow - AI Pomodoro Timer</title>
 
     <!-- PWA Additions -->
     <link rel="manifest" href="./manifest.json" />
-    <meta name="theme-color" content="#1e293b" />
+    <meta name="theme-color" content="#030712" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -16,7 +16,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="icon" type="image/svg+xml" href="./icon.svg">
 <script type="importmap">
 {
@@ -33,187 +33,105 @@
 }
 </script>
 <style>
-  @keyframes gradientBG {
-	0% { background-position: 0% 50%; }
-	50% { background-position: 100% 50%; }
-	100% { background-position: 0% 50%; }
+  /* Modern Reset & Base */
+  :root {
+    --glass-border: rgba(255, 255, 255, 0.08);
+    --glass-bg: rgba(20, 20, 30, 0.6);
+    --neon-cyan: #22d3ee;
+    --neon-purple: #a78bfa;
   }
+
   body {
-    background: linear-gradient(-45deg, #111827, #1e293b, #312e81, #111827);
-    background-size: 400% 400%;
-    animation: gradientBG 20s ease infinite;
+    background-color: #030712; /* Rich Black */
+    color: #e2e8f0;
+    font-family: 'Inter', sans-serif;
+    overflow-x: hidden;
   }
-  /* --- Animation Keyframes --- */
+
+  /* Ambient Background Effect */
+  .ambient-glow {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: -1;
+    overflow: hidden;
+    background: radial-gradient(circle at 15% 50%, rgba(76, 29, 149, 0.15), transparent 25%),
+                radial-gradient(circle at 85% 30%, rgba(14, 165, 233, 0.15), transparent 25%);
+  }
+
+  /* Glassmorphism Utilities */
+  .glass-panel {
+    background: var(--glass-bg);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--glass-border);
+    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+  }
+  
+  .glass-button {
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(4px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .glass-button:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.2);
+    transform: translateY(-1px);
+  }
+
+  /* Animation Keyframes */
   @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-  @keyframes slideUp { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: none; } }
-  @keyframes slideInFromLeft { from { opacity: 0; transform: translateX(-15px); } to { opacity: 1; transform: translateX(0); } }
+  @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes scaleIn { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
   @keyframes pulse-glow {
-      0%, 100% { filter: drop-shadow(0 0 8px var(--glow-color, transparent)); }
-      50% { filter: drop-shadow(0 0 16px var(--glow-color, transparent)); }
-  }
-  @keyframes pulse-once {
-      0% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.4); }
-      70% { box-shadow: 0 0 0 10px rgba(56, 189, 248, 0); }
-      100% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0); }
-  }
-  @keyframes bounce-subtle {
-      0%, 100% { transform: translateY(0); }
-      50% { transform: translateY(-10px); }
-  }
-   @keyframes bounce-dots {
-      0%, 100% { transform: translateY(0); }
-      50% { transform: translateY(-4px); }
-  }
-  @keyframes pulse-subtle-scale {
-      0%, 100% { transform: scale(1); opacity: 1; }
-      50% { transform: scale(1.05); opacity: 0.95; }
-  }
-  @keyframes scaleIn {
-    from { opacity: 0; transform: scale(0.95); }
-    to { opacity: 1; transform: scale(1); }
-  }
-  @keyframes item-add {
-    from { opacity: 0; transform: scale(0.95) translateY(10px); }
-    to { opacity: 1; transform: scale(1) translateY(0); }
-  }
-  @keyframes item-delete {
-    from { opacity: 1; transform: scale(1); max-height: 200px; }
-    to { opacity: 0; transform: scale(0.95); max-height: 0; padding-top: 0; padding-bottom: 0; margin-top: 0; margin-bottom: 0; border: 0; }
+      0%, 100% { filter: drop-shadow(0 0 5px var(--glow-color, rgba(34, 211, 238, 0.5))); }
+      50% { filter: drop-shadow(0 0 15px var(--glow-color, rgba(34, 211, 238, 0.8))); }
   }
   @keyframes float {
-	0%, 100% { transform: translateY(0px); }
-	50% { transform: translateY(-10px); }
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-6px); }
   }
-    /* Neon glow effect for timer text */
-    @keyframes neon-glow-focus {
-        from { text-shadow: 0 0 6px #fff, 0 0 12px #2dd4bf, 0 0 20px #2dd4bf; }
-        to { text-shadow: 0 0 12px #fff, 0 0 24px #2dd4bf, 0 0 40px #2dd4bf; }
-    }
-    @keyframes neon-glow-break {
-        from { text-shadow: 0 0 6px #fff, 0 0 12px #c084fc, 0 0 20px #c084fc; }
-        to { text-shadow: 0 0 12px #fff, 0 0 24px #c084fc, 0 0 40px #c084fc; }
-    }
+
+  /* Classes */
+  .animate-fadeIn { animation: fadeIn 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards; }
+  .animate-slideUp { animation: slideUp 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards; }
+  .animate-scaleIn { animation: scaleIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
+  .animate-float { animation: float 6s ease-in-out infinite; }
   
-  /* --- New Celebration Animation Styles --- */
-  @keyframes text-glow {
-    0%, 100% {
-        text-shadow: 0 0 10px #fff, 0 0 20px #ffdd77, 0 0 30px #ffdd77, 0 0 40px #ffc700, 0 0 50px #ffc700;
-    }
-    50% {
-        text-shadow: 0 0 15px #fff, 0 0 25px #ffeeaa, 0 0 35px #ffeeaa, 0 0 45px #ffd54f, 0 0 55px #ffd54f;
-    }
+  .timer-glow-focus { 
+    text-shadow: 0 0 20px rgba(45, 212, 191, 0.4), 0 0 40px rgba(45, 212, 191, 0.2);
   }
-  @keyframes text-slide-in {
-    from {
-        opacity: 0;
-        transform: translateY(20px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
+  .timer-glow-break { 
+    text-shadow: 0 0 20px rgba(167, 139, 250, 0.4), 0 0 40px rgba(167, 139, 250, 0.2);
   }
-
-  .celebration-title {
-    background: linear-gradient(120deg, #fef08a, #facc15, #eab308);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    animation: text-glow 2.5s ease-in-out infinite, text-slide-in 1s ease-out forwards;
-  }
-
-  .celebration-message {
-    opacity: 0; /* Start hidden for animation */
-    animation: text-slide-in 1s ease-out 0.5s forwards; /* Delayed start */
-  }
-  
-  @keyframes fadeInOverlay {
-      from { opacity: 0; }
-      to { opacity: 1; }
-  }
-  .celebration-overlay {
-      background: radial-gradient(ellipse at center, rgba(45, 212, 191, 0.15) 0%, rgba(15, 23, 42, 0) 70%);
-      animation: fadeInOverlay 0.5s ease-out forwards;
-  }
-
-  /* --- Ripple Animation --- */
-  @keyframes ripple-effect {
-    from {
-      transform: scale(0.3);
-      opacity: 0.8;
-      border-width: 4px;
-    }
-    to {
-      transform: scale(1.4);
-      opacity: 0;
-      border-width: 1px;
-    }
-  }
-
-  .ripple-container {
-    position: absolute;
-    width: 100%;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    pointer-events: none;
-    transition: opacity 0.5s ease-in-out;
-  }
-
-  .ripple {
-    position: absolute;
-    width: 75%;
-    padding-bottom: 75%;
-    height: 0;
-    border-radius: 50%;
-    border-style: solid;
-    border-color: currentColor;
-    animation: ripple-effect 4s ease-out infinite;
-  }
-
-
-  /* --- Animation Classes --- */
-  .animate-fadeIn { animation: fadeIn 0.4s ease-out forwards; }
-  .animate-slideUp { animation: slideUp 0.4s ease-out forwards; }
-  .animate-slideInFromLeft { animation: slideInFromLeft 0.4s ease-out forwards; }
-  .animate-pulse-once { animation: pulse-once 1s forwards; }
-  .animate-bounce-subtle { animation: bounce-subtle 1.5s ease-in-out infinite; }
-  .animate-bounce-dots { animation: bounce-dots 1s infinite ease-in-out; }
-  .animate-pulse-subtle-scale { animation: pulse-subtle-scale 2.5s ease-in-out infinite; }
-  .timer-running { animation: pulse-glow 2.s ease-in-out infinite; }
-  .animate-scaleIn { animation: scaleIn 0.2s ease-out forwards; }
-  .animate-item-add { animation: item-add 0.4s ease-out forwards; }
-  .animate-item-delete {
-    animation: item-delete 0.4s ease-out forwards;
-    overflow: hidden; /* Important for height transition */
-  }
-  .animate-float {
-    animation: float 6s ease-in-out infinite;
-  }
-  .timer-text-glow-focus { animation: neon-glow-focus 1.5s ease-in-out infinite alternate; }
-  .timer-text-glow-break { animation: neon-glow-break 1.5s ease-in-out infinite alternate; }
 
   /* Custom Scrollbar */
-    .custom-scrollbar::-webkit-scrollbar {
-        width: 6px;
-    }
-    .custom-scrollbar::-webkit-scrollbar-track {
-        background: transparent;
-    }
-    .custom-scrollbar::-webkit-scrollbar-thumb {
-        background: #4b5563;
-        border-radius: 10px;
-    }
-    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-        background: #6b7280;
-    }
-    .custom-scrollbar {
-        scrollbar-width: thin;
-        scrollbar-color: #4b5563 transparent;
-    }
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.2);
+  }
+
+  /* Utility for tabular numbers */
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
 </style>
 </head>
-<body class="transition-colors duration-500 ease-in-out">
+<body>
+    <div class="ambient-glow"></div>
     <div id="root"></div>
     <script type="module" src="./index.tsx"></script>
 </body>

@@ -1,3 +1,4 @@
+
 import React, { useMemo, useState } from 'react';
 import { Task, PomodoroHistory } from '../types';
 import Panel from './common/Panel';
@@ -64,7 +65,21 @@ const CategoryFocusPieChart: React.FC<CategoryFocusPieChartProps> = ({ tasks, to
     }, [tasks, todaysHistory]);
 
     if (totalFocusMinutes === 0) {
-        return null; // Don't render the panel at all if there's no data to show.
+        return (
+            <Panel title="Today's Focus Distribution" className="h-full flex flex-col">
+                <div className="relative flex-grow h-80 flex items-center justify-center bg-black/10 rounded-xl border border-white/5 m-2">
+                     <div className="absolute inset-0 flex items-center justify-center opacity-5">
+                        <svg viewBox="0 0 100 100" className="w-48 h-48">
+                            <circle cx="50" cy="50" r="40" stroke="white" strokeWidth="8" fill="none" />
+                        </svg>
+                     </div>
+                     <div className="text-center z-10 p-4">
+                        <p className="text-slate-300 text-lg font-medium mb-2">Ready to Focus?</p>
+                        <p className="text-slate-500 text-xs max-w-[200px] mx-auto">Complete your first session today to see your time distribution here.</p>
+                     </div>
+                </div>
+            </Panel>
+        );
     }
 
     const RADIAN = Math.PI / 180;
@@ -75,7 +90,7 @@ const CategoryFocusPieChart: React.FC<CategoryFocusPieChartProps> = ({ tasks, to
         const y = cy + radius * Math.sin(-midAngle * RADIAN);
 
         return (
-            <text x={x} y={y} fill="white" textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central" className="text-sm font-bold">
+            <text x={x} y={y} fill="white" textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central" className="text-sm font-bold" style={{ textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>
                 {`${(percent * 100).toFixed(0)}%`}
             </text>
         );
@@ -92,26 +107,27 @@ const CategoryFocusPieChart: React.FC<CategoryFocusPieChartProps> = ({ tasks, to
                         labelLine={false}
                         label={renderCustomizedLabel}
                         outerRadius={110}
-                        innerRadius={70}
+                        innerRadius={65}
                         fill="#8884d8"
                         dataKey="value"
                         paddingAngle={2}
+                        stroke="rgba(0,0,0,0.2)"
                     >
                         {chartData.map((entry, index) => (
                             <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} stroke="none" />
                         ))}
                     </Pie>
                     <Tooltip 
-                        contentStyle={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.5rem' }}
+                        contentStyle={{ background: 'rgba(30,41,59,0.9)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '0.75rem', boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.3)' }}
                         itemStyle={{ color: 'white' }}
                         formatter={(value: number) => [`${value} minutes`, 'Focus Time']}
                     />
-                    <Legend wrapperStyle={{ bottom: -5 }} />
+                    <Legend wrapperStyle={{ bottom: -5, fontSize: '12px' }} />
                 </PieChart>
             </ResponsiveContainer>
-             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-[60%] text-center pointer-events-none">
-                <span className="text-4xl font-bold text-white">{totalFocusMinutes}</span>
-                <span className="block text-sm text-white/70">Total Mins</span>
+             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-[55%] text-center pointer-events-none">
+                <span className="text-4xl font-bold text-white tracking-tight">{totalFocusMinutes}</span>
+                <span className="block text-xs uppercase tracking-wider text-slate-400 mt-1 font-semibold">Total Mins</span>
             </div>
         </div>
     );
@@ -122,7 +138,7 @@ const CategoryFocusPieChart: React.FC<CategoryFocusPieChartProps> = ({ tasks, to
                 <div className="relative flex-grow">
                     <button
                         onClick={() => setIsModalOpen(true)}
-                        className="absolute -top-12 right-0 p-1 text-purple-400 hover:text-purple-300 transition z-10"
+                        className="absolute -top-12 right-0 p-2 text-purple-400 hover:text-purple-300 hover:bg-white/5 rounded-full transition z-10"
                         title="Get AI Insights for this chart"
                     >
                         <SparklesIcon />

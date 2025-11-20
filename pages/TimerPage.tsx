@@ -1,5 +1,4 @@
 
-
 import React, { useMemo } from 'react';
 import { AppState, Settings, Task, DbDailyLog, PomodoroHistory } from '../types';
 import SessionInfo from '../components/SessionInfo';
@@ -28,6 +27,7 @@ interface TimerPageProps {
     isStopwatchMode: boolean;
     completeStopwatchTask: () => void;
     onOpenReflection: () => void;
+    allTasks: Task[];
 }
 
 const formatMinutes = (minutes: number): string => {
@@ -45,7 +45,7 @@ const formatMinutes = (minutes: number): string => {
 };
 
 const TimerPage: React.FC<TimerPageProps> = (props) => {
-    const { appState, settings, tasksToday, completedToday, dailyLog, startTimer, stopTimer, resetTimer, navigateToSettings, currentTask, todaysHistory, historicalLogs, isStopwatchMode, completeStopwatchTask, onOpenReflection } = props;
+    const { appState, settings, tasksToday, completedToday, dailyLog, startTimer, stopTimer, resetTimer, navigateToSettings, currentTask, todaysHistory, historicalLogs, isStopwatchMode, completeStopwatchTask, onOpenReflection, allTasks } = props;
     
     const allTodaysTasks = useMemo(() => [...tasksToday, ...completedToday], [tasksToday, completedToday]);
     const nextTasks = useMemo(() => tasksToday.slice(1), [tasksToday]);
@@ -161,7 +161,7 @@ const TimerPage: React.FC<TimerPageProps> = (props) => {
                     dailyLog={dailyLog}
                 />
                 <CategoryFocusPieChart
-                    tasks={allTodaysTasks}
+                    tasks={allTasks}
                     todaysHistory={todaysHistory}
                 />
             </div>
