@@ -408,7 +408,7 @@ const AICoachPage: React.FC<AICoachPageProps> = (props) => {
 
         const dailyLogsMap = new Map<string, { date: string, total_focus_minutes: number, completed_sessions: number }>();
         contextHistory.forEach(p => {
-            const date = p.ended_at.split('T')[0];
+            const date = getTodayDateString(new Date(p.ended_at)); // Use local date string
             if (!dailyLogsMap.has(date)) {
                 dailyLogsMap.set(date, { date, total_focus_minutes: 0, completed_sessions: 0 });
             }
