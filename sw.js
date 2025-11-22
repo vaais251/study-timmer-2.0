@@ -4,13 +4,8 @@ const URLS_TO_CACHE = [
   './index.html',
   './manifest.json',
   './icon.svg',
-  './icon-maskable.svg',
-  './index.tsx',
-  './App.tsx'
+  './icon-maskable.svg'
 ];
-// Note: This cache list is minimal. For full offline functionality,
-// all imported components and assets should be added.
-// This list is sufficient to fix the installation error.
 
 self.addEventListener('install', event => {
   event.waitUntil(
@@ -33,7 +28,7 @@ self.addEventListener('fetch', event => {
         // Not in cache - fetch from network
         return fetch(event.request);
       }
-    )
+      )
   );
 });
 
