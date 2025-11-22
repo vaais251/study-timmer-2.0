@@ -8,7 +8,7 @@ import { Goal, Target, Project, Commitment, Task, AiMemory, PomodoroHistory, DbD
  * Note: Hardcoding API keys in client-side code is a security risk.
  */
 const getAiClient = (): GoogleGenAI => {
-    const apiKey = "AIzaSyBT9IN5PiyqaWBdM9NekDg5d-5fWDuhZnE";
+    const apiKey = "AIzaSyDAQmRyN9dNOxCoLneDXPETYC0hAKFvmLw";
     return new GoogleGenAI({ apiKey });
 };
 
@@ -45,9 +45,9 @@ export async function getChartInsight(chartTitle: string, chartData: any): Promi
             model: 'gemini-2.5-flash',
             contents: prompt,
         });
-        
+
         const text = response.text;
-        
+
         if (text) {
             return text;
         } else {
@@ -92,9 +92,9 @@ export async function getTabSummary(tabName: string, data: any): Promise<string>
             model: 'gemini-2.5-flash',
             contents: prompt,
         });
-        
+
         const text = response.text;
-        
+
         if (text) {
             return text;
         } else {
@@ -121,9 +121,9 @@ export async function generateContent(prompt: string): Promise<string> {
                 // No tools for this simple utility call to avoid complexity.
             },
         });
-        
+
         const text = response.text;
-        
+
         if (text) {
             return text;
         } else {
@@ -279,20 +279,20 @@ ${context.targets.map(t => `- [${t.completed_at ? 'X' : ' '}] ${t.text} (Due: ${
 
 == PROJECTS ==
 ${context.projects.map(p => {
-    let progress = '';
-    if (p.completion_criteria_type === 'task_count') progress = `(${p.progress_value}/${p.completion_criteria_value} tasks)`;
-    if (p.completion_criteria_type === 'duration_minutes') progress = `(${p.progress_value}/${p.completion_criteria_value} min)`;
-    const activeDays = p.active_days && p.active_days.length > 0 ? p.active_days.join(',') : 'All';
-    return `- ${p.name} [${p.status}] ${progress} (Starts: ${p.start_date || 'N/A'}, Due: ${p.deadline || 'N/A'}, P:${p.priority || 3}, Active Days: ${activeDays}, ID: ${p.id})`;
-}).join('\n') || 'No projects.'}
+        let progress = '';
+        if (p.completion_criteria_type === 'task_count') progress = `(${p.progress_value}/${p.completion_criteria_value} tasks)`;
+        if (p.completion_criteria_type === 'duration_minutes') progress = `(${p.progress_value}/${p.completion_criteria_value} min)`;
+        const activeDays = p.active_days && p.active_days.length > 0 ? p.active_days.join(',') : 'All';
+        return `- ${p.name} [${p.status}] ${progress} (Starts: ${p.start_date || 'N/A'}, Due: ${p.deadline || 'N/A'}, P:${p.priority || 3}, Active Days: ${activeDays}, ID: ${p.id})`;
+    }).join('\n') || 'No projects.'}
 Note: When adding a task to a project, you MUST use the project's ID.
 
 == TASKS IN RANGE ==
 ${context.tasks.map(t => {
-    const comments = t.comments && t.comments.length > 0 ? ` Comments: [${t.comments.join('; ')}]` : '';
-    const tags = t.tags && t.tags.length > 0 ? ` Tags: [${t.tags.join(', ')}]` : '';
-    return `- [${t.completed_at ? 'X' : ' '}] ${t.text} (${t.completed_poms}/${t.total_poms} poms, Due: ${t.due_date}, P:${t.priority || 3}, ProjectID: ${t.project_id || 'None'}, ID: ${t.id})${tags}${comments}`;
-}).join('\n') || 'No tasks exist in this range.'}
+        const comments = t.comments && t.comments.length > 0 ? ` Comments: [${t.comments.join('; ')}]` : '';
+        const tags = t.tags && t.tags.length > 0 ? ` Tags: [${t.tags.join(', ')}]` : '';
+        return `- [${t.completed_at ? 'X' : ' '}] ${t.text} (${t.completed_poms}/${t.total_poms} poms, Due: ${t.due_date}, P:${t.priority || 3}, ProjectID: ${t.project_id || 'None'}, ID: ${t.id})${tags}${comments}`;
+    }).join('\n') || 'No tasks exist in this range.'}
 
 == COMMITMENTS ==
 ${context.commitments.map(c => `- ${c.text} (Due: ${c.due_date || 'N/A'}, ID: ${c.id})`).join('\n') || 'No commitments made.'}
@@ -309,7 +309,7 @@ ${context.pomodoroHistory.map(p => `- Ended: ${new Date(p.ended_at).toLocaleStri
 --- END OF CONTEXT ---
 
 Based on this detailed data and schema, answer the user's questions and execute commands with precision.`;
-    
+
     const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
         contents: history,

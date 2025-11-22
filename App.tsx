@@ -39,14 +39,14 @@ const getInitialAppState = (): { initialState: AppState; initialPhaseEndTime: nu
     if (savedStateJSON) {
         try {
             const { savedAppState, savedPhaseEndTime } = JSON.parse(savedStateJSON);
-            
+
             // If the timer was running, calculate the correct remaining time from phaseEndTime
             if (savedAppState.isRunning && savedPhaseEndTime) {
                 const newTimeRemaining = Math.max(0, Math.round((savedPhaseEndTime - Date.now()) / 1000));
                 const finalState = { ...savedAppState, timeRemaining: newTimeRemaining };
                 return { initialState: finalState, initialPhaseEndTime: savedPhaseEndTime, wasRestored: true };
             }
-            
+
             // If it was paused, the saved state is accurate.
             return { initialState: savedAppState, initialPhaseEndTime: null, wasRestored: true };
         } catch (e) {
@@ -54,7 +54,7 @@ const getInitialAppState = (): { initialState: AppState; initialPhaseEndTime: nu
             localStorage.removeItem('pomodoroAppState');
         }
     }
-    
+
     return { initialState: defaultState, initialPhaseEndTime: null, wasRestored: false };
 };
 
@@ -99,18 +99,18 @@ const augmentTargetsWithStatus = (targets: Target[]): Target[] => {
 
 // Custom hook to get the previous value of a prop or state
 function usePrevious<T>(value: T): T | undefined {
-  const ref = useRef<T | undefined>(undefined);
-  useEffect(() => {
-    ref.current = value;
-  });
-  return ref.current;
+    const ref = useRef<T | undefined>(undefined);
+    useEffect(() => {
+        ref.current = value;
+    });
+    return ref.current;
 }
 
 const App: React.FC = () => {
     // ... (All state variables and hooks remain exactly the same as before)
     const [session, setSession] = useState<Session | null>(null);
     const [isLoading, setIsLoading] = useState(true);
-    const fetchedForUserId = useRef<string | null>(null); 
+    const fetchedForUserId = useRef<string | null>(null);
 
     const memoizedInitialState = useMemo(() => getInitialAppState(), []);
     const [appState, setAppState] = useState<AppState>(memoizedInitialState.initialState);
@@ -137,7 +137,7 @@ const App: React.FC = () => {
     const [aiMemories, setAiMemories] = useState<AiMemory[]>([]);
     const [toastNotification, setToastNotification] = useState<string | null>(null);
     const [isSyncing, setIsSyncing] = useState(false);
-    
+
     const [aiChatMessages, setAiChatMessages] = useState<ChatMessage[]>([
         { role: 'model', text: 'Hello! I am your AI Coach. I have access to your goals, projects, and performance data. Ask me for insights, a weekly plan, or to add tasks for you!' }
     ]);
@@ -152,7 +152,7 @@ const App: React.FC = () => {
     const [isNotificationPanelOpen, setIsNotificationPanelOpen] = useState(false);
     const [clearedNotificationIds, setClearedNotificationIds] = useState<Set<string>>(new Set());
     const unreadNotificationCount = useMemo(() => notifications.filter(n => !n.read).length, [notifications]);
-    
+
     const [isStandalone, setIsStandalone] = useState(false);
     const [installPrompt, setInstallPrompt] = useState<any>(null);
 
@@ -194,7 +194,7 @@ const App: React.FC = () => {
         `;
         const blob = new Blob([workerScript], { type: 'application/javascript' });
         const worker = new Worker(URL.createObjectURL(blob));
-        
+
         const messageHandler = (e: MessageEvent) => {
             if (e.data === 'complete') {
                 completePhaseCallbackRef.current?.();
@@ -219,7 +219,7 @@ const App: React.FC = () => {
         const todayTasks = tasks.filter(t => t.due_date === todayString && !t.completed_at);
         if (settings.todaySortBy === 'priority') {
             return todayTasks.sort((a, b) => {
-                const priorityA = a.priority ?? 5; 
+                const priorityA = a.priority ?? 5;
                 const priorityB = b.priority ?? 5;
                 if (priorityA !== priorityB) return priorityA - priorityB;
                 return (a.task_order ?? Infinity) - (b.task_order ?? Infinity);
@@ -248,10 +248,11 @@ const App: React.FC = () => {
 
     const { dailyLog, historicalLogs } = useMemo(() => {
         const today = getTodayDateString();
-        const fourteenDaysAgo = new Date();
-        fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 13);
+        // Changed from 13 days to 179 days (6 months) for streak calendar
+        const sixMonthsAgo = new Date();
+        sixMonthsAgo.setDate(sixMonthsAgo.getDate() - 179);
         const logsByDate = new Map<string, DbDailyLog>();
-        const loopDate = new Date(fourteenDaysAgo);
+        const loopDate = new Date(sixMonthsAgo);
         const todayDate = new Date();
         todayDate.setHours(23, 59, 59, 999);
         while (loopDate <= todayDate) {
@@ -276,7 +277,7 @@ const App: React.FC = () => {
 
     const triggerCelebration = useCallback((message: string) => {
         if (!celebration) {
-            resumeAudioContext(); 
+            resumeAudioContext();
             setCelebration({ message });
         }
     }, [celebration]);
@@ -313,13 +314,13 @@ const App: React.FC = () => {
             triggerCelebration("All daily tasks complete! Great job today! 🎉");
         }
     }, [tasksToday.length, prevTasksTodayLength, dailyLog.total_focus_minutes, triggerCelebration]);
-    
+
     const prevDailyLog = usePrevious(dailyLog);
     useEffect(() => {
         if (prevDailyLog && dailyLog.total_focus_minutes > prevDailyLog.total_focus_minutes) {
             const otherDaysMaxFocus = historicalLogs.filter(log => log.date !== todayString).reduce((max, log) => Math.max(max, log.total_focus_minutes), 0);
             if (dailyLog.total_focus_minutes > otherDaysMaxFocus && prevDailyLog.total_focus_minutes <= otherDaysMaxFocus) {
-                 if (otherDaysMaxFocus > 0 || prevDailyLog.total_focus_minutes > 0) {
+                if (otherDaysMaxFocus > 0 || prevDailyLog.total_focus_minutes > 0) {
                     triggerCelebration(`New Daily Record! ${dailyLog.total_focus_minutes} minutes of focus! 🔥`);
                 }
             }
@@ -364,9 +365,10 @@ const App: React.FC = () => {
     const refreshHistoryAndLogs = useCallback(async () => {
         if (!session) return;
         const today = getTodayDateString();
-        const fourteenDaysAgo = new Date();
-        fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 13);
-        const startDate = getTodayDateString(fourteenDaysAgo);
+        // Changed to 180 days (6 months) for streak calendar
+        const sixMonthsAgo = new Date();
+        sixMonthsAgo.setDate(sixMonthsAgo.getDate() - 179);
+        const startDate = getTodayDateString(sixMonthsAgo);
         const allPomodoroHistoryForRange = await dbService.getPomodoroHistory(startDate, today);
         processAndSetHistoryData(allPomodoroHistoryForRange);
     }, [session, processAndSetHistoryData]);
@@ -393,7 +395,7 @@ const App: React.FC = () => {
         const userGoals = await dbService.getGoals();
         if (userGoals) setGoals(userGoals);
     }, [session]);
-    
+
     const refreshTargets = useCallback(async () => {
         if (!session) return;
         const userTargets = await dbService.getTargets();
@@ -410,7 +412,7 @@ const App: React.FC = () => {
             if (userCommitments) setAllCommitments(userCommitments);
         }
     }, [session]);
-    
+
     const refreshAiMemories = useCallback(async () => {
         if (!session) return;
         const memories = await dbService.getAiMemories();
@@ -436,12 +438,13 @@ const App: React.FC = () => {
                 dbService.getGoals(),
                 dbService.getTargets(),
                 dbService.getCommitments(),
-                dbService.getPomodoroHistory(getTodayDateString(new Date(Date.now() - 13 * 24 * 60 * 60 * 1000)), getTodayDateString()),
+                // Changed to 180 days (6 months) for streak calendar
+                dbService.getPomodoroHistory(getTodayDateString(new Date(Date.now() - 179 * 24 * 60 * 60 * 1000)), getTodayDateString()),
                 dbService.getAiMemories(),
                 dbService.getNotifications(),
                 dbService.getRecurringTasks(),
             ]);
-            
+
             if (userRecurringTasks) setRecurringTasks(userRecurringTasks);
             processAndSetHistoryData(allPomodoroHistoryForRange || []);
 
@@ -453,7 +456,7 @@ const App: React.FC = () => {
             } else if (userTasks) {
                 setTasks(userTasks);
             }
-            
+
             const updatedProjects = await dbService.checkAndUpdateDueProjects();
             if (updatedProjects) {
                 setProjects(updatedProjects);
@@ -472,7 +475,7 @@ const App: React.FC = () => {
             if (userTargets) setTargets(augmentTargetsWithStatus(userTargets));
             if (userAiMemories) setAiMemories(userAiMemories);
             if (userNotifications) setNotifications(userNotifications);
-            
+
             if (showLoading && !didRestoreFromStorage) {
                 const initialTasks = newTasksCreatedFromRecurring ? await dbService.getTasks() : userTasks;
                 const firstTask = initialTasks?.filter(t => t.due_date === getTodayDateString() && !t.completed_at)[0];
@@ -522,7 +525,7 @@ const App: React.FC = () => {
             setIsLoading(false);
         }
     }, [session, fetchData]);
-    
+
     useEffect(() => {
         if (isLoading || isInitialLoad.current) {
             if (!isLoading) isInitialLoad.current = false;
@@ -532,7 +535,7 @@ const App: React.FC = () => {
 
         const currentTask = tasksToday[0];
         if (appState.timeRemaining > 0 && appState.timeRemaining < appState.sessionTotalTime) return;
-        
+
         if (appState.mode === 'focus') {
             let newTime;
             let newTotalTime;
@@ -561,7 +564,7 @@ const App: React.FC = () => {
         // We are using a global dark theme now, so we don't need to toggle body background color for modes.
     }, [appState.mode]);
 
-     // Keyboard listener for command palette
+    // Keyboard listener for command palette
     useEffect(() => {
         const handleKeyDown = (event: KeyboardEvent) => {
             if ((event.metaKey || event.ctrlKey) && event.key === 'k') {
@@ -599,7 +602,7 @@ const App: React.FC = () => {
             }
         };
     }, [isStandalone]);
-    
+
     const handleInstallClick = async () => {
         if (!installPrompt) return;
         await installPrompt.prompt();
@@ -649,7 +652,7 @@ const App: React.FC = () => {
     };
 
     // ... (Timer Logic: stopTimer, resetTimer, startTimer, completePhase - Keep unchanged)
-     const stopTimer = useCallback(() => {
+    const stopTimer = useCallback(() => {
         setAppState(prev => ({ ...prev, isRunning: false }));
         if (!isStopwatchMode) setPhaseEndTime(null);
         timerWorker.current?.postMessage({ command: 'stop' });
@@ -669,7 +672,7 @@ const App: React.FC = () => {
     }, [stopTimer, settings.focusDuration, tasksToday]);
 
     const playStartSound = useCallback(() => {
-         if (appState.mode === 'focus') playFocusStartSound(); else playBreakStartSound();
+        if (appState.mode === 'focus') playFocusStartSound(); else playBreakStartSound();
     }, [appState.mode]);
 
     const startTimer = useCallback(async () => {
@@ -680,7 +683,7 @@ const App: React.FC = () => {
         }
         resumeAudioContext();
         playStartSound();
-        
+
         if (!isStopwatchMode) {
             setPhaseEndTime(Date.now() + appState.timeRemaining * 1000);
             timerWorker.current?.postMessage({ command: 'start', duration: appState.timeRemaining * 1000 });
@@ -726,12 +729,12 @@ const App: React.FC = () => {
         }
         let totalTimeForTitle = appState.timeRemaining;
         if (isCurrentTaskStopwatch && currentTask) {
-             const baseTime = todaysHistory.filter(h => h.task_id === currentTask.id).reduce((total, h) => total + (Number(h.duration_minutes) || 0), 0) * 60;
+            const baseTime = todaysHistory.filter(h => h.task_id === currentTask.id).reduce((total, h) => total + (Number(h.duration_minutes) || 0), 0) * 60;
             totalTimeForTitle = baseTime + appState.timeRemaining;
         }
         document.title = `${Math.floor(totalTimeForTitle / 60).toString().padStart(2, '0')}:${(totalTimeForTitle % 60).toString().padStart(2, '0')} - ${appState.mode === 'focus' ? 'Focus' : 'Break'} | FocusFlow`;
     }, [appState, settings.focusDuration, completePhase, tasksToday, todaysHistory, isModalVisible]);
-    
+
     // Persistence Logic
     useEffect(() => {
         if (!session) return;
@@ -740,7 +743,7 @@ const App: React.FC = () => {
         const isPristineCountdown = !isCurrentStopwatch && appState.timeRemaining === appState.sessionTotalTime;
         const isPristineStopwatch = isCurrentStopwatch && appState.timeRemaining === 0;
         if (!appState.isRunning && (isPristineCountdown || isPristineStopwatch)) {
-             localStorage.removeItem('pomodoroAppState');
+            localStorage.removeItem('pomodoroAppState');
         } else {
             const stateToSave = { savedAppState: appState, savedPhaseEndTime: phaseEndTime };
             localStorage.setItem('pomodoroAppState', JSON.stringify(stateToSave));
@@ -749,8 +752,8 @@ const App: React.FC = () => {
 
     useEffect(() => {
         const requestWakeLock = async () => {
-             if ('wakeLock' in navigator && !wakeLock.current) {
-                try { wakeLock.current = await navigator.wakeLock.request('screen'); } catch (err) {}
+            if ('wakeLock' in navigator && !wakeLock.current) {
+                try { wakeLock.current = await navigator.wakeLock.request('screen'); } catch (err) { }
             }
         };
         const releaseWakeLock = () => {
@@ -776,7 +779,7 @@ const App: React.FC = () => {
     }, [appState.isRunning, phaseEndTime, isStopwatchMode]);
 
     const handleStartClick = () => { startTimer(); }
-    
+
     // Task Handlers (Keep exactly as original: handleCompleteStopwatchTask, handleModalContinue, handleUpdateTaskTimers, handleUpdateTask, handleAddTask, handleDeleteTask, etc.)
     const handleCompleteStopwatchTask = async () => {
         const currentTask = tasksToday.find(t => !t.completed_at);
@@ -813,7 +816,7 @@ const App: React.FC = () => {
         setIsModalVisible(false);
         setIsSyncing(true);
         playStartSound();
-        
+
         const wasFocusSession = modalContent.showCommentBox;
         const taskJustWorkedOn = tasksToday.find(t => !t.completed_at);
         const sessionTotalTime = appState.sessionTotalTime;
@@ -833,7 +836,7 @@ const App: React.FC = () => {
             const remainingTasksToday = optimisticTasks.filter(t => t.due_date === todayString && !t.completed_at);
             if (remainingTasksToday.length === 0) setIsReflectionModalOpen(true);
         }
-        
+
         const nextMode = modalContent.nextMode;
         const currentSessionNumber = appState.currentSession;
         const sessionsPerCycle = settings.sessionsPerCycle;
@@ -846,7 +849,7 @@ const App: React.FC = () => {
             }
             nextTaskForTimer = optimisticTasksToday[0];
         }
-        
+
         let newTime, newTotalTime, isNextStopwatch = false;
         if (nextMode === 'break') {
             newTime = (taskJustWorkedOn?.custom_break_duration || settings.breakDuration) * 60; newTotalTime = newTime;
@@ -866,7 +869,7 @@ const App: React.FC = () => {
             const duration = isNextStopwatch ? newTotalTime * 1000 : newTime * 1000;
             timerWorker.current?.postMessage({ command: 'start', duration });
         }
-    
+
         const performAllUpdatesInBackground = async () => {
             try {
                 if (wasFocusSession && taskJustWorkedOn) {
@@ -899,10 +902,10 @@ const App: React.FC = () => {
         };
         performAllUpdatesInBackground();
     };
-    
+
     // (Keep handleUpdateTaskTimers, handleUpdateTask, handleAddTask, handleDeleteTask, handleMoveTask, handleBringTaskForward, handleSortChange, handleReorderTasks, handleMarkTaskIncomplete, handleAddRecurringTask, etc. exactly as original)
     // ... [Omitting strict repetition for brevity, but assume full original logic here] ...
-     const handleUpdateTaskTimers = async (id: string, newTimers: { focus: number | null, break: number | null }) => {
+    const handleUpdateTaskTimers = async (id: string, newTimers: { focus: number | null, break: number | null }) => {
         const updates = { custom_focus_duration: newTimers.focus, custom_break_duration: newTimers.break };
         const tasksSnapshot = [...tasks];
         setTasks(currentTasks => currentTasks.map(t => t.id === id ? { ...t, ...updates } : t));
@@ -921,6 +924,20 @@ const App: React.FC = () => {
     const handleAddTask = async (text: string, poms: number, dueDate: string, projectId: string | null, tags: string[], priority: number | null) => {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
+
+        // Fallback UUID generator for browsers that don't support crypto.randomUUID()
+        const generateUUID = () => {
+            if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+                return crypto.randomUUID();
+            }
+            // Fallback implementation
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+                const r = Math.random() * 16 | 0;
+                const v = c === 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
+            });
+        };
+
         // Check daily limit
         if (dueDate === todayString || dueDate === tomorrowString) {
             const dayOfWeek = new Date(dueDate + 'T00:00:00').getDay();
@@ -940,7 +957,7 @@ const App: React.FC = () => {
             }
         }
         const optimisticTask: Task = {
-            id: crypto.randomUUID(), user_id: user.id, created_at: new Date().toISOString(), text, total_poms: poms, completed_poms: 0, comments: [], due_date: dueDate, completed_at: null, project_id: projectId, tags, task_order: (tasks.filter(t => t.due_date === dueDate).length), priority, custom_focus_duration: null, custom_break_duration: null,
+            id: generateUUID(), user_id: user.id, created_at: new Date().toISOString(), text, total_poms: poms, completed_poms: 0, comments: [], due_date: dueDate, completed_at: null, project_id: projectId, tags, task_order: (tasks.filter(t => t.due_date === dueDate).length), priority, custom_focus_duration: null, custom_break_duration: null,
         };
         const tasksSnapshot = [...tasks];
         setTasks(currentTasks => [...currentTasks, optimisticTask]);
@@ -954,7 +971,7 @@ const App: React.FC = () => {
         setIsSyncing(true);
         try { await dbService.deleteTask(id); await Promise.all([refreshTasks(), refreshProjects(), refreshTargets()]); setToastNotification('Task deleted.'); } catch (error) { console.error("Sync Error", error); setToastNotification("⚠️ Delete failed! Restoring."); setTasks(tasksSnapshot); } finally { setIsSyncing(false); }
     };
-    
+
     const handleMoveTask = async (id: string, action: 'postpone' | 'duplicate') => {
         setIsSyncing(true); try { await dbService.moveTask(id, action); await refreshTasks(); setToastNotification(`Task ${action}d!`); } catch (error) { console.error("Sync Error", error); setToastNotification("⚠️ Action failed!"); } finally { setIsSyncing(false); }
     };
@@ -965,7 +982,7 @@ const App: React.FC = () => {
         const settingsSnapshot = { ...settings }; setSettings(s => ({ ...s, todaySortBy: newSortBy })); setIsSyncing(true); try { await dbService.updateSettings({ ...settings, todaySortBy: newSortBy }); } catch (error) { console.error("Sync Error", error); setToastNotification("⚠️ Sort preference not saved."); setSettings(settingsSnapshot); } finally { setIsSyncing(false); }
     };
     const handleReorderTasks = async (reorderedTasks: Task[]) => {
-        const tasksSnapshot = [...tasks]; const reorderedIds = new Set(reorderedTasks.map(t => t.id)); const otherTasks = tasks.filter(t => !reorderedIds.has(t.id)); const newOptimisticTasks = [...otherTasks, ...reorderedTasks].sort((a,b) => (a.task_order ?? Infinity) - (b.task_order ?? Infinity)); setTasks(newOptimisticTasks); handleSortChange('default'); setIsSyncing(true); try { await dbService.updateTaskOrder(reorderedTasks.map((task, index) => ({ id: task.id, task_order: index }))); await refreshTasks(); } catch (error) { console.error("Sync Error", error); setToastNotification("⚠️ Reorder failed! Reverting."); setTasks(tasksSnapshot); } finally { setIsSyncing(false); }
+        const tasksSnapshot = [...tasks]; const reorderedIds = new Set(reorderedTasks.map(t => t.id)); const otherTasks = tasks.filter(t => !reorderedIds.has(t.id)); const newOptimisticTasks = [...otherTasks, ...reorderedTasks].sort((a, b) => (a.task_order ?? Infinity) - (b.task_order ?? Infinity)); setTasks(newOptimisticTasks); handleSortChange('default'); setIsSyncing(true); try { await dbService.updateTaskOrder(reorderedTasks.map((task, index) => ({ id: task.id, task_order: index }))); await refreshTasks(); } catch (error) { console.error("Sync Error", error); setToastNotification("⚠️ Reorder failed! Reverting."); setTasks(tasksSnapshot); } finally { setIsSyncing(false); }
     };
     const handleMarkTaskIncomplete = async (id: string) => {
         const tasksSnapshot = [...tasks]; setTasks(currentTasks => currentTasks.map(t => t.id === id ? { ...t, completed_at: null } : t)); setIsSyncing(true); try { await dbService.markTaskIncomplete(id); await Promise.all([refreshTasks(), refreshProjects(), refreshTargets()]); setToastNotification('Task marked as incomplete.'); } catch (error) { console.error("Sync Error", error); setToastNotification("⚠️ Update failed! Reverting."); setTasks(tasksSnapshot); } finally { setIsSyncing(false); }
@@ -990,11 +1007,11 @@ const App: React.FC = () => {
     };
 
     // Project, Goal, Target, Commitment Handlers (Compact versions)
-    const handleAddProject = async (name: string, description: string | null = null, startDate: string | null = null, deadline: string | null = null, criteria: {type: Project['completion_criteria_type'], value: number | null} = {type: 'manual', value: null}, priority: number | null = null, activeDays: number[] | null = null): Promise<string | null> => {
+    const handleAddProject = async (name: string, description: string | null = null, startDate: string | null = null, deadline: string | null = null, criteria: { type: Project['completion_criteria_type'], value: number | null } = { type: 'manual', value: null }, priority: number | null = null, activeDays: number[] | null = null): Promise<string | null> => {
         setIsSyncing(true); try { const newProject = await dbService.addProject(name, description, startDate, deadline, criteria.type, criteria.value, priority, activeDays); if (newProject) { await refreshProjects(); setToastNotification('Project added!'); return newProject.id; } return null; } catch (error) { console.error(error); setToastNotification("⚠️ Add project failed."); return null; } finally { setIsSyncing(false); }
     };
     const handleUpdateProject = async (id: string, updates: Partial<Project>) => { const s = [...projects]; setProjects(c => c.map(p => p.id === id ? { ...p, ...updates } : p)); setIsSyncing(true); try { await dbService.updateProject(id, updates); await refreshProjects(); setToastNotification('Project updated!'); } catch (e) { console.error(e); setToastNotification("⚠️ Failed!"); setProjects(s); } finally { setIsSyncing(false); } };
-    const handleDeleteProject = async (id: string) => { const s = [...projects]; setProjects(c => c.filter(p => p.id !== id)); setIsSyncing(true); try { const r = await dbService.deleteProject(id); if(r.success) { await Promise.all([refreshProjects(), refreshTasks()]); setToastNotification('Project deleted.'); } else throw new Error(r.error!); } catch (e) { console.error(e); setToastNotification("⚠️ Failed!"); setProjects(s); } finally { setIsSyncing(false); } };
+    const handleDeleteProject = async (id: string) => { const s = [...projects]; setProjects(c => c.filter(p => p.id !== id)); setIsSyncing(true); try { const r = await dbService.deleteProject(id); if (r.success) { await Promise.all([refreshProjects(), refreshTasks()]); setToastNotification('Project deleted.'); } else throw new Error(r.error!); } catch (e) { console.error(e); setToastNotification("⚠️ Failed!"); setProjects(s); } finally { setIsSyncing(false); } };
     const handleAddGoal = async (text: string) => { setIsSyncing(true); try { await dbService.addGoal(text); await refreshGoals(); setToastNotification('Goal added!'); } catch (e) { console.error(e); setToastNotification("⚠️ Failed!"); } finally { setIsSyncing(false); } };
     const handleUpdateGoal = async (id: string, text: string) => { const s = [...goals]; setGoals(c => c.map(g => g.id === id ? { ...g, text } : g)); setIsSyncing(true); try { await dbService.updateGoal(id, { text }); await refreshGoals(); setToastNotification('Goal updated!'); } catch (e) { console.error(e); setToastNotification("⚠️ Failed!"); setGoals(s); } finally { setIsSyncing(false); } };
     const handleDeleteGoal = async (id: string) => { const s = [...goals]; setGoals(c => c.filter(g => g.id !== id)); setIsSyncing(true); try { await dbService.deleteGoal(id); await refreshGoals(); setToastNotification('Goal deleted.'); } catch (e) { console.error(e); setToastNotification("⚠️ Failed!"); setGoals(s); } finally { setIsSyncing(false); } };
@@ -1004,12 +1021,12 @@ const App: React.FC = () => {
     const handleDeleteTarget = async (id: string) => { const s = [...targets]; setTargets(c => c.filter(t => t.id !== id)); setIsSyncing(true); try { await dbService.deleteTarget(id); await refreshTargets(); setToastNotification('Target deleted.'); } catch (e) { console.error(e); setToastNotification("⚠️ Failed!"); setTargets(s); } finally { setIsSyncing(false); } };
     const handleSetPinnedItem = async (itemId: string, itemType: 'project' | 'target') => { setIsSyncing(true); try { const s = await dbService.setPinnedItem(itemId, itemType); if (s) { await Promise.all([refreshProjects(), refreshTargets()]); setToastNotification('Pinned to spotlight!'); } } catch (e) { console.error(e); setToastNotification("⚠️ Error pinning."); } finally { setIsSyncing(false); } };
     const handleClearPins = async () => { setIsSyncing(true); try { const s = await dbService.clearAllPins(); if (s) { await Promise.all([refreshProjects(), refreshTargets()]); setToastNotification('Spotlight cleared!'); } } catch (e) { console.error(e); setToastNotification("⚠️ Error clearing."); } finally { setIsSyncing(false); } };
-    const handleAddCommitment = async (text: string, dueDate: string | null) => { setIsSyncing(true); try { await dbService.addCommitment(text, dueDate); await refreshCommitments(); setToastNotification("Commitment added!"); } catch(e) { console.error(e); setToastNotification("⚠️ Failed."); } finally { setIsSyncing(false); } };
+    const handleAddCommitment = async (text: string, dueDate: string | null) => { setIsSyncing(true); try { await dbService.addCommitment(text, dueDate); await refreshCommitments(); setToastNotification("Commitment added!"); } catch (e) { console.error(e); setToastNotification("⚠️ Failed."); } finally { setIsSyncing(false); } };
     const handleUpdateCommitment = async (id: string, updates: { text: string; dueDate: string | null }) => { const s = [...allCommitments]; setAllCommitments(c => c.map(x => x.id === id ? { ...x, ...updates } : x)); setIsSyncing(true); try { await dbService.updateCommitment(id, updates); await refreshCommitments(); setToastNotification("Commitment updated!"); } catch (e) { console.error(e); setToastNotification("⚠️ Failed!"); setAllCommitments(s); } finally { setIsSyncing(false); } };
     const handleDeleteCommitment = async (id: string) => { const s = [...allCommitments]; setAllCommitments(c => c.filter(x => x.id !== id)); setIsSyncing(true); try { await dbService.deleteCommitment(id); await refreshCommitments(); setToastNotification("Commitment deleted!"); } catch (e) { console.error(e); setToastNotification("⚠️ Failed!"); setAllCommitments(s); } finally { setIsSyncing(false); } };
     const handleSetCommitmentCompletion = async (id: string, isComplete: boolean) => { setIsSyncing(true); try { await dbService.setCommitmentCompletion(id, isComplete); await refreshCommitments(); setToastNotification(`Commitment ${isComplete ? 'completed' : 'active'}.`); } catch (e) { console.error(e); setToastNotification("⚠️ Failed."); } finally { setIsSyncing(false); } };
     const handleMarkCommitmentBroken = async (id: string) => { setIsSyncing(true); try { await dbService.markCommitmentBroken(id); await refreshCommitments(); setToastNotification("Commitment broken."); } catch (e) { console.error(e); setToastNotification("⚠️ Failed."); } finally { setIsSyncing(false); } };
-    
+
     const handleRescheduleProject = async (id: string, newDeadline: string | null) => { setIsSyncing(true); try { await dbService.rescheduleProject(id, newDeadline); await refreshProjects(); setToastNotification('Project rescheduled!'); } catch (e) { setToastNotification('⚠️ Failed.'); } finally { setIsSyncing(false); } };
     const handleRescheduleTarget = async (id: string, newDeadline: string) => { setIsSyncing(true); try { await dbService.rescheduleTarget(id, newDeadline); await refreshTargets(); setToastNotification('Target rescheduled!'); } catch (e) { setToastNotification('⚠️ Failed.'); } finally { setIsSyncing(false); } };
     const handleRescheduleCommitment = async (id: string, newDueDate: string | null) => { setIsSyncing(true); try { await dbService.rescheduleCommitment(id, newDueDate); await refreshCommitments(); setToastNotification('Commitment rescheduled!'); } catch (e) { setToastNotification('⚠️ Failed.'); } finally { setIsSyncing(false); } };
@@ -1028,7 +1045,7 @@ const App: React.FC = () => {
     const renderPage = () => {
         switch (page) {
             case 'timer': return <TimerPage appState={appState} settings={settings} tasksToday={tasksToday} completedToday={completedToday} dailyLog={dailyLog} startTimer={startTimer} stopTimer={stopTimer} resetTimer={resetTimer} navigateToSettings={() => setPage('settings')} currentTask={tasksToday[0]} todaysHistory={todaysHistory} historicalLogs={historicalLogs} isStopwatchMode={isStopwatchMode} completeStopwatchTask={handleCompleteStopwatchTask} onOpenReflection={() => setIsReflectionModalOpen(true)} allTasks={tasks} />;
-            case 'plan': return <PlanPage tasksToday={tasksToday} tasksForTomorrow={tasksForTomorrow} tasksFuture={tasksFuture} completedToday={completedToday} projects={projects} settings={settings} onAddTask={handleAddTask} onAddProject={(name) => handleAddProject(name, null, null, null, {type: 'manual', value: null}, null, null)} onDeleteTask={handleDeleteTask} onMoveTask={handleMoveTask} onBringTaskForward={handleBringTaskForward} onReorderTasks={handleReorderTasks} onUpdateTaskTimers={handleUpdateTaskTimers} onUpdateTask={handleUpdateTask} onMarkTaskIncomplete={handleMarkTaskIncomplete} todaySortBy={settings.todaySortBy} onSortTodayByChange={handleSortChange} recurringTasks={recurringTasks} onAddRecurringTask={handleAddRecurringTask} onUpdateRecurringTask={handleUpdateRecurringTask} onDeleteRecurringTask={handleDeleteRecurringTask} onSetRecurringTaskActive={handleSetRecurringTaskActive} onSetTaskToAutomate={handleSetTaskToAutomate} taskToAutomate={taskToAutomate} onClearTaskToAutomate={() => setTaskToAutomate(null)} />;
+            case 'plan': return <PlanPage tasksToday={tasksToday} tasksForTomorrow={tasksForTomorrow} tasksFuture={tasksFuture} completedToday={completedToday} projects={projects} settings={settings} onAddTask={handleAddTask} onAddProject={(name) => handleAddProject(name, null, null, null, { type: 'manual', value: null }, null, null)} onDeleteTask={handleDeleteTask} onMoveTask={handleMoveTask} onBringTaskForward={handleBringTaskForward} onReorderTasks={handleReorderTasks} onUpdateTaskTimers={handleUpdateTaskTimers} onUpdateTask={handleUpdateTask} onMarkTaskIncomplete={handleMarkTaskIncomplete} todaySortBy={settings.todaySortBy} onSortTodayByChange={handleSortChange} recurringTasks={recurringTasks} onAddRecurringTask={handleAddRecurringTask} onUpdateRecurringTask={handleUpdateRecurringTask} onDeleteRecurringTask={handleDeleteRecurringTask} onSetRecurringTaskActive={handleSetRecurringTaskActive} onSetTaskToAutomate={handleSetTaskToAutomate} taskToAutomate={taskToAutomate} onClearTaskToAutomate={() => setTaskToAutomate(null)} />;
             case 'stats': return <StatsPage />;
             case 'ai': return <AICoachPage goals={goals} targets={targets} projects={projects} allCommitments={activeCommitments} onAddTask={handleAddTaskFromAI} onAddProject={handleAddProject} onAddTarget={(text, deadline, priority) => handleAddTarget(text, deadline, priority, null, 'manual', null, null)} onAddCommitment={handleAddCommitment} onRescheduleItem={handleRescheduleItemFromAI} chatMessages={aiChatMessages} setChatMessages={setAiChatMessages} aiMemories={aiMemories} onMemoryChange={handleMemoryChangeFromAI} onHistoryChange={handleHistoryChangeFromAI} />;
             case 'goals': return <GoalsPage goals={goals} targets={targets} projects={projects} commitments={allCommitments} onAddGoal={handleAddGoal} onUpdateGoal={handleUpdateGoal} onDeleteGoal={handleDeleteGoal} onSetGoalCompletion={handleSetGoalCompletion} onAddTarget={handleAddTarget} onUpdateTarget={handleUpdateTarget} onDeleteTarget={handleDeleteTarget} onAddProject={handleAddProject} onUpdateProject={handleUpdateProject} onDeleteProject={handleDeleteProject} onAddCommitment={handleAddCommitment} onUpdateCommitment={handleUpdateCommitment} onDeleteCommitment={handleDeleteCommitment} onSetCommitmentCompletion={handleSetCommitmentCompletion} onMarkCommitmentBroken={handleMarkCommitmentBroken} onSetPinnedItem={handleSetPinnedItem} onClearPins={handleClearPins} />;
@@ -1038,19 +1055,19 @@ const App: React.FC = () => {
     };
 
     return (
-        <div className="min-h-screen relative pb-24 md:pb-0 md:pl-28 lg:pl-72" style={{fontFamily: `'Inter', sans-serif`}}>
+        <div className="min-h-screen relative pb-24 md:pb-0 md:pl-28 lg:pl-72" style={{ fontFamily: `'Inter', sans-serif` }}>
             {celebration && <CelebrationAnimation message={celebration.message} onComplete={handleCelebrationComplete} />}
             {toastNotification && <ToastNotification message={toastNotification} onDismiss={() => setToastNotification(null)} />}
             {isSyncing && <SyncIndicator />}
-            
-            <Navbar 
-                currentPage={page} 
-                setPage={setPage} 
+
+            <Navbar
+                currentPage={page}
+                setPage={setPage}
                 onLogout={() => supabase.auth.signOut()}
                 unreadNotificationCount={unreadNotificationCount}
                 onToggleNotifications={() => setIsNotificationPanelOpen(prev => !prev)}
             />
-            
+
             {/* Mobile Notification Toggle - Visible only on mobile */}
             <button
                 onClick={() => setIsNotificationPanelOpen(prev => !prev)}
@@ -1066,7 +1083,7 @@ const App: React.FC = () => {
                     )}
                 </div>
             </button>
-            
+
             <main className="p-4 sm:p-8 max-w-7xl mx-auto animate-fadeIn">
                 {renderPage()}
             </main>
@@ -1081,9 +1098,9 @@ const App: React.FC = () => {
                     isSyncing={isSyncing}
                 />
             )}
-            
+
             {isReflectionModalOpen && (
-                <DailyReflectionModal 
+                <DailyReflectionModal
                     isOpen={isReflectionModalOpen}
                     onClose={() => setIsReflectionModalOpen(false)}
                     onSave={handleSaveReflection}
@@ -1091,7 +1108,7 @@ const App: React.FC = () => {
                     initialImprovements={dailyLog.improvements || ''}
                 />
             )}
-            
+
             {isNotificationPanelOpen && (
                 <NotificationPanel
                     notifications={notifications}

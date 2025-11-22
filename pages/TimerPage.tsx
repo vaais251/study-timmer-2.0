@@ -9,6 +9,7 @@ import TodayLog from '../components/TodayLog';
 import FocusQueue from '../components/FocusQueue';
 import StatsPanel from '../components/StatsPanel';
 import CategoryFocusPieChart from '../components/CategoryFocusPieChart';
+import StreakCalendar from '../components/StreakCalendar';
 import { EditIcon } from '../components/common/Icons';
 
 interface TimerPageProps {
@@ -46,7 +47,7 @@ const formatMinutes = (minutes: number): string => {
 
 const TimerPage: React.FC<TimerPageProps> = (props) => {
     const { appState, settings, tasksToday, completedToday, dailyLog, startTimer, stopTimer, resetTimer, navigateToSettings, currentTask, todaysHistory, historicalLogs, isStopwatchMode, completeStopwatchTask, onOpenReflection, allTasks } = props;
-    
+
     const allTodaysTasks = useMemo(() => [...tasksToday, ...completedToday], [tasksToday, completedToday]);
     const nextTasks = useMemo(() => tasksToday.slice(1), [tasksToday]);
 
@@ -61,7 +62,7 @@ const TimerPage: React.FC<TimerPageProps> = (props) => {
     }, [tasksToday, settings.focusDuration]);
 
     const isFocus = appState.mode === 'focus';
-    
+
     const stopwatchBaseTime = useMemo(() => {
         if (isStopwatchMode && currentTask && appState.mode === 'focus') {
             return todaysHistory
@@ -82,7 +83,7 @@ const TimerPage: React.FC<TimerPageProps> = (props) => {
         }
         return "No task selected"; // Fallback
     }, [tasksToday.length, completedToday.length]);
-    
+
     return (
         <div className="flex flex-col gap-6">
             <SessionInfo
@@ -91,7 +92,7 @@ const TimerPage: React.FC<TimerPageProps> = (props) => {
                 remainingTasksToday={tasksToday.length}
                 focusLeft={formatMinutes(focusTimeRemainingMinutes)}
             />
-            
+
             {/* Main Timer Block */}
             <div className="bg-slate-800/50 backdrop-blur-md rounded-2xl p-4 sm:p-6 border border-slate-700/80 animate-slideUp">
                 <div className="text-center pb-4 mb-4 border-b border-slate-700/80">
@@ -139,11 +140,11 @@ const TimerPage: React.FC<TimerPageProps> = (props) => {
             </div>
 
             {/* Widgets Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-slideUp" style={{animationDelay: '100ms'}}>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-slideUp" style={{ animationDelay: '100ms' }}>
                 <FocusQueue nextTasks={nextTasks} />
                 <div className="h-full flex flex-col">
                     <TodayLog todaysHistory={todaysHistory} tasks={allTodaysTasks} />
-                    <button 
+                    <button
                         onClick={onOpenReflection}
                         className="mt-2 bg-slate-800/80 hover:bg-slate-700/80 text-white py-2 px-4 rounded-lg flex items-center justify-center gap-2 transition text-sm font-semibold border border-slate-600/50"
                     >
@@ -152,7 +153,7 @@ const TimerPage: React.FC<TimerPageProps> = (props) => {
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-slideUp" style={{animationDelay: '200ms'}}>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-slideUp" style={{ animationDelay: '200ms' }}>
                 <StatsPanel
                     completedToday={completedToday}
                     tasksToday={tasksToday}
@@ -165,10 +166,15 @@ const TimerPage: React.FC<TimerPageProps> = (props) => {
                     todaysHistory={todaysHistory}
                 />
             </div>
-            
+
             {/* Ambient Sounds */}
-            <div className="animate-slideUp" style={{animationDelay: '300ms'}}>
+            <div className="animate-slideUp" style={{ animationDelay: '300ms' }}>
                 <AmbientSounds />
+            </div>
+
+            {/* Streak Calendar */}
+            <div className="animate-slideUp" style={{ animationDelay: '400ms' }}>
+                <StreakCalendar historicalLogs={historicalLogs} />
             </div>
         </div>
     );
